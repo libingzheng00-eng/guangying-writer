@@ -588,6 +588,21 @@ textarea {
 .sc-el.is-omit {
   opacity: 0.4;
 }
+/* (CONT'D) 续说后缀：纯视觉，由 [data-contd] 驱动；不进 innerHTML、不入统计 / 导出 */
+.sc-el--character.has-contd::after {
+  content: attr(data-contd);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.78em;
+  font-style: italic;
+  margin-left: 0.35em;
+  letter-spacing: 0.02em;
+  user-select: none;
+  pointer-events: none;
+}
+.preview__page .sc-el--character.has-contd::after,
+.preview__paper .sc-el--character.has-contd::after {
+  color: rgba(0, 0, 0, 0.55);
+}
 .sc-el.has-rev::before {
   content: '';
   position: absolute;

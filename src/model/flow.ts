@@ -3,8 +3,8 @@ import { isDialogueType } from './elements';
 import { plain } from '../utils/text';
 
 /**
- * Tab / Shift+Tab 的元素类型循环（参考 Final Draft 主线）
- * 仅循环 7 个常用类型；act / general / note 通过工具栏或专用快捷键切换。
+ * Tab / Shift+Tab 的元素类型循环（参考 Final Draft 主线 + v1.2.9 实测）
+ * 9 个常用类型；act 仍可通过工具栏切换。
  */
 const TAB_CYCLE: ElementType[] = [
   'action',
@@ -14,12 +14,14 @@ const TAB_CYCLE: ElementType[] = [
   'transition',
   'shot',
   'scene_heading',
+  'general',
+  'note',
 ];
 
 export function nextTypeOnTab(current: ElementType, shift = false): ElementType {
   const i = TAB_CYCLE.indexOf(current);
-  // 不在循环里的类型（act / general / note 等）落到 action，避免静默吞掉按键
-  if (i < 0) return shift ? 'scene_heading' : 'action';
+  // 不在循环里的类型（act 等）落到 action，避免静默吞掉按键
+  if (i < 0) return shift ? 'note' : 'action';
   const n = TAB_CYCLE.length;
   return TAB_CYCLE[(i + (shift ? -1 : 1) + n) % n];
 }
@@ -223,5 +225,46 @@ export function contdLabelFor(
   }
   return '（续）';
 }
+
+/**
+ * 「同人物续说」标记 (CONT'D) 的判定（v1.2.9 同款逻辑，仅供纯函数测试与渲染层调用）。
+ *
+ * 规则：
+ *   - 只对 `character` 元素生效；位于双列对白中（dual !== undefined）的不参与；
+ *   - 设置 `contdCharacter === false` 时强制关闭（undefined / 缺省视为开启）；
+ *   - 若作者已自己写了 `(CONT'D)` / `CONT'D)` 等标记，则不再追加；
+ *   - 反向查找前 60 个元素内的最近一个非空 `character`，名字与当前相同则视为续说；
+ *   - 反向查找中遇到 `scene_heading` 或 `act` 即停止并视为非续说；
+ *   - 该函数**不写入** `el.text`，仅返回是否展示；具体视觉由渲染层通过 `data-contd` 实现，
+ *     不会进入 innerHTML、统计、导出或 autosave。
+ */
+export function shouldShowContdSuffix(
+  project: { elements: ScriptElement[]; settings: { contdCharacter?: boolean } },
+  el: ScriptElement,
+): boolean {
+  if (!el || el.type !== 'character' || el.dual) return false;
+  if (project.settings.contdCharacter === false) return false;
+  const txt = String(el.text == null ? '' : el.text);
+  if (/CONT\s*['’]?\s*D\)?/i.test(txt)) return false; // 作者已自己写
+  const currentName = plain(txt).replace(/[（(][^）)]*[）)]/g, '').replace(/[:：]\s*$/, '').trim();
+  if (!currentName) return false;
+  const E = project.elements;
+  const i = E.indexOf(el);
+  if (i <= 0) return false;
+  const limit = Math.max(0, i - 60);
+  for (let j = i - 1; j >= limit; j -= 1) {
+    const p = E[j];
+    if (!p) continue;
+    if (p.type === 'scene_heading' || p.type === 'act') return false;
+    if (p.type === 'character') {
+      const previousName = plain(p.text).replace(/[（(][^）)]*[）)]/g, '').replace(/[:：]\s*$/, '').trim();
+      return !!previousName && previousName === currentName;
+    }
+  }
+  return false;
+}
+
+/** 续说后缀字符串，固定 `(CONT'D)` 与 v1.2.9 保持一致；纯视觉，不写入正文 */
+export const CONTD_SUFFIX = "(CONT'D)";
 
 export { isDialogueType };

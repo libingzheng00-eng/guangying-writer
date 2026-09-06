@@ -181,6 +181,8 @@ export interface ScriptSettings {
   contdText: string;
   /** 每页顶部是否显示「（续）」 */
   showContd: boolean;
+  /** 同一人物在同场景内再次说话时，自动显示 (CONT'D) 后缀（v1.2.9 同款，缺省视为开启） */
+  contdCharacter?: boolean;
   wordsPerMinute: number;
   revisionMode: boolean;
   printNotes: boolean;

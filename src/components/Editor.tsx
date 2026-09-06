@@ -4,7 +4,7 @@ import { usePagination } from '../hooks/PaginationProvider';
 import { EditableBlock } from './ScriptBlock';
 import { caretOffset, splitHtml, domLength } from '../utils/dom';
 import { isBlank, plain, stripSceneNumber } from '../utils/text';
-import { nextTypeOnEnter, nextTypeOnTab, groupDual, recognizeType } from '../model/flow';
+import { nextTypeOnEnter, nextTypeOnTab, groupDual, recognizeType, shouldShowContdSuffix, CONTD_SUFFIX } from '../model/flow';
 import { characterNames, sceneHeadings, deriveScenes } from '../model/project';
 import { COMMON_SHOTS, COMMON_TRANSITIONS, fontStackOf } from '../model/elements';
 import type { ScriptElement, ElementType } from '../model/types';
@@ -428,6 +428,7 @@ export function Editor() {
 
   function renderBlock(el: ScriptElement, half: boolean) {
     const isScene = el.type === 'scene_heading';
+    const contdSuffix = el.type === 'character' && shouldShowContdSuffix(project, el) ? CONTD_SUFFIX : undefined;
     return (
       <EditableBlock
         key={el.id}
@@ -444,6 +445,7 @@ export function Editor() {
               }
             : undefined
         }
+        contdSuffix={contdSuffix}
         innerRef={(n) => {
           if (n) refs.current.set(el.id, n);
           else refs.current.delete(el.id);

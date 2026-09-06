@@ -35,6 +35,7 @@ export function defaultSettings(): ScriptSettings {
     moreText: '（更多）',
     contdText: '（续）',
     showContd: true,
+    contdCharacter: true,
     wordsPerMinute: 220,
     revisionMode: false,
     printNotes: false,

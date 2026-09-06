@@ -40,13 +40,15 @@ export interface BlockProps {
   spaceBefore?: number;
   revColor?: string;
   sceneNumber?: { left?: string; right?: string; text?: string };
+  /** 「同人物续说」标记 (CONT'D)；纯视觉，由渲染层通过 `data-contd` + CSS ::after 实现，不写入正文。 */
+  contdSuffix?: string;
   className?: string;
   innerRef?: (node: HTMLDivElement | null) => void;
 }
 
 /** 只读渲染（分页预览、打印、测量） */
 export function StaticBlock(props: BlockProps) {
-  const { el, settings, half, spaceBefore, revColor, sceneNumber, className, innerRef } = props;
+  const { el, settings, half, spaceBefore, revColor, sceneNumber, contdSuffix, className, innerRef } = props;
   const el0 = sceneNumber && sceneNumber.text !== undefined ? { ...el, text: sceneNumber.text } : el;
   const empty = isBlank(el0.text);
   const cls = [
@@ -54,6 +56,7 @@ export function StaticBlock(props: BlockProps) {
     `sc-el--${el.type}`,
     el.omit ? 'is-omit' : '',
     revColor ? 'has-rev' : '',
+    contdSuffix ? 'has-contd' : '',
     className || '',
   ]
     .filter(Boolean)
@@ -65,6 +68,7 @@ export function StaticBlock(props: BlockProps) {
       className={cls}
       data-id={el0.id}
       data-type={el0.type}
+      data-contd={contdSuffix || undefined}
       style={blockStyle({ settings, half, spaceBefore, revColor }, el0)}
       dangerouslySetInnerHTML={{ __html: el0.text || '<br>' }}
     />
@@ -103,6 +107,7 @@ export function EditableBlock(props: EditableBlockProps) {
     half,
     revColor,
     sceneNumber,
+    contdSuffix,
     className,
     innerRef,
     selected,
@@ -144,6 +149,7 @@ export function EditableBlock(props: EditableBlockProps) {
     el.omit ? 'is-omit' : '',
     revColor ? 'has-rev' : '',
     empty ? 'is-empty' : '',
+    contdSuffix ? 'has-contd' : '',
     className || '',
   ]
     .filter(Boolean)
@@ -158,6 +164,7 @@ export function EditableBlock(props: EditableBlockProps) {
       className={cls}
       data-id={el.id}
       data-type={el.type}
+      data-contd={contdSuffix || undefined}
       style={blockStyle({ settings, half, revColor }, el)}
       contentEditable
       suppressContentEditableWarning

@@ -31,7 +31,7 @@ process.on('exit', () => {
     logLevel: 'silent',
   });
 
-  const { recognizeType, characterForDialogue, contdLabelFor, nextTypeOnTab, nextTypeOnEnter } = require(bundle);
+  const { recognizeType, characterForDialogue, contdLabelFor, nextTypeOnTab, nextTypeOnEnter, shouldShowContdSuffix, CONTD_SUFFIX } = require(bundle);
 
   const failures = [];
   const ok = (name, cond) => {
@@ -39,18 +39,19 @@ process.on('exit', () => {
     else { console.log(`  \u2717 ${name}`); failures.push(name); }
   };
 
-  console.log('\n== Tab 七类循环 ==');
+  console.log('\n== Tab 九类循环（v1.2.9 同款） ==');
   ok('action → Tab → character', nextTypeOnTab('action') === 'character');
   ok('character → Tab → parenthetical', nextTypeOnTab('character') === 'parenthetical');
   ok('parenthetical → Tab → dialogue', nextTypeOnTab('parenthetical') === 'dialogue');
   ok('dialogue → Tab → transition', nextTypeOnTab('dialogue') === 'transition');
   ok('transition → Tab → shot', nextTypeOnTab('transition') === 'shot');
   ok('shot → Tab → scene_heading', nextTypeOnTab('shot') === 'scene_heading');
-  ok('scene_heading → Tab → action（循环）', nextTypeOnTab('scene_heading') === 'action');
-  ok('action → Shift+Tab → scene_heading（反向循环）', nextTypeOnTab('action', true) === 'scene_heading');
-  ok('note 不在循环里 → Tab → action', nextTypeOnTab('note') === 'action');
+  ok('scene_heading → Tab → general', nextTypeOnTab('scene_heading') === 'general');
+  ok('general → Tab → note', nextTypeOnTab('general') === 'note');
+  ok('note → Tab → action（循环）', nextTypeOnTab('note') === 'action');
+  ok('note → Shift+Tab → general（反向循环）', nextTypeOnTab('note', true) === 'general');
   ok('act 不在循环里 → Tab → action', nextTypeOnTab('act') === 'action');
-  ok('general 不在循环里 → Shift+Tab → scene_heading', nextTypeOnTab('general', true) === 'scene_heading');
+  ok('act → Shift+Tab → note', nextTypeOnTab('act', true) === 'note');
 
   console.log('\n== recognizeType 智能识别 ==');
   ok('内景 → scene_heading', recognizeType('内景 咖啡厅 日') === 'scene_heading');
@@ -103,6 +104,84 @@ process.on('exit', () => {
   ok('character 空块回车 → action（避免空对白）', nextTypeOnEnter({ id: 'c', type: 'character', text: '' }, true) === 'action');
   ok('character 有内容回车 → dialogue', nextTypeOnEnter({ id: 'c', type: 'character', text: 'X' }, false) === 'dialogue');
   ok('dialogue 回车 → character', nextTypeOnEnter({ id: 'd', type: 'dialogue', text: 'X' }, false) === 'character');
+
+  console.log('\n== shouldShowContdSuffix (CONT\'D 同人物续说) ==');
+  // 共享工程：一个场景里 A → 对白 → 动作 → A → 切换场景 → A
+  const baseProject = {
+    settings: { contdCharacter: true, contdText: '（续）', sceneNumber: 'left' },
+    elements: [
+      { id: 'sc1', type: 'scene_heading', text: '1. 内景 测试地点 日' },
+      { id: 'ch1', type: 'character', text: '角色甲' },
+      { id: 'd1', type: 'dialogue', text: '你好。' },
+      { id: 'a1', type: 'action', text: '他走到窗边。' },
+      { id: 'ch2', type: 'character', text: '角色甲' },
+      { id: 'd2', type: 'dialogue', text: '再看一眼。' },
+      { id: 'ch3', type: 'character', text: '角色乙' },
+      { id: 'd3', type: 'dialogue', text: '早上好。' },
+      { id: 'ch4', type: 'character', text: '角色甲' },
+      { id: 'sc2', type: 'scene_heading', text: '2. 外景 测试地点 夜' },
+      { id: 'ch5', type: 'character', text: '角色甲' },
+      { id: 'ch6', type: 'character', text: '角色甲（V.O）' }, // 与上文角色甲比较，括号去掉后一致
+      { id: 'ch7', type: 'character', text: '角色甲（CONT\'D）' }, // 作者已写，不追加
+      { id: 'ch8', type: 'character', text: '角色甲' }, // 双重说话，紧跟前一个 A
+    ],
+  };
+
+  ok('场景 1：A → 对白 → 动作 → A → 续说', shouldShowContdSuffix(baseProject, baseProject.elements[4]) === true);
+  ok('场景 2：A → B 紧接，B 不续说', shouldShowContdSuffix(baseProject, baseProject.elements[6]) === false);
+  ok('场景 3：场景切换后 A 不续说（遇 scene_heading 截止）', shouldShowContdSuffix(baseProject, baseProject.elements[10]) === false);
+  ok('场景 4：括号提示变体（角色甲（V.O））与角色甲视为同人物', shouldShowContdSuffix(baseProject, baseProject.elements[11]) === true);
+  ok('场景 5：作者已写 (CONT\'D) → 不再追加', shouldShowContdSuffix(baseProject, baseProject.elements[12]) === false);
+  ok('场景 6：连续两次角色甲 → 后者续说', shouldShowContdSuffix(baseProject, baseProject.elements[13]) === true);
+  ok('场景 7：第一个角色元素（无前序）→ 不续说', shouldShowContdSuffix(baseProject, baseProject.elements[1]) === false);
+
+  // 不同人物连续说话
+  const diffCharProject = {
+    settings: { contdCharacter: true },
+    elements: [
+      { id: 'ch1', type: 'character', text: '角色甲' },
+      { id: 'ch2', type: 'character', text: '角色乙' },
+      { id: 'ch3', type: 'character', text: '角色甲' },
+    ],
+  };
+  ok('场景 8：甲→乙 紧接 → 乙不续说（不同人物）', shouldShowContdSuffix(diffCharProject, diffCharProject.elements[1]) === false);
+  // v1.2.9 行为：一旦中间插入不同人物，续说链即断开。第二个甲不会显示 (CONT'D)。
+  ok('场景 9：甲→乙→甲 → 第二个甲不续说（中间被不同人物打断）', shouldShowContdSuffix(diffCharProject, diffCharProject.elements[2]) === false);
+
+  // 设置关闭 → 一律不续说
+  const offProject = { ...baseProject, settings: { ...baseProject.settings, contdCharacter: false } };
+  ok('场景 10：设置关闭 → 即使符合也不续说', shouldShowContdSuffix(offProject, baseProject.elements[4]) === false);
+
+  // 缺省视为开启
+  const defaultProject = { settings: {}, elements: baseProject.elements };
+  ok('场景 11：未设置 contdCharacter → 视为开启', shouldShowContdSuffix(defaultProject, baseProject.elements[4]) === true);
+
+  // 双列对白不参与
+  const dualProject = {
+    settings: { contdCharacter: true },
+    elements: [
+      { id: 'ch1', type: 'character', text: '角色甲' },
+      { id: 'ch2', type: 'character', text: '角色甲', dual: 'left' },
+    ],
+  };
+  ok('场景 12：双列对白中的角色不参与续说', shouldShowContdSuffix(dualProject, dualProject.elements[1]) === false);
+
+  // 非 character 类型直接 false
+  const actionEl = { id: 'a', type: 'action', text: '动作' };
+  ok('场景 13：action 元素 → 不续说', shouldShowContdSuffix(baseProject, actionEl) === false);
+
+  // 续说后缀常量与 v1.2.9 一致
+  ok("CONTD_SUFFIX 固定为 (CONT'D)", CONTD_SUFFIX === "(CONT'D)");
+
+  // 后缀不进正文：元素的 text 字段不应被函数修改
+  const before = JSON.stringify(baseProject.elements[4]);
+  shouldShowContdSuffix(baseProject, baseProject.elements[4]);
+  ok('shouldShowContdSuffix 不会修改元素 text 字段', before === JSON.stringify(baseProject.elements[4]));
+
+  // 不污染：项目整体对象不变
+  const projectBefore = JSON.stringify(baseProject);
+  shouldShowContdSuffix(baseProject, baseProject.elements[4]);
+  ok('shouldShowContdSuffix 不会修改 project 其它字段', projectBefore === JSON.stringify(baseProject));
 
   if (failures.length) {
     console.log(`\n=== FAIL: ${failures.length} test(s) failed ===`);

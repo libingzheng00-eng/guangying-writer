@@ -185,6 +185,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               跨页对白显示「（续）」
             </label>
             <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={settings.contdCharacter !== false}
+                onChange={(e) => update({ contdCharacter: e.target.checked })}
+              />
+              同一人物再次说话时自动显示 (CONT'D)
+            </label>
+            <label className="checkbox">
               <input type="checkbox" checked={settings.titlePageBreak} onChange={(e) => update({ titlePageBreak: e.target.checked })} />
               标题页独立成页
             </label>

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import type { ScriptElement, ScriptProject } from '../model/types';
 import { useStore } from '../store/store';
 import { StaticBlock } from '../components/ScriptBlock';
-import { keepWithNext, canSplit, contdLabelFor, characterForDialogue } from '../model/flow';
+import { keepWithNext, canSplit, contdLabelFor, characterForDialogue, shouldShowContdSuffix, CONTD_SUFFIX } from '../model/flow';
 import { PAPER_MM } from '../model/stats';
 import { stripSceneNumber } from '../utils/text';
 import { fontStackOf } from '../model/elements';
@@ -326,14 +326,14 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
               {item.elements
                 .filter((e) => (e.dual || 'left') === 'left')
                 .map((e) => (
-                  <StaticBlock key={e.id} el={e} settings={project.settings} half sceneNumber={sceneNumberFor(e)} />
+                  <StaticBlock key={e.id} el={e} settings={project.settings} half sceneNumber={sceneNumberFor(e)} contdSuffix={shouldShowContdSuffix(project, e) ? CONTD_SUFFIX : undefined} />
                 ))}
             </div>
             <div className="sc-dual-col">
               {item.elements
                 .filter((e) => (e.dual || 'left') === 'right')
                 .map((e) => (
-                  <StaticBlock key={e.id} el={e} settings={project.settings} half sceneNumber={sceneNumberFor(e)} />
+                  <StaticBlock key={e.id} el={e} settings={project.settings} half sceneNumber={sceneNumberFor(e)} contdSuffix={shouldShowContdSuffix(project, e) ? CONTD_SUFFIX : undefined} />
                 ))}
             </div>
           </div>
@@ -343,6 +343,7 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
             el={item.elements[0]}
             settings={project.settings}
             sceneNumber={sceneNumberFor(item.elements[0])}
+            contdSuffix={shouldShowContdSuffix(project, item.elements[0]) ? CONTD_SUFFIX : undefined}
             innerRef={(n) => {
               if (n) refs.current.set(item.key, n);
               else refs.current.delete(item.key);
