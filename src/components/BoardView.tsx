@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store/store';
 import { deriveScenes } from '../model/project';
 import { CARD_COLORS } from '../model/elements';
-import { clampSize, sizeLimitFor } from '../model/board';
+import { clampSize, sizeLimitFor, FALLBACK_CARD_W, FALLBACK_SCENE_H, FALLBACK_BEAT_H } from '../model/board';
 import type { Beat, BoardLink, Scene } from '../model/types';
 
 type Filter = 'both' | 'scenes' | 'beats';
@@ -25,11 +25,13 @@ export function BoardView() {
   const addBeat = useStore((s) => s.addBeat);
   const moveBeat = useStore((s) => s.moveBeat);
   const updateBeat = useStore((s) => s.updateBeat);
+  const resizeBeat = useStore((s) => s.resizeBeat);
   const deleteBeat = useStore((s) => s.deleteBeat);
   const linkBeat = useStore((s) => s.linkBeat);
   const addBoardLink = useStore((s) => s.addBoardLink);
   const updateBoardLink = useStore((s) => s.updateBoardLink);
   const deleteBoardLink = useStore((s) => s.deleteBoardLink);
+  const resizeSceneMeta = useStore((s) => s.resizeSceneMeta);
   const addSceneAfter = useStore((s) => s.addSceneAfter);
 
   const scenes = useMemo(() => deriveScenes(project), [project]);
@@ -40,8 +42,8 @@ export function BoardView() {
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
-  // 拖拽状态：{ mode: 'card'|'beat'|'pan'|'resize', id, sx, sy, ox, oy, ow, oh, moved }
-  // ow/oh 仅 resize 用，其它模式取 0 占位
+  // 拖拽状态：{ mode: 'card'|'beat'|'pan'|'resize', id, sx, sy, ox, oy, ow, oh, kind, moved }
+  // kind 仅 resize 用：'scene' 或 'image'/'wimg'/'beat'/'sound'。
   const drag = useRef<{
     mode: 'card' | 'beat' | 'pan' | 'resize';
     id?: string;
@@ -51,6 +53,7 @@ export function BoardView() {
     oy: number;
     ow: number;
     oh: number;
+    kind?: 'scene' | 'image' | 'wimg' | 'beat' | 'sound';
     moved: boolean;
     node?: HTMLElement | null;
   } | null>(null);
@@ -105,12 +108,10 @@ export function BoardView() {
         const nx = d.ox + dx / zoom;
         const ny = d.oy + dy / zoom;
         moveBeat(d.id, Math.round(nx), Math.round(ny));
-      } else if (d.mode === 'resize' && d.id && d.node) {
-        // resize 节拍卡：实时更新 DOM，松手时落位到 store。
-        // 用 clampSize + beat.kind 兜底，避免拖出合法区间。
-        const beat = project.beats.find((b) => b.id === d.id);
-        if (!beat) return;
-        const next = clampSize(beat.kind, d.ow + dx / zoom, d.oh + dy / zoom);
+      } else if (d.mode === 'resize' && d.id && d.node && d.kind) {
+        // resize 节拍卡 / 场景卡：实时更新 DOM，松手时落位到 store。
+        // kind: 'scene' / 'image' / 'wimg' / 'beat' / 'sound'
+        const next = clampSize(d.kind, d.ow + dx / zoom, d.oh + dy / zoom);
         d.node.style.width = `${next.w}px`;
         d.node.style.height = `${next.h}px`;
         // 缓存最终值，等 onUp 一次性 commit
@@ -127,12 +128,16 @@ export function BoardView() {
           requestFocus(sc.elementId, 'start');
           setView('write');
         }
-      } else if (d && d.mode === 'resize' && d.id) {
-        // resize 落位：使用 resizeBeat（独立 coalesce key），与 moveBeat / updateBeat 互不干扰
+      } else if (d && d.mode === 'resize' && d.id && d.kind) {
+        // resize 落位：按 kind 分别用 resizeSceneMeta / resizeBeat
         const w = (d as any).previewW ?? d.ow;
         const h = (d as any).previewH ?? d.oh;
         if (w !== d.ow || h !== d.oh) {
-          useStore.getState().resizeBeat(d.id, w, h);
+          if (d.kind === 'scene') {
+            useStore.getState().resizeSceneMeta(d.id, w, h);
+          } else {
+            useStore.getState().resizeBeat(d.id, w, h);
+          }
         }
       }
       drag.current = null;
@@ -143,7 +148,7 @@ export function BoardView() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [zoom, scenes, requestFocus, setView, setScenePos, moveBeat, project.beats]);
+  }, [zoom, scenes, requestFocus, setView, setScenePos, moveBeat, resizeBeat, resizeSceneMeta, project.beats]);
 
   const onDoubleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -184,9 +189,17 @@ export function BoardView() {
     const out = new Map<string, { x: number; y: number }>();
     scenes.forEach((scene, index) => {
       const pos = scene.x != null && scene.y != null ? { x: scene.x, y: scene.y } : autoPos(index);
-      out.set(`scene:${scene.elementId}`, { x: pos.x + CARD_W / 2, y: pos.y + 68 });
+      // 关系线连接点 = 卡片中心。旧工程（无 w/h）按 FALLBACK_CARD_W / FALLBACK_SCENE_H
+      // 兜底，与 alpha.6 之前的"y+68 / y+78"位置差异很小，但 resize 后会跟随卡片中心走。
+      const w = scene.w ?? FALLBACK_CARD_W;
+      const h = scene.h ?? FALLBACK_SCENE_H;
+      out.set(`scene:${scene.elementId}`, { x: pos.x + w / 2, y: pos.y + h / 2 });
     });
-    project.beats.forEach((beat) => out.set(`beat:${beat.id}`, { x: beat.x + CARD_W / 2, y: beat.y + 78 }));
+    project.beats.forEach((beat) => {
+      const w = beat.w ?? FALLBACK_CARD_W;
+      const h = beat.h ?? FALLBACK_BEAT_H;
+      out.set(`beat:${beat.id}`, { x: beat.x + w / 2, y: beat.y + h / 2 });
+    });
     return out;
   }, [scenes, project.beats]);
   const boardLinks = (project.boardLinks || []).filter((link) => endpoints.has(link.from) && endpoints.has(link.to));
@@ -288,7 +301,24 @@ export function BoardView() {
           {showScenes &&
             scenes.map((sc, i) => {
               const pos = sc.x != null && sc.y != null ? { x: sc.x, y: sc.y } : autoPos(i);
-              return <SceneCard key={sc.id} scene={sc} index={i} pos={pos} linking={linkFrom === `scene:${sc.elementId}`} onLink={() => onCardLink(`scene:${sc.elementId}`)} />;
+              return <SceneCard key={sc.id} scene={sc} index={i} pos={pos} linking={linkFrom === `scene:${sc.elementId}`} onLink={() => onCardLink(`scene:${sc.elementId}`)} onResizeStart={(e) => {
+                // 场景卡 resize：与节拍卡共用 drag.current 'resize' 模式
+                const node = e.currentTarget.closest('[data-card]') as HTMLElement | null;
+                if (!node) return;
+                drag.current = {
+                  mode: 'resize',
+                  id: sc.elementId,
+                  sx: e.clientX,
+                  sy: e.clientY,
+                  ox: 0,
+                  oy: 0,
+                  ow: node.offsetWidth,
+                  oh: node.offsetHeight,
+                  kind: 'scene',
+                  moved: true,
+                  node,
+                };
+              }} />;
             })}
           {showBeats &&
             project.beats.map((b) => (
@@ -302,23 +332,24 @@ export function BoardView() {
                 linking={linkFrom === `beat:${b.id}`}
                 onBoardLink={() => onCardLink(`beat:${b.id}`)}
                 onResizeStart={(e) => {
-                  // v1.2.9 同款：右下角 resize handle 接管 mousedown，阻止冒泡
-  // 并在拖动期间直接更新 DOM，松手时 resizeBeat 落位。
-  const node = e.currentTarget.closest('[data-card]') as HTMLElement | null;
-  if (!node) return;
-  drag.current = {
-    mode: 'resize',
-    id: b.id,
-    sx: e.clientX,
-    sy: e.clientY,
-    ox: 0,
-    oy: 0,
-    ow: node.offsetWidth,
-    oh: node.offsetHeight,
-    moved: true, // resize 不走点击分支
-    node,
-  };
-}}
+                  // 自由板所有节拍卡都可缩放：把 beat.kind 透传到 drag.current，
+                  // 让 mousemove / mouseup 按 kind 选 clamp 区间与落位 action。
+                  const node = e.currentTarget.closest('[data-card]') as HTMLElement | null;
+                  if (!node) return;
+                  drag.current = {
+                    mode: 'resize',
+                    id: b.id,
+                    sx: e.clientX,
+                    sy: e.clientY,
+                    ox: 0,
+                    oy: 0,
+                    ow: node.offsetWidth,
+                    oh: node.offsetHeight,
+                    kind: b.kind || 'beat',
+                    moved: true, // resize 不走点击分支
+                    node,
+                  };
+                }}
               />
             ))}
         </div>
@@ -333,14 +364,16 @@ interface SceneCardProps {
   pos: { x: number; y: number };
 }
 
-function SceneCard({ scene, pos, linking, onLink }: SceneCardProps & { linking: boolean; onLink: () => void }) {
+function SceneCard({ scene, pos, linking, onLink, onResizeStart }: SceneCardProps & { linking: boolean; onLink: () => void; onResizeStart: (e: React.MouseEvent) => void }) {
+  const lim = sizeLimitFor('scene');
   return (
     <div
       data-card
       data-drag="card"
       data-id={scene.elementId}
+      data-kind="scene"
       className={`bcard bcard--scene ${scene.omit ? 'is-omit' : ''}`}
-      style={{ left: pos.x, top: pos.y, borderTopColor: scene.color }}
+      style={{ left: pos.x, top: pos.y, borderTopColor: scene.color, width: scene.w, height: scene.h }}
     >
       <div className="bcard__head">
         <span className="bcard__no">{scene.number}</span>
@@ -348,6 +381,19 @@ function SceneCard({ scene, pos, linking, onLink }: SceneCardProps & { linking: 
       </div>
       <div className="bcard__title">{scene.title || scene.heading || '（未命名场景）'}</div>
       <div className="bcard__synopsis">{scene.synopsis || scene.heading}</div>
+      <button
+        type="button"
+        className="bcard__resize"
+        title={`拖动调整场景卡大小（${lim.minW}×${lim.minH} ～ ${lim.maxW}×${lim.maxH}）`}
+        aria-label="调整场景卡大小"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onResizeStart(e);
+        }}
+      >
+        缩放
+      </button>
     </div>
   );
 }
@@ -369,7 +415,6 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
   const isMedia = kind === 'image' || kind === 'wimg';
   const isSound = kind === 'sound';
   const hasMedia = isMedia && !!beat.img;
-  const canResize = isMedia;
   const lim = sizeLimitFor(kind);
   return (
     <div
@@ -384,25 +429,27 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
         <span className={`bcard__tag bcard__tag--${kind}`}>{isSound ? '声音' : isMedia ? (kind === 'wimg' ? '写作图' : '图片') : '灵感'}</span>
         <span className="bcard__actions"><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onBoardLink} title="连接到另一张卡片">↗</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除">×</button></span>
       </div>
-      {hasMedia ? (
-        <div className="bcard__media" onMouseDown={(e) => e.stopPropagation()}>
-          <img className="bcard__media-img" src={beat.img} alt={beat.title || (kind === 'wimg' ? '写作图' : '图片')} />
-          {beat.title ? <input className="bcard__media-title" value={beat.title} placeholder="名称" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange({ title: e.target.value })} /> : null}
-        </div>
-      ) : isSound ? (
-        <div className="bcard__media bcard__media--sound" onMouseDown={(e) => e.stopPropagation()}>
-          <span className="bcard__sound-icon" aria-hidden>♪</span>
-          <input className="bcard__media-title" value={beat.title || beat.text} placeholder="声音标题" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange({ title: e.target.value, text: e.target.value })} />
-        </div>
-      ) : (
-        <textarea
-          className="bcard__edit"
-          value={beat.text}
-          placeholder="写点灵感、悬念或主题…"
-          onMouseDown={(e) => e.stopPropagation()}
-          onChange={(e) => onChange({ text: e.target.value })}
-        />
-      )}
+      <div className="bcard__body">
+        {hasMedia ? (
+          <div className="bcard__media" onMouseDown={(e) => e.stopPropagation()}>
+            <img className="bcard__media-img" src={beat.img} alt={beat.title || (kind === 'wimg' ? '写作图' : '图片')} />
+            {beat.title ? <input className="bcard__media-title" value={beat.title} placeholder="名称" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange({ title: e.target.value })} /> : null}
+          </div>
+        ) : isSound ? (
+          <div className="bcard__media bcard__media--sound" onMouseDown={(e) => e.stopPropagation()}>
+            <span className="bcard__sound-icon" aria-hidden>♪</span>
+            <input className="bcard__media-title" value={beat.title || beat.text} placeholder="声音标题" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange({ title: e.target.value, text: e.target.value })} />
+          </div>
+        ) : (
+          <textarea
+            className="bcard__edit"
+            value={beat.text}
+            placeholder="写点灵感、悬念或主题…"
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => onChange({ text: e.target.value })}
+          />
+        )}
+      </div>
       <div className="bcard__foot" onMouseDown={(e) => e.stopPropagation()}>
         <div className="bcard__dots">
           {CARD_COLORS.map((c) => (
@@ -428,21 +475,23 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
           ))}
         </select>
       </div>
-      {canResize ? (
-        <button
-          type="button"
-          className="bcard__resize"
-          title={`拖动调整图片卡大小（${lim.minW}×${lim.minH} ～ ${lim.maxW}×${lim.maxH}）`}
-          aria-label="调整图片卡大小"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onResizeStart(e);
-          }}
-        >
-          缩放
-        </button>
-      ) : null}
+      {/*
+       * 自由板所有节拍卡都可缩放（与 v1.2.9 不同，本版本补全 beat / sound 类型）。
+       * 未来新增 kind 时无需改 BoardView，只要在 RESIZE_LIMITS 里加项即可复用同一套缩放。
+       */}
+      <button
+        type="button"
+        className="bcard__resize"
+        title={`拖动调整卡片大小（${lim.minW}×${lim.minH} ～ ${lim.maxW}×${lim.maxH}）`}
+        aria-label="调整卡片大小"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onResizeStart(e);
+        }}
+      >
+        缩放
+      </button>
     </div>
   );
 }

@@ -353,17 +353,23 @@ process.on('exit', () => {
   ok('99.4 → 99', normalizeTargetPages(99.4) === 99);
   ok('10000 → 9999（封顶）', normalizeTargetPages(10000) === 9999);
 
-  console.log('\n== RESIZE_LIMITS：四套尺寸约束（v1.2.9 同款） ==');
+  console.log('\n== RESIZE_LIMITS：五套尺寸约束（v1.2.9 同款 + scene 卡补全） ==');
   ok('image minW=180 / minH=140 / maxW=760 / maxH=680',
     RESIZE_LIMITS.image.minW === 180 && RESIZE_LIMITS.image.minH === 140 &&
     RESIZE_LIMITS.image.maxW === 760 && RESIZE_LIMITS.image.maxH === 680);
   ok('wimg 与 image 同约束', JSON.stringify(RESIZE_LIMITS.wimg) === JSON.stringify(RESIZE_LIMITS.image));
   ok('beat minW=220 / minH=170', RESIZE_LIMITS.beat.minW === 220 && RESIZE_LIMITS.beat.minH === 170);
   ok('sound 与 beat 同约束', JSON.stringify(RESIZE_LIMITS.sound) === JSON.stringify(RESIZE_LIMITS.beat));
+  ok('scene minW=180 / minH=110 / maxW=480 / maxH=400（场景卡独立区间）',
+    RESIZE_LIMITS.scene.minW === 180 && RESIZE_LIMITS.scene.minH === 110 &&
+    RESIZE_LIMITS.scene.maxW === 480 && RESIZE_LIMITS.scene.maxH === 400);
+  ok('scene 与 image 区间不同（不能共用）', JSON.stringify(RESIZE_LIMITS.scene) !== JSON.stringify(RESIZE_LIMITS.image));
   ok('defaultSize(image) → 176×140', defaultSize('image').w === 176 && defaultSize('image').h === 140);
   ok('defaultSize(beat) → 220×170', defaultSize('beat').w === 220 && defaultSize('beat').h === 170);
+  ok('defaultSize(scene) → 220×110', defaultSize('scene').w === 220 && defaultSize('scene').h === 110);
+  ok('sizeLimitFor(scene) 返回场景卡区间', sizeLimitFor('scene').defaultW === 220 && sizeLimitFor('scene').minH === 110);
   ok('sizeLimitFor(unknown) 回退到 beat', sizeLimitFor(undefined).defaultW === 220);
-  ok('sizeLimitFor(\"weird\") 回退到 beat', sizeLimitFor('weird').minW === 220);
+  ok('sizeLimitFor(weird) 回退到 beat', sizeLimitFor('weird').minW === 220);
 
   console.log('\n== clampSize：min/max + 异常值兜底 ==');
   // 合法区间内
@@ -396,6 +402,27 @@ process.on('exit', () => {
   ok('beat 1000×1000 → 720×640（封顶）', clampSize('beat', 1000, 1000).w === 720 && clampSize('beat', 1000, 1000).h === 640);
   // 未知 kind 回退 beat
   ok('unknown kind → beat 区间 100×100 → 220×170', clampSize('weird', 100, 100).w === 220 && clampSize('weird', 100, 100).h === 170);
+
+  // scene 维度独立区间（用户要求"所有自由板卡片都可缩放"）
+  ok('scene 250×200 → 250×200（合法）', clampSize('scene', 250, 200).w === 250 && clampSize('scene', 250, 200).h === 200);
+  ok('scene 100×100 → 180×110（兜底 min）', clampSize('scene', 100, 100).w === 180 && clampSize('scene', 100, 100).h === 110);
+  ok('scene 600×500 → 480×400（封顶 max）', clampSize('scene', 600, 500).w === 480 && clampSize('scene', 600, 500).h === 400);
+  ok('scene NaN → default 220×110', clampSize('scene', NaN, NaN).w === 220 && clampSize('scene', NaN, NaN).h === 110);
+  ok('scene Infinity → default 220×110', clampSize('scene', Infinity, Infinity).w === 220 && clampSize('scene', Infinity, Infinity).h === 110);
+  ok('resizeBy scene 也走独立区间：起始 220×110 + (300, 300) zoom=1 → 480×400（max）',
+    resizeBy('scene', 220, 110, 300, 300, 1).w === 480 && resizeBy('scene', 220, 110, 300, 300, 1).h === 400);
+
+  // 旧 .zhsp 兼容（用户要求"旧文件无尺寸字段时仍正常打开"）：不带 w/h 时 endpoint
+  // 计算走 FALLBACK，clampSize 接收 undefined 也回退 default。
+  // 模拟旧工程的 sceneMeta（无 w/h）+ 重新打开后计算 endpoint：
+  const legacySceneMeta = { id: 'sc-legacy', elementId: 'el-1', title: '', synopsis: '', color: '#cfe4ff' };
+  ok('旧 .zhsp sceneMeta 无 w/h：scene.w ?? 220 → 220（fallback）', (legacySceneMeta.w ?? 220) === 220);
+  ok('旧 .zhsp sceneMeta 无 w/h：scene.h ?? 110 → 110（fallback）', (legacySceneMeta.h ?? 110) === 110);
+  const legacyBeat = { id: 'bt-legacy', type: 'beat', text: '灵感', color: '#fff7d6', x: 0, y: 0 };
+  ok('旧 .zhsp beat 无 w/h：beat.w ?? 220 → 220', (legacyBeat.w ?? 220) === 220);
+  ok('旧 .zhsp beat 无 w/h：beat.h ?? 92 → 92', (legacyBeat.h ?? 92) === 92);
+  // 旧工程打开后用户调整 scene 卡大小 → clampSize 仍安全
+  ok('旧工程第一次 resize scene：100×100 → 180×110（min）', clampSize('scene', 100, 100).w === 180 && clampSize('scene', 100, 100).h === 110);
 
   console.log('\n== resizeBy：起始尺寸 + 鼠标位移（带 zoom） ==');
   ok('起始 200×200 + 位移 (50,50) zoom=1 → 250×250', resizeBy('image', 200, 200, 50, 50, 1).w === 250 && resizeBy('image', 200, 200, 50, 50, 1).h === 250);

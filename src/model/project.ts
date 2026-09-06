@@ -136,6 +136,8 @@ export function deriveScenes(project: ScriptProject): Scene[] {
       end,
       x: m?.x,
       y: m?.y,
+      w: m?.w,
+      h: m?.h,
     });
   });
   return out;

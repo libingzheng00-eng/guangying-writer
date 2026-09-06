@@ -5,6 +5,26 @@
 - 隐私修正：首次启动项目改为空白稿，源码与后续构建不再包含原内置具体剧本内容。
 - 文档补充：说明 v1.2.9 成品版与 v1.3.0-alpha 源码版的差异，避免误把 alpha 当稳定版发布。
 
+## v1.3.0-alpha.6.1
+
+补全 alpha.6 的 Item 6a：之前仅覆盖 image / wimg 卡，本版扩到所有自由板卡片。
+
+- `SceneMeta` 新增可选字段 `w? / h?`，`Scene` 派生类型同步透传。`store.resizeSceneMeta(elementId, w, h)` action 用独立 coalesce key `sceneresize:${id}`，与 synopsis / title 编辑不冲突。
+- 自由板全部 5 类卡片都可缩放：scene / image / wimg / beat / sound。
+  - `RESIZE_LIMITS` 加 scene 项：min 180×110，max 480×400，default 220×110
+  - `ResizableKind` 联合类型取代之前的 Beat['kind'] 限定；`sizeLimitFor` / `defaultSize` / `clampSize` / `resizeBy` 全部接受 `ResizableKind`
+  - `BeatCard` 移除 `canResize = isMedia` 判断，统一显示 .bcard__resize 手柄；`SceneCard` 也加 .bcard__resize
+  - 拖动期间实时更新 DOM，松手时按 kind 分别调 `resizeSceneMeta`（scene）或 `resizeBeat`（其它 kind）
+- 关系线连接点（endpoints）改用卡片中心 `(x + w/2, y + h/2)`：resize 后连线从新中心发出，旧工程无 w/h 时按 `FALLBACK_CARD_W=220` / `FALLBACK_SCENE_H=96` / `FALLBACK_BEAT_H=92` 兜底，位置差异极小。
+- CSS `.bcard` 改 `display: flex; flex-direction: column`：head / foot `flex: 0 0 auto`、body `flex: 1 1 auto`。最小尺寸下 textarea / 声音图标 / 场景标题仍可见可操作；`.bcard__edit` 去掉 `resize: vertical`（避免与右下角 handle 冲突）；`.bcard__media` / `__media-img` 改 `flex: 1` + `max-height: 100%` + `object-fit: cover` 让图片自适应卡片高度。
+- 旧 .zhsp 兼容（用户硬性要求）：
+  - `SceneMeta.w / h` 与 `Beat.w / h` 都是可选字段；缺省时 endpoint 用 fallback 值计算
+  - `clampSize` 接收 undefined / NaN / Infinity / 字符串 / null 全部兜底回退 default
+  - `normalizeSceneMeta` 不需要新加：可选字段旧 .zhsp 加载时自动 undefined，不破坏 round-trip
+  - `scripts/writing-test.cjs` 加 15 条断言：scene 区间独立 + 旧 .zhsp fallback
+- 渲染测试：`scripts/render-test.cjs` 新增 `allBcardsHaveResize` feature check（在「自由板」视图抓，确保 .bcard__resize 数量 >= .bcard 数量）。
+- 新增 15 条断言（177/177 total），跑通：合法 scene 区间、min/max 边界、NaN / Infinity 兜底、resizeBy scene 走独立区间、旧工程 fallback。
+
 ## v1.3.0-alpha.6
 
 - 自由板（BoardView）图片 / 写作图卡（image / wimg）右下角新增「缩放」手柄 `.bcard__resize`，hover 卡片时显示斜线指示，鼠标拖动调整卡片大小，松开时落位到 `beat.w` / `beat.h`。

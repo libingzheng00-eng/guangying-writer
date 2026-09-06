@@ -93,6 +93,8 @@ interface StoreState {
 
   /* 场景 / 幕 */
   updateSceneMeta: (elementId: string, patch: Partial<SceneMeta>) => void;
+  /** resize 场景卡到指定尺寸；非法值由 clampSize 兜底；独立 coalesce key 与 moveScene / sceneMeta 文本编辑不冲突 */
+  resizeSceneMeta: (elementId: string, w: number, h: number) => void;
   moveScene: (index: number, dir: -1 | 1) => void;
   moveSceneTo: (from: number, to: number) => void;
   /** 故事板拖拽落位：移动场景并归入目标幕，一次操作只产生一条撤销记录 */
@@ -411,6 +413,27 @@ export const useStore = create<StoreState>((set, get) => ({
         Object.assign(m, patch);
       },
       { coalesce: `scene:${elementId}` },
+    );
+  },
+
+  /**
+   * resize 场景卡：与 updateSceneMeta 共享同一条 mutate，但走独立 coalesce key，
+   * 让连续 resize 不与 synopsis / title 编辑混在同一 undo 步。
+   * 非法输入（NaN / Infinity / 负数 / 巨大数）由 clampSize('scene', ...) 兜底。
+   */
+  resizeSceneMeta: (elementId, w, h) => {
+    get().mutate(
+      (p) => {
+        let m = p.sceneMeta.find((s) => s.elementId === elementId);
+        if (!m) {
+          m = { id: uid('sc'), elementId, title: '', synopsis: '', color: '#cfe4ff' };
+          p.sceneMeta.push(m);
+        }
+        const next = clampSize('scene', w, h);
+        m.w = next.w;
+        m.h = next.h;
+      },
+      { coalesce: `sceneresize:${elementId}` },
     );
   },
 

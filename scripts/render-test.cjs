@@ -141,11 +141,10 @@ process.on('exit', cleanTemporaryBundle);
   const progressEndIcon = !!q('.write-progress__end svg');
   const progressFillBar = !!q('.write-progress__fill');
 
-  // Item 6a：自由板图片卡 / 写作图卡应有 bcard__resize 手柄；声音 / 灵感卡不应有。
-  // 样本工程默认无 image/wimg 卡，所以 .bcard__resize 元素数量为 0 是预期；
-  // 真实覆盖（图片卡显示手柄 / 拖动 resize / 落位持久化）留待用户机视觉验收。
-  const resizeHandleBefore = qa('.bcard__resize').length;
-  void resizeHandleBefore;
+  // Item 6a：所有自由板卡片（scene / image / wimg / beat / sound）都应显示 .bcard__resize 手柄。
+  // 实际检查在「自由板」视图的 board 对象里跑（板视图后才渲染 bcard）；
+  // 这里仅占位，featureChecks.allBcardsHaveResize 从 board.allBcardsHaveResize 读取。
+  void 0;
 
   const report = {
     title: document.title,
@@ -184,6 +183,8 @@ process.on('exit', cleanTemporaryBundle);
           beatCards: qa('.bcard--beat').length,
           zoomCtl: !!q('.zoom-ctl'),
           linkSelects: qa('.bcard__link').length,
+          // Item 6a：所有自由板卡片（scene / image / wimg / beat / sound）都应有 resize 手柄
+          allBcardsHaveResize: qa('.bcard').length > 0 && qa('.bcard__resize').length >= qa('.bcard').length,
         }
       : null;
 
@@ -210,10 +211,8 @@ process.on('exit', cleanTemporaryBundle);
         progressThemeButton,
         progressEndIcon,
         progressFillBar,
-        // Item 6a：CSS 链路通；样本无 image 卡，元素级 resize 检查留待用户机视觉验收。
-        // 真实覆盖（图片卡显示手柄 / 拖动 resize / 落位持久化）由用户在 Item 6a 的
-        // Electron 验收环节处理。alpha.5 已有 bcard 渲染 + 移动等 10/10 feature check。
-        // 这里不新增 feature check（样本工程缺 image 卡，间接校验 cssRules 不可靠）。
+        // Item 6a：所有自由板卡片（scene / image / wimg / beat / sound）都应有 resize 手柄
+        allBcardsHaveResize: !!(board && board.allBcardsHaveResize),
         boardRelationCreated: qa('.board-links line').length >= 1,
         boardRelationNoteEditable: !!relationInput,
       };

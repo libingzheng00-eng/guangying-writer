@@ -55,6 +55,10 @@ export interface SceneMeta {
   /** 自由画布中的坐标（未设置时自动网格排列） */
   x?: number;
   y?: number;
+  /** 自由画布中的自定义宽度（像素）。未设置时按 CSS 默认宽度（220px）渲染 */
+  w?: number;
+  /** 自由画布中的自定义高度（像素）。未设置时按内容自适应（CSS min-height 96px） */
+  h?: number;
 }
 
 /**
@@ -116,6 +120,9 @@ export interface Scene {
   /** 自由画布坐标 */
   x?: number;
   y?: number;
+  /** 自由画布上的自定义尺寸（缺省时按 CSS 默认渲染，scene.w / scene.h 透传自 sceneMeta） */
+  w?: number;
+  h?: number;
 }
 
 /** 幕 / 分集 */

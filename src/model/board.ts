@@ -25,27 +25,54 @@ export interface SizeLimit {
   defaultH: number;
 }
 
-/** 四种卡片类型的尺寸约束（v1.2.9 同款） */
-export const RESIZE_LIMITS: Record<NonNullable<Beat['kind']>, SizeLimit> = {
+/** 自由板所有可缩放元素的尺寸约束（v1.2.9 同款 + scene 卡补全） */
+export const RESIZE_LIMITS: Record<ResizableKind, SizeLimit> = {
+  // 场景卡：比节拍卡略宽一点用于容纳 synopsis；上限留足可自定义空间
+  scene: { minW: 180, minH: 110, maxW: 480, maxH: 400, defaultW: 220, defaultH: 110 },
+  // 图片 / 写作图
   image: { minW: 180, minH: 140, maxW: 760, maxH: 680, defaultW: 176, defaultH: 140 },
   wimg: { minW: 180, minH: 140, maxW: 760, maxH: 680, defaultW: 176, defaultH: 140 },
+  // 灵感 / 声音
   beat: { minW: 220, minH: 170, maxW: 720, maxH: 640, defaultW: 220, defaultH: 170 },
   sound: { minW: 220, minH: 170, maxW: 720, maxH: 640, defaultW: 220, defaultH: 170 },
 };
 
-/** 取指定类型的尺寸约束；未知 kind 回退到 beat */
-export function sizeLimitFor(kind: Beat['kind'] | undefined): SizeLimit {
-  if (kind === 'image' || kind === 'wimg' || kind === 'beat' || kind === 'sound') {
+/**
+  * 取指定类型的尺寸约束。
+  *
+  * 支持 `'scene' | 'image' | 'wimg' | 'beat' | 'sound'` 与 undefined。
+  * 未来新增 kind 时：先在 RESIZE_LIMITS 里加项，再让 BoardView 在 canResize 里 include。
+  */
+export type ResizableKind = 'scene' | 'image' | 'wimg' | 'beat' | 'sound';
+
+export function sizeLimitFor(kind: ResizableKind | Beat['kind'] | undefined): SizeLimit {
+  if (
+    kind === 'scene' || kind === 'image' || kind === 'wimg' ||
+    kind === 'beat' || kind === 'sound'
+  ) {
     return RESIZE_LIMITS[kind];
   }
   return RESIZE_LIMITS.beat;
 }
 
 /** 默认尺寸（无 w/h 时使用） */
-export function defaultSize(kind: Beat['kind'] | undefined): { w: number; h: number } {
+export function defaultSize(kind: Beat['kind'] | ResizableKind | undefined): { w: number; h: number } {
   const l = sizeLimitFor(kind);
   return { w: l.defaultW, h: l.defaultH };
 }
+
+/**
+ * 卡片宽度的兜底值（用于无尺寸字段的旧工程 / sceneMeta 缺省时）。
+ *
+ * 旧工程（alpha.6 之前保存的）没有 scene.w / beat.w 字段；BoardView 计算 endpoint
+ * 时用 `scene.w ?? FALLBACK_CARD_W`、`beat.w ?? FALLBACK_CARD_W`。这样：
+ *   - resize 后的卡片，w/h 在 store 里，endpoint 跟随卡片中心走；
+ *   - 旧工程未设 w/h，endpoint 仍按历史默认位置算；
+ *   - 关掉 resize 的卡片尺寸 ≠ 默认值时不会被 fallback 静默吞掉。
+ */
+export const FALLBACK_CARD_W = 220;
+export const FALLBACK_SCENE_H = 96;
+export const FALLBACK_BEAT_H = 92;
 
 /**
  * 把 width / height 强制收敛到合法区间。
@@ -58,7 +85,7 @@ export function defaultSize(kind: Beat['kind'] | undefined): { w: number; h: num
  * 不抛异常：非数 / NaN / Infinity / null 一律回回 default。
  */
 export function clampSize(
-  kind: Beat['kind'] | undefined,
+  kind: Beat['kind'] | ResizableKind | undefined,
   w: unknown,
   h: unknown,
 ): { w: number; h: number } {
@@ -84,7 +111,7 @@ export function clampSize(
  * 再用 clampSize 收敛到合法区间。
  */
 export function resizeBy(
-  kind: Beat['kind'] | undefined,
+  kind: Beat['kind'] | ResizableKind | undefined,
   ow: number,
   oh: number,
   dx: number,
