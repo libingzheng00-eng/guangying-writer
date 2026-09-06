@@ -55,6 +55,14 @@ process.on('exit', () => {
     defaultSize,
     clampSize,
     resizeBy,
+    toggleSel,
+    addSel,
+    removeSel,
+    clearSel,
+    selRange,
+    marqueeSel,
+    filterBoardLinksToKeep,
+    cardCenters,
   } = require(bundle);
 
   const failures = [];
@@ -432,6 +440,93 @@ process.on('exit', () => {
   ok('zoom=0（非法）回退到 1：200×200 + (50,50) zoom=0 → 250×250', resizeBy('image', 200, 200, 50, 50, 0).w === 250 && resizeBy('image', 200, 200, 50, 50, 0).h === 250);
   ok('resizeBy 也 clamp：起始 100×100 + (2000,2000) → max 760×680', resizeBy('image', 100, 100, 2000, 2000, 1).w === 760 && resizeBy('image', 100, 100, 2000, 2000, 1).h === 680);
   ok('resizeBy 也兜底：起始 200×200 + (-1000,-1000) → min 180×140', resizeBy('image', 200, 200, -1000, -1000, 1).w === 180 && resizeBy('image', 200, 200, -1000, -1000, 1).h === 140);
+
+  // ===== alpha.7 起：自由板多选 / 框选 / 批量删除（Item 6b） =====
+  // 关键不变量：批量删除时只清理被删卡片关联的关系线，绝不误删未选卡片关联的关系线。
+
+  console.log('\n== toggleSel / addSel / removeSel / clearSel ==');
+  ok('toggleSel 空 → 加 a', JSON.stringify(toggleSel([], 'a')) === '["a"]');
+  ok('toggleSel 已含 a → 移除', JSON.stringify(toggleSel(['a'], 'a')) === '[]');
+  ok('toggleSel 多个里去掉', JSON.stringify(toggleSel(['a', 'b', 'c'], 'b')) === '["a","c"]');
+  ok('addSel 重复 no-op', addSel(['a'], 'a') === ['a'] || JSON.stringify(addSel(['a'], 'a')) === '["a"]');
+  ok('addSel 新增', JSON.stringify(addSel(['a'], 'b')) === '["a","b"]');
+  ok('removeSel 不存在 no-op', JSON.stringify(removeSel(['a'], 'b')) === '["a"]');
+  ok('removeSel 已含', JSON.stringify(removeSel(['a', 'b'], 'a')) === '["b"]');
+  ok('clearSel → []', JSON.stringify(clearSel()) === '[]');
+
+  console.log('\n== selRange：Shift+click 范围选择（v1.2.9 selRangeTo 同款语义） ==');
+  const ordered = ['scene:s1', 'scene:s2', 'scene:s3', 'beat:b1', 'beat:b2', 'beat:b3'];
+  ok('selRange 空 anchor + target = s3 → 仅 s3', JSON.stringify(selRange([], ordered, null, 'scene:s3')) === '["scene:s3"]');
+  ok('selRange anchor=s1 + target=s3 → [s1..s3]', JSON.stringify(selRange([], ordered, 'scene:s1', 'scene:s3')) === '["scene:s1","scene:s2","scene:s3"]');
+  ok('selRange anchor=s3 + target=s1（反向）→ 仍 [s1..s3]', JSON.stringify(selRange([], ordered, 'scene:s3', 'scene:s1')) === '["scene:s1","scene:s2","scene:s3"]');
+  ok('selRange anchor=s1 + target=b2 → 跨 scene 与 beat', JSON.stringify(selRange([], ordered, 'scene:s1', 'beat:b2')) === '["scene:s1","scene:s2","scene:s3","beat:b1","beat:b2"]');
+  ok('selRange anchor=不存在 + target=b1 → 仅 target', JSON.stringify(selRange([], ordered, 'bogus', 'beat:b1')) === '["beat:b1"]');
+  ok('selRange target 越界 → 保留 prev', selRange(['x'], ordered, null, 'bogus') === ['x'] || JSON.stringify(selRange(['x'], ordered, null, 'bogus')) === '["x"]');
+
+  console.log('\n== marqueeSel：框选（marquee）按卡片中心点过滤 ==');
+  const cards = [
+    { id: 'c1', cx: 100, cy: 100 },
+    { id: 'c2', cx: 200, cy: 200 },
+    { id: 'c3', cx: 300, cy: 300 },
+    { id: 'c4', cx: 50, cy: 50 },
+  ];
+  ok('框 (50,50)~(250,250) → c1 + c2 + c4（c4 命中角点）',
+    JSON.stringify(marqueeSel([], cards, 50, 50, 200, 200, false).sort()) === '["c1","c2","c4"]');
+  ok('反向框（rh 负）也能命中：起点 (250,250) → (50,50)',
+    JSON.stringify(marqueeSel([], cards, 250, 250, -200, -200, false).sort()) === '["c1","c2","c4"]');
+  ok('additive=true 与 prev 合并去重',
+    JSON.stringify(marqueeSel(undefined, cards, 50, 50, 200, 200, true, ['c1', 'x']).sort()) === '["c1","c2","c4","x"]');
+  ok('additive=false 直接替换 prev',
+    JSON.stringify(marqueeSel(undefined, cards, 50, 50, 200, 200, false, ['c5']).sort()) === '["c1","c2","c4"]');
+  ok('空框（rw=rh=0）→ 空', JSON.stringify(marqueeSel([], cards, 100, 100, 0, 0, false)) === '[]');
+
+  console.log('\n== filterBoardLinksToKeep：批量删除关系线过滤（关键不变量） ==');
+  // 构造一段常见的链接图：
+  //   scene:s1 --- beat:b1
+  //   scene:s1 --- beat:b2
+  //   scene:s1 --- beat:bx (与未选中 beat 之间的链接)
+  //   beat:b1  --- beat:b2
+  //   scene:s1 --- scene:s2
+  // 选择删除 b1 + b2：应清掉前 4 条；只 sx---sx 应保留
+  const links = [
+    { id: 'l1', from: 'scene:s1', to: 'beat:b1', note: '' },
+    { id: 'l2', from: 'scene:s1', to: 'beat:b2', note: '' },
+    { id: 'l3', from: 'scene:s1', to: 'beat:bx', note: '' },
+    { id: 'l4', from: 'beat:b1',  to: 'beat:b2', note: '' },
+    { id: 'l5', from: 'scene:s1', to: 'scene:s2', note: '' },
+  ];
+  const removed = new Set(['b1', 'b2']);
+  const kept = filterBoardLinksToKeep(links, removed);
+  ok('s1-b1（被删一端）被清', !kept.find((l) => l.id === 'l1'));
+  ok('s1-b2（被删一端）被清', !kept.find((l) => l.id === 'l2'));
+  ok('s1-bx（两端都没命中）保留', !!kept.find((l) => l.id === 'l3'));
+  ok('b1-b2（两端命中）被清', !kept.find((l) => l.id === 'l4'));
+  ok('s1-s2（未选卡片关联）绝不被误删', !!kept.find((l) => l.id === 'l5'));
+  ok('过滤后数量 = 2', kept.length === 2);
+
+  console.log('\n== filterBoardLinksToKeep：旧 .zhsp 无前缀兼容 ==');
+  // 旧版本可能直接存 raw id 而不带 scene: / beat: 前缀
+  const legacy = [
+    { id: 'la', from: 'b1', to: 'b2', note: '' },
+    { id: 'lb', from: 'b1', to: 'b3', note: '' },
+  ];
+  const removedLeg = new Set(['b1']);
+  const keptLeg = filterBoardLinksToKeep(legacy, removedLeg);
+  ok('旧无前缀：b1-b2 被清', !keptLeg.find((l) => l.id === 'la'));
+  ok('旧无前缀：b1-b3 被清', !keptLeg.find((l) => l.id === 'lb'));
+
+  console.log('\n== filterBoardLinksToKeep：removedSet 空 = 原样拷贝 ==');
+  const noRemoval = filterBoardLinksToKeep(links, new Set());
+  ok('空 removedSet → 全部保留', noRemoval.length === links.length);
+
+  console.log('\n== cardCenters：把卡片坐标转中心点 ==');
+  const cardList = [
+    { id: 'x', x: 0, y: 0, w: 100, h: 80 },
+    { id: 'y', x: 100, y: 100 }, // 缺 w/h 兜底 220×100
+  ];
+  const centers = cardCenters(cardList);
+  ok('卡片 1 中心 = (50, 40)', centers[0].cx === 50 && centers[0].cy === 40);
+  ok('卡片 2 中心 = (100+220/2, 100+100/2) = (210, 150)', centers[1].cx === 210 && centers[1].cy === 150);
 
   if (failures.length) {
     console.log(`\n=== FAIL: ${failures.length} test(s) failed ===`);

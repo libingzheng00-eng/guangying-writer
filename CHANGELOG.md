@@ -5,6 +5,26 @@
 - 隐私修正：首次启动项目改为空白稿，源码与后续构建不再包含原内置具体剧本内容。
 - 文档补充：说明 v1.2.9 成品版与 v1.3.0-alpha 源码版的差异，避免误把 alpha 当稳定版发布。
 
+## v1.3.0-alpha.7
+
+自由板多选 / 框选 / 批量删除（Item 6b）。
+
+- 新增纯函数模块 `src/model/selection.ts`：
+  - `toggleSel` / `addSel` / `removeSel` / `clearSel`（选中集用 string[] 表示）
+  - `selRange(sortedIds, anchor, target)`（Shift+click 范围选，v1.2.9 selRangeTo 同款语义）
+  - `marqueeSel(points, rx, ry, rw, rh, additive, prev)`（框选，按卡片中心点命中，退化框容错）
+  - `filterBoardLinksToKeep(links, removedSet)`（批量删除关系线过滤，只清一端在被删集的线）
+  - `cardCenters(cards)`（卡片坐标 → 中心点）
+- store 新增 `selectedIds` 状态（**不写入 .zhsp**，load/newProject 时清空）+ actions：
+  - `setSelectedIds` / `toggleSelection` / `selectRange` / `clearSelection`
+  - `deleteSelectedBeats()`：只删 selectedIds 里的 beat，`boardLinks` 用 `filterBoardLinksToKeep` 严格清理，**绝不误删未选卡片关联的关系线**
+- BoardView 交互：
+  - ⌘/Ctrl + 点击 → toggle 选中；Shift + 点击 → 范围选
+  - 空白处按下拖动 → 框选（Shift 追加）；虚线 `.board__marquee` 预览
+  - ⌫ / Delete 删除选中 beats（排除 input / textarea / contenteditable）
+  - `.bcard.is-selected` 高亮；场景卡 / 节拍卡都支持选中态
+- 测试：writing-test 新增 30 条断言（toggle/add/remove/clear + selRange + marqueeSel + filterBoardLinksToKeep 关键不变量 + cardCenters）
+
 ## v1.3.0-alpha.6.1
 
 补全 alpha.6 的 Item 6a：之前仅覆盖 image / wimg 卡，本版扩到所有自由板卡片。

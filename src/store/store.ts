@@ -18,6 +18,12 @@ import { uid } from '../utils/id';
 import { isHexColor } from '../utils/color';
 import { clampTargetPages } from '../model/progress';
 import { clampSize } from '../model/board';
+import {
+  toggleSel,
+  selRange,
+  clearSel,
+  filterBoardLinksToKeep,
+} from '../model/selection';
 
 export type ViewMode = 'write' | 'cards' | 'board' | 'preview' | 'reports';
 export type SidebarMode = 'navigator' | 'outline' | 'inspector';
@@ -58,6 +64,9 @@ interface StoreState {
   fontColor: string;
   past: ScriptProject[];
   future: ScriptProject[];
+
+  /** 自由板多选集合（不写入 .zhsp；load 时清空、save 时忽略） */
+  selectedIds: string[];
 
   setView: (v: ViewMode) => void;
   setSidebar: (s: SidebarMode) => void;
@@ -119,6 +128,14 @@ interface StoreState {
   updateBoardLink: (id: string, patch: Partial<BoardLink>) => void;
   deleteBoardLink: (id: string) => void;
 
+  /* 多选 / 框选（自由板） */
+  setSelectedIds: (ids: string[]) => void;
+  toggleSelection: (id: string) => void;
+  selectRange: (sortedIds: string[], anchor: string | null | undefined, target: string) => void;
+  clearSelection: () => void;
+  /** 批量删除：只清掉 selectedIds 里的 beats + 与任一端相关的关系线；不波及未选卡片 */
+  deleteSelectedBeats: () => number;
+
   /* 人物 / 篇幅 */
   renameCharacter: (from: string, to: string) => boolean;
   setTargetPages: (pages: number) => void;
@@ -165,6 +182,7 @@ export const useStore = create<StoreState>((set, get) => ({
   fontColor: loadFontColor(),
   past: [],
   future: [],
+  selectedIds: [],
 
   setView: (v) => set({ view: v }),
   setSidebar: (s) => set({ sidebar: s, sidebarOpen: true }),
@@ -197,6 +215,7 @@ export const useStore = create<StoreState>((set, get) => ({
       activeId: p.elements[0]?.id ?? null,
       version: s.version + 1,
       pageCount: 0,
+      selectedIds: [],
     }));
   },
 
@@ -211,6 +230,7 @@ export const useStore = create<StoreState>((set, get) => ({
       activeId: p.elements[0]?.id ?? null,
       version: s.version + 1,
       pageCount: 0,
+      selectedIds: [],
     }));
   },
 
@@ -597,6 +617,45 @@ export const useStore = create<StoreState>((set, get) => ({
     get().mutate((p) => {
       p.boardLinks = (p.boardLinks || []).filter((link) => link.id !== id);
     });
+  },
+
+  /* 多选 / 框选（自由板） */
+  setSelectedIds: (ids) => set({ selectedIds: Array.isArray(ids) ? ids : [] }),
+
+  toggleSelection: (id) => {
+    set((s) => ({ selectedIds: toggleSel(s.selectedIds, id) }));
+  },
+
+  selectRange: (sortedIds, anchor, target) => {
+    set((s) => ({
+      selectedIds: selRange(s.selectedIds, sortedIds, anchor, target),
+    }));
+  },
+
+  clearSelection: () => set({ selectedIds: clearSel() }),
+
+  /**
+   * 批量删除选中 beats 与对应 boardLinks（一端在被删集中就清掉）。
+   * 不影响未选中 beats / scenes，也不影响未选中的纯关系线（保留两端都不在被删集中的）。
+   * 返回被删除的 beat 数量（便于 toast 提示）。
+   */
+  deleteSelectedBeats: () => {
+    const ids = get().selectedIds;
+    if (!ids || ids.length === 0) return 0;
+    // 仅删除同时是 beat 的项目：用户也可能选中场景卡，场景卡删除要单独走 store.removeElement
+    const beatIds = ids.filter((id) => get().project.beats.some((b) => b.id === id));
+    if (beatIds.length === 0) return 0;
+    const removed = new Set(beatIds);
+    get().mutate(
+      (p) => {
+        p.beats = p.beats.filter((b) => !removed.has(b.id));
+        p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removed);
+      },
+      { history: true, coalesce: 'beat-bulk-delete' },
+    );
+    // 清空 selectedIds；调用方重新同步选区（典型场景：删后不再保留任何选中）
+    set({ selectedIds: [] });
+    return beatIds.length;
   },
 
   renameCharacter: (from, to) => {

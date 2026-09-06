@@ -25,3 +25,13 @@ export {
   clampSize,
   resizeBy,
 } from '../src/model/board';
+export {
+  toggleSel,
+  addSel,
+  removeSel,
+  clearSel,
+  selRange,
+  marqueeSel,
+  filterBoardLinksToKeep,
+  cardCenters,
+} from '../src/model/selection';

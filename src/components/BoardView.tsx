@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store/store';
 import { deriveScenes } from '../model/project';
 import { CARD_COLORS } from '../model/elements';
-import { clampSize, sizeLimitFor, sceneEndpoint, beatEndpoint } from '../model/board';
+import { clampSize, sizeLimitFor, sceneEndpoint, beatEndpoint, FALLBACK_CARD_W, FALLBACK_SCENE_H, FALLBACK_BEAT_H } from '../model/board';
+import { toggleSel, cardCenters, marqueeSel } from '../model/selection';
 import type { Beat, BoardLink, Scene } from '../model/types';
 
 type Filter = 'both' | 'scenes' | 'beats';
@@ -19,7 +20,9 @@ function autoPos(index: number): { x: number; y: number } {
 
 export function BoardView() {
   const project = useStore((s) => s.project);
+  const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
+  const notify = useStore((s) => s.notify);
   const requestFocus = useStore((s) => s.requestFocus);
   const setScenePos = useStore((s) => s.setScenePos);
   const addBeat = useStore((s) => s.addBeat);
@@ -33,6 +36,12 @@ export function BoardView() {
   const deleteBoardLink = useStore((s) => s.deleteBoardLink);
   const resizeSceneMeta = useStore((s) => s.resizeSceneMeta);
   const addSceneAfter = useStore((s) => s.addSceneAfter);
+  const selectedIds = useStore((s) => s.selectedIds);
+  const setSelectedIds = useStore((s) => s.setSelectedIds);
+  const toggleSelection = useStore((s) => s.toggleSelection);
+  const selectRange = useStore((s) => s.selectRange);
+  const clearSelection = useStore((s) => s.clearSelection);
+  const deleteSelectedBeats = useStore((s) => s.deleteSelectedBeats);
 
   const scenes = useMemo(() => deriveScenes(project), [project]);
 
@@ -41,11 +50,17 @@ export function BoardView() {
   const [filter, setFilter] = useState<Filter>('both');
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
 
+  // 提前声明 showScenes / showBeats：useEffect 内闭包依赖它们，避免 TDZ 错误
+  const showScenes = filter !== 'beats';
+  const showBeats = filter !== 'scenes';
+
   const canvasRef = useRef<HTMLDivElement>(null);
-  // 拖拽状态：{ mode: 'card'|'beat'|'pan'|'resize', id, sx, sy, ox, oy, ow, oh, kind, moved }
+  // 拖拽状态：{ mode: 'card'|'beat'|'pan'|'resize'|'marquee', id, sx, sy, ox, oy, ow, oh, kind, moved, node?, marqueeRect?, marqueeAdditive? }
   // kind 仅 resize 用：'scene' 或 'image'/'wimg'/'beat'/'sound'。
+  // marqueeRect 仅 marquee 模式用：相对 canvas 世界坐标（除 pan / zoom 后的）。
+  // marqueeAdditive 仅 marquee 模式用：Shift 启动时为 true。
   const drag = useRef<{
-    mode: 'card' | 'beat' | 'pan' | 'resize';
+    mode: 'card' | 'beat' | 'pan' | 'resize' | 'marquee';
     id?: string;
     sx: number;
     sy: number;
@@ -56,7 +71,14 @@ export function BoardView() {
     kind?: 'scene' | 'image' | 'wimg' | 'beat' | 'sound';
     moved: boolean;
     node?: HTMLElement | null;
+    marqueeRect?: { rx: number; ry: number; rw: number; rh: number } | null;
+    marqueeAdditive?: boolean;
   } | null>(null);
+
+  // Marquee selection 状态（client 坐标，与 canvas 渲染坐标系解耦，CSS transform 不影响）
+  const [marquee, setMarquee] = useState<{ sx: number; sy: number; sx2: number; sy2: number } | null>(null);
+  // 记录 shift+click 的 anchor（按锚点在 selections 内的最后一个 id）
+  const lastAnchorRef = useRef<string | null>(null);
 
   /* 缩放：以光标为中心 */
   const onWheel = useCallback(
@@ -75,7 +97,7 @@ export function BoardView() {
     [zoom, pan],
   );
 
-  /* 按下背景 = 平移；按下卡片 = 移动卡片（卡片通过 data-drag/data-id 识别） */
+  /* 按下背景 = 平移 / 框选；按下卡片 = 多选或拖动卡片 */
   const onCanvasMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
@@ -85,9 +107,53 @@ export function BoardView() {
       const id = cardEl.getAttribute('data-id') || '';
       const x = parseFloat(cardEl.style.left) || 0;
       const y = parseFloat(cardEl.style.top) || 0;
+
+      // modifier：Cmd/Ctrl → 切换选中；Shift → 范围选择；普通 → 单选（后续 onUp 落位）
+      if (e.metaKey || e.ctrlKey) {
+        toggleSelection(id);
+        lastAnchorRef.current = id;
+        drag.current = null;
+        return;
+      }
+      if (e.shiftKey) {
+        // 范围选择：把 scenes / beats 拼成有顺序的列表，按锚点 + target 选连续区间
+        const ordered = [
+          ...scenes.map((s) => `scene:${s.elementId}`),
+          ...project.beats.map((b) => `beat:${b.id}`),
+        ];
+        const key = mode === 'card' ? `scene:${id}` : `beat:${id}`;
+        const anchor = lastAnchorRef.current;
+        selectRange(ordered, anchor, key);
+        lastAnchorRef.current = key;
+        // Shift 范围选不启动 drag
+        drag.current = null;
+        return;
+      }
+
+      // 普通按下：若当前未选过任何东西（selectedIds 为空），scene 卡仍走 v1.2.9 同款
+      // 「点击跳转写作视图」，但仅在没有 modifier 且 selectedIds 为空时命中。
+      // 否则按 click 后续落位：单击即 toggleSel（已在 onUp 处理）。
       drag.current = { mode, id, sx: e.clientX, sy: e.clientY, ox: x, oy: y, ow: 0, oh: 0, moved: false };
     } else {
-      drag.current = { mode: 'pan', sx: e.clientX, sy: e.clientY, ox: pan.x, oy: pan.y, ow: 0, oh: 0, moved: false };
+      // 空白：启动 marquee
+      const additive = e.shiftKey;
+      if (!additive) {
+        // 普通启动先清选；frame 内部 resize / 拖动就不清
+        clearSelection();
+      }
+      drag.current = {
+        mode: 'marquee',
+        sx: e.clientX,
+        sy: e.clientY,
+        ox: pan.x,
+        oy: pan.y,
+        ow: 0,
+        oh: 0,
+        marqueeRect: { rx: 0, ry: 0, rw: 0, rh: 0 },
+        marqueeAdditive: additive,
+        moved: false,
+      };
+      setMarquee({ sx: e.clientX, sy: e.clientY, sx2: e.clientX, sy2: e.clientY });
     }
   };
 
@@ -117,16 +183,26 @@ export function BoardView() {
         // 缓存最终值，等 onUp 一次性 commit
         (d as any).previewW = next.w;
         (d as any).previewH = next.h;
+      } else if (d.mode === 'marquee') {
+        // marquee：跟随鼠标移动，更新 client 坐标系预览
+        d.marqueeRect = { rx: 0, ry: 0, rw: e.clientX - d.sx, rh: e.clientY - d.sy };
+        setMarquee({ sx: d.sx, sy: d.sy, sx2: e.clientX, sy2: e.clientY });
       }
     };
-    const onUp = () => {
+    const onUp = (e: MouseEvent) => {
       const d = drag.current;
       if (d && d.mode === 'card' && d.id && !d.moved) {
-        // 视为点击：跳转到对应场次
-        const sc = scenes.find((s) => s.elementId === d.id || s.id === d.id);
-        if (sc) {
-          requestFocus(sc.elementId, 'start');
-          setView('write');
+        // 单击落位：场景卡 + selectedIds 为空 → 跳转写作视图（v1.2.9 行为保持）
+        if (selectedIds.length === 0) {
+          const sc = scenes.find((s) => s.elementId === d.id || s.id === d.id);
+          if (sc) {
+            requestFocus(sc.elementId, 'start');
+            setView('write');
+          }
+        } else {
+          // 已有选区，单击：toggle 该 id（取消选中时清空 anchor）
+          toggleSelection(d.id!);
+          lastAnchorRef.current = d.id!;
         }
       } else if (d && d.mode === 'resize' && d.id && d.kind) {
         // resize 落位：按 kind 分别用 resizeSceneMeta / resizeBeat
@@ -139,6 +215,68 @@ export function BoardView() {
             useStore.getState().resizeBeat(d.id, w, h);
           }
         }
+      } else if (d && d.mode === 'marquee') {
+        // marquee 落位：用 marqueeSel 过滤矩形内卡片中心点
+        // 把 client 坐标转成 canvas 内部世界坐标（已除 zoom，去 pan）
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) {
+          setMarquee(null);
+          drag.current = null;
+          return;
+        }
+        const wx1 = (Math.min(d.sx, e.clientX) - rect.left - d.ox) / zoom;
+        const wy1 = (Math.min(d.sy, e.clientY) - rect.top - d.oy) / zoom;
+        const wx2 = (Math.max(d.sx, e.clientX) - rect.left - d.ox) / zoom;
+        const wy2 = (Math.max(d.sy, e.clientY) - rect.top - d.oy) / zoom;
+        if (Math.abs(e.clientX - d.sx) > 2 && Math.abs(e.clientY - d.sy) > 2) {
+          // 收集所有可视卡片中心
+          const visibleCards: { id: string; x: number; y: number; w?: number; h?: number }[] = [];
+          if (showScenes) {
+            scenes.forEach((sc, i) => {
+              const fallback = autoPos(i);
+              const x = sc.x ?? fallback.x;
+              const y = sc.y ?? fallback.y;
+              visibleCards.push({
+                id: `scene:${sc.elementId}`,
+                x,
+                y,
+                w: sc.w ?? FALLBACK_CARD_W,
+                h: sc.h ?? FALLBACK_SCENE_H,
+              });
+            });
+          }
+          if (showBeats) {
+            project.beats.forEach((b) => {
+              visibleCards.push({
+                id: `beat:${b.id}`,
+                x: b.x,
+                y: b.y,
+                w: b.w ?? FALLBACK_CARD_W,
+                h: b.h ?? FALLBACK_BEAT_H,
+              });
+            });
+          }
+          const points = cardCenters(visibleCards).filter(
+            (p) => p.cx >= wx1 && p.cx <= wx2 && p.cy >= wy1 && p.cy <= wy2,
+          );
+          const hitIds = points.map((p) => p.id);
+          const additive = !!d.marqueeAdditive;
+          if (additive) {
+            // 追加到 prev（去重）
+            const seen = new Set(selectedIds);
+            const out = selectedIds.slice();
+            hitIds.forEach((id) => {
+              if (!seen.has(id)) {
+                seen.add(id);
+                out.push(id);
+              }
+            });
+            setSelectedIds(out);
+          } else {
+            setSelectedIds(hitIds);
+          }
+        }
+        setMarquee(null);
       }
       drag.current = null;
     };
@@ -148,7 +286,33 @@ export function BoardView() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [zoom, scenes, requestFocus, setView, setScenePos, moveBeat, resizeBeat, resizeSceneMeta, project.beats]);
+  }, [zoom, scenes, requestFocus, setView, setScenePos, moveBeat, resizeBeat, resizeSceneMeta, project.beats, selectedIds, toggleSelection, setSelectedIds, showScenes, showBeats]);
+
+  /* ⌫ / Delete → 批量删除选中 beats（保留未选卡片 + 保留未选关系线） */
+  useEffect(() => {
+    if (view !== 'board') return;
+    const onKey = (e: KeyboardEvent) => {
+      // 排除文本输入控件（contenteditable / input / textarea）
+      const tgt = e.target as HTMLElement | null;
+      if (tgt) {
+        const tag = tgt.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tgt.isContentEditable) return;
+      }
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+      const ids = useStore.getState().selectedIds;
+      if (!ids || ids.length === 0) return;
+      // 只清 beats；场景卡（scene:*）多选删除走另一条路径（后续若需要再补）
+      const hasBeat = ids.some((id) => id.startsWith('beat:'));
+      if (!hasBeat) return;
+      e.preventDefault();
+      const removed = useStore.getState().deleteSelectedBeats();
+      if (removed > 0) notify(`已删除 ${removed} 张卡片`, 'ok');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [view, deleteSelectedBeats, notify]);
 
   const onDoubleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -181,9 +345,6 @@ export function BoardView() {
       }, 60);
     }
   };
-
-  const showScenes = filter !== 'beats';
-  const showBeats = filter !== 'scenes';
 
   const endpoints = useMemo(() => {
     const out = new Map<string, { x: number; y: number }>();
@@ -297,24 +458,35 @@ export function BoardView() {
           {showScenes &&
             scenes.map((sc, i) => {
               const pos = sc.x != null && sc.y != null ? { x: sc.x, y: sc.y } : autoPos(i);
-              return <SceneCard key={sc.id} scene={sc} index={i} pos={pos} linking={linkFrom === `scene:${sc.elementId}`} onLink={() => onCardLink(`scene:${sc.elementId}`)} onResizeStart={(e) => {
-                // 场景卡 resize：与节拍卡共用 drag.current 'resize' 模式
-                const node = e.currentTarget.closest('[data-card]') as HTMLElement | null;
-                if (!node) return;
-                drag.current = {
-                  mode: 'resize',
-                  id: sc.elementId,
-                  sx: e.clientX,
-                  sy: e.clientY,
-                  ox: 0,
-                  oy: 0,
-                  ow: node.offsetWidth,
-                  oh: node.offsetHeight,
-                  kind: 'scene',
-                  moved: true,
-                  node,
-                };
-              }} />;
+              return (
+                <SceneCard
+                  key={sc.id}
+                  scene={sc}
+                  index={i}
+                  pos={pos}
+                  linking={linkFrom === `scene:${sc.elementId}`}
+                  onLink={() => onCardLink(`scene:${sc.elementId}`)}
+                  onResizeStart={(e) => {
+                    // 场景卡 resize：与节拍卡共用 drag.current 'resize' 模式
+                    const node = e.currentTarget.closest('[data-card]') as HTMLElement | null;
+                    if (!node) return;
+                    drag.current = {
+                      mode: 'resize',
+                      id: sc.elementId,
+                      sx: e.clientX,
+                      sy: e.clientY,
+                      ox: 0,
+                      oy: 0,
+                      ow: node.offsetWidth,
+                      oh: node.offsetHeight,
+                      kind: 'scene',
+                      moved: true,
+                      node,
+                    };
+                  }}
+                  selected={selectedIds.includes(`scene:${sc.elementId}`)}
+                />
+              );
             })}
           {showBeats &&
             project.beats.map((b) => (
@@ -346,9 +518,21 @@ export function BoardView() {
                     node,
                   };
                 }}
+                selected={selectedIds.includes(`beat:${b.id}`)}
               />
             ))}
         </div>
+        {marquee ? (
+          <div
+            className="board__marquee"
+            style={{
+              left: Math.min(marquee.sx, marquee.sx2),
+              top: Math.min(marquee.sy, marquee.sy2),
+              width: Math.abs(marquee.sx2 - marquee.sx),
+              height: Math.abs(marquee.sy2 - marquee.sy),
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -360,7 +544,7 @@ interface SceneCardProps {
   pos: { x: number; y: number };
 }
 
-function SceneCard({ scene, pos, linking, onLink, onResizeStart }: SceneCardProps & { linking: boolean; onLink: () => void; onResizeStart: (e: React.MouseEvent) => void }) {
+function SceneCard({ scene, pos, linking, onLink, onResizeStart, selected }: SceneCardProps & { linking: boolean; onLink: () => void; onResizeStart: (e: React.MouseEvent) => void; selected: boolean }) {
   const lim = sizeLimitFor('scene');
   return (
     <div
@@ -368,7 +552,7 @@ function SceneCard({ scene, pos, linking, onLink, onResizeStart }: SceneCardProp
       data-drag="card"
       data-id={scene.elementId}
       data-kind="scene"
-      className={`bcard bcard--scene ${scene.omit ? 'is-omit' : ''}`}
+      className={`bcard bcard--scene ${scene.omit ? 'is-omit' : ''} ${selected ? 'is-selected' : ''}`}
       style={{ left: pos.x, top: pos.y, borderTopColor: scene.color, width: scene.w, height: scene.h }}
     >
       <div className="bcard__head">
@@ -404,9 +588,11 @@ interface BeatCardProps {
   onBoardLink: () => void;
   /** v1.2.9 同款：右下角 resize handle 接管 mousedown。仅 image / wimg 显示 */
   onResizeStart: (e: React.MouseEvent) => void;
+  /** 多选视觉高亮（items 6b） */
+  selected: boolean;
 }
 
-function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLink, onResizeStart }: BeatCardProps) {
+function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLink, onResizeStart, selected }: BeatCardProps) {
   const kind = beat.kind || 'beat';
   const isMedia = kind === 'image' || kind === 'wimg';
   const isSound = kind === 'sound';
@@ -418,7 +604,7 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
       data-drag="beat"
       data-id={beat.id}
       data-kind={kind}
-      className={`bcard bcard--beat bcard--${kind}`}
+      className={`bcard bcard--beat bcard--${kind} ${selected ? 'is-selected' : ''}`}
       style={{ left: beat.x, top: beat.y, background: beat.color, width: beat.w, height: beat.h }}
     >
       <div className="bcard__head">
