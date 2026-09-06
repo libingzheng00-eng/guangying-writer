@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { useStore } from '../store/store';
 import { computeStats } from '../model/stats';
 import { ELEMENT_META } from '../model/elements';
+import typewriterPointer from '../assets/typewriter-pointer.png';
 
 export function StatusBar() {
   const project = useStore((s) => s.project);
@@ -46,7 +47,13 @@ export function StatusBar() {
       </label>
       <div className="typewriter-progress" aria-label={`已完成 ${progress}%`} title={`已完成 ${stats.estimatedPages} / ${targetPages} 页`}>
         <div className="typewriter-progress__paper" style={{ width: `${progress}%` }} />
-        <span className="typewriter-progress__pointer" style={{ left: `${progress}%` }} aria-hidden>⌄</span>
+        <img
+          className="typewriter-progress__pointer"
+          src={typewriterPointer}
+          alt="打字机进度指针"
+          draggable={false}
+          style={{ left: `${progress}%` }}
+        />
       </div>
       <span className="zoom">
         <button onClick={() => setZoom(zoom - 0.1)}>－</button>

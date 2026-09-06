@@ -88,16 +88,6 @@ localStorage.setItem('mojiang:autosave', JSON.stringify({
 // 原脚本假定 .tmp-app.cjs 已由外部流程生成，导致干净克隆后的测试必然失败。
 const bundle = process.env.APP_BUNDLE || path.join(__dirname, '..', '.tmp-app.cjs');
 const temporaryBundle = !process.env.APP_BUNDLE;
-if (temporaryBundle) {
-  esbuild.buildSync({
-    entryPoints: [path.join(__dirname, '..', 'src', 'main.tsx')],
-    bundle: true,
-    outfile: bundle,
-    platform: 'node',
-    format: 'cjs',
-    loader: { '.css': 'css' },
-  });
-}
 const cleanTemporaryBundle = () => {
   if (!temporaryBundle) return;
   for (const file of [bundle, bundle.replace(/\.cjs$/, '.css')]) {
@@ -105,9 +95,34 @@ const cleanTemporaryBundle = () => {
   }
 };
 process.on('exit', cleanTemporaryBundle);
-require(bundle);
 
-setTimeout(() => {
+(async () => {
+  if (temporaryBundle) {
+    await esbuild.build({
+      entryPoints: [path.join(__dirname, '..', 'src', 'main.tsx')],
+      bundle: true,
+      outfile: bundle,
+      platform: 'node',
+      format: 'cjs',
+      loader: { '.css': 'css' },
+      plugins: [
+        // jsdom 不渲染真实图片，PNG 资源退化为空模块，避免测试 bundle 报错。
+        // 视觉效果在真实 Electron 集成测试中验证。
+        {
+          name: 'png-as-empty',
+          setup(build) {
+            build.onLoad({ filter: /\.png$/ }, () => ({
+              contents: 'module.exports = "";',
+              loader: 'js',
+            }));
+          },
+        },
+      ],
+    });
+  }
+  require(bundle);
+
+  setTimeout(() => {
   const q = (s) => document.querySelector(s);
   const qa = (s) => Array.from(document.querySelectorAll(s));
   const txt = (s) => (q(s) ? q(s).textContent.replace(/\s+/g, ' ').trim().slice(0, 300) : null);
@@ -202,3 +217,4 @@ setTimeout(() => {
     return;
   }, 1200);
 }, 1200);
+})();

@@ -1103,7 +1103,7 @@ textarea {
 .target-pages input { width: 52px; min-width: 52px; height: 20px; padding: 1px 4px; border: 1px solid var(--border-strong); border-radius: 4px; background: #0c1119; color: #e6edf3; font-variant-numeric: tabular-nums; }
 .typewriter-progress { position: relative; width: clamp(92px, 14vw, 190px); height: 14px; overflow: visible; border: 1px solid #3b414b; border-radius: 2px; background: repeating-linear-gradient(90deg, #e6e2d8 0 13px, #7d8389 13px 14px); box-shadow: inset 0 1px 1px rgba(0,0,0,.45); }
 .typewriter-progress__paper { height: 100%; min-width: 1px; background: repeating-linear-gradient(90deg, #293440 0 13px, #4c5965 13px 14px); border-right: 1px solid #b34d3d; }
-.typewriter-progress__pointer { position: absolute; top: -10px; width: 18px; transform: translateX(-50%); color: #d9dad6; font-family: Georgia, serif; font-size: 23px; line-height: 12px; text-shadow: 0 1px #111; }
+.typewriter-progress__pointer { position: absolute; top: -10px; width: 34px; height: 13px; transform: translateX(-50%); object-fit: contain; filter: drop-shadow(0 1px 1px rgba(0,0,0,.55)); pointer-events: none; user-select: none; }
 .statusbar .sep {
   width: 1px;
   height: 12px;
