@@ -55,9 +55,13 @@ export function parseProject(raw: string): ScriptProject {
   const p: ScriptProject = json && json.project ? json.project : json;
   const base = defaultSettings();
   const incomingSceneNumber = p.settings && (p.settings as ScriptSettings).sceneNumber;
+  // 旧版曾保存 progressTheme；读取时主动丢弃，统一使用单一打字机样式，
+  // 避免旧字段继续写回新工程。
+  const { progressTheme: _legacyProgressTheme, ...incomingSettings } = (p.settings || {}) as ScriptSettings & { progressTheme?: unknown };
+  void _legacyProgressTheme;
   const settings: ScriptSettings = {
     ...base,
-    ...(p.settings || {}),
+    ...incomingSettings,
     sceneNumber: normalizeSceneNumber(incomingSceneNumber),
   };
   settings.indent = { ...DEFAULT_INDENT, ...(p.settings?.indent || {}) };

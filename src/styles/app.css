@@ -1260,8 +1260,7 @@ textarea {
 
 /* ------------------------------ 写作进度条 (v1.2.9 同款) ------------------------------ */
 /*
- * 三套主题：cigarette（香烟→爱心）/ car（汽车→旗帜）/ key（钥匙→宝石）。
- * 主图标用 inline SVG（来自 twemoji 15.1.0，CC-BY 4.0），不引入额外图片资源。
+ * 单一打字机主题：纸带轨道 + PNG 指针 + 暗红终点标记。
  */
 .write-progress {
   position: relative;
@@ -1269,8 +1268,8 @@ textarea {
   grid-template-columns: auto 1fr auto;
   grid-template-rows: auto auto;
   grid-template-areas:
-    'label road theme'
-    'scenes scenes goal';
+    'label road goal'
+    'scenes scenes scenes';
   align-items: center;
   column-gap: 12px;
   row-gap: 6px;
@@ -1338,18 +1337,6 @@ textarea {
   border-right: 1px solid rgba(88, 166, 255, 0.65);
   transition: width 0.18s ease;
 }
-.write-progress--cigarette .write-progress__fill {
-  background: linear-gradient(180deg, rgba(178, 158, 130, 0.42) 0%, rgba(178, 158, 130, 0.22) 100%);
-  border-right-color: #d99e82;
-}
-.write-progress--car .write-progress__fill {
-  background: linear-gradient(180deg, rgba(221, 46, 68, 0.36) 0%, rgba(221, 46, 68, 0.18) 100%);
-  border-right-color: #dd2e44;
-}
-.write-progress--key .write-progress__fill {
-  background: linear-gradient(180deg, rgba(255, 172, 51, 0.36) 0%, rgba(255, 172, 51, 0.18) 100%);
-  border-right-color: #ffac33;
-}
 .write-progress__milestone {
   position: absolute;
   top: -3px;
@@ -1415,6 +1402,13 @@ textarea {
   color: #c9d1d9;
   opacity: 0.55;
 }
+.write-progress__end::before {
+  content: '●';
+  color: #d99e82;
+  font-size: 15px;
+  line-height: 1;
+  text-shadow: 0 0 6px rgba(217, 158, 130, 0.55);
+}
 .write-progress__end.is-reached {
   opacity: 1;
   filter: drop-shadow(0 0 6px rgba(255, 235, 130, 0.7));
@@ -1428,24 +1422,6 @@ textarea {
   color: var(--muted);
   white-space: nowrap;
   pointer-events: none;
-}
-.write-progress__theme {
-  grid-area: theme;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  background: #0c1119;
-  cursor: pointer;
-  color: inherit;
-}
-.write-progress__theme:hover {
-  border-color: var(--accent);
-  background: #11161f;
 }
 .write-progress__scenes {
   grid-area: scenes;

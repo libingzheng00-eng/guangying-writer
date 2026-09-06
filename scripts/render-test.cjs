@@ -135,10 +135,10 @@ process.on('exit', cleanTemporaryBundle);
   const typewriterPointerVisible =
     !!q('.typewriter-progress__pointer') ||
     !!q('.write-progress__marker img');
-  // 新进度条独有：场景条带 / 主题切换按钮 / 终点图标
+  // 单一打字机进度条：不再显示主题切换按钮。
   const progressSceneBands = qa('.write-progress__scene').length;
-  const progressThemeButton = !!q('.write-progress__theme');
-  const progressEndIcon = !!q('.write-progress__end svg');
+  const progressThemeButtonRemoved = !q('.write-progress__theme');
+  const progressEndIcon = !!q('.write-progress__end');
   const progressFillBar = !!q('.write-progress__fill');
 
   // Item 6a：所有自由板卡片（scene / image / wimg / beat / sound）都应显示 .bcard__resize 手柄。
@@ -208,7 +208,7 @@ process.on('exit', cleanTemporaryBundle);
         typewriterPointerVisible,
         // 第五项进度条独有
         progressSceneBands,
-        progressThemeButton,
+        progressThemeButtonRemoved,
         progressEndIcon,
         progressFillBar,
         // Item 6a：所有自由板卡片（scene / image / wimg / beat / sound）都应有 resize 手柄

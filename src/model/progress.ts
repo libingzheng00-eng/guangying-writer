@@ -111,30 +111,6 @@ export function writtenPagesExcludingTitle(pageCount: number, project: ScriptPro
 }
 
 /**
- * 进度条主题循环顺序（v1.2.9 同款）：
- *   cigarette → car → key → cigarette
- *
- * 约定：未知值（含 undefined / 旧版脏数据 / 拼写错误）按「默认 cigarette 的下一个」处理，
- *       即返回 car——这是 ProgressBar 顶部的循环按钮 click 时应当看到的下一个主题。
- *       如果用户希望从默认开始显示 cigarette，应使用 `normalizeProgressTheme` 收敛。
- */
-export const PROGRESS_THEME_ORDER = ['cigarette', 'car', 'key'] as const;
-
-export function nextProgressTheme(current: string | undefined): 'cigarette' | 'car' | 'key' {
-  if (current === 'cigarette' || current === 'car' || current === 'key') {
-    const i = PROGRESS_THEME_ORDER.indexOf(current);
-    return PROGRESS_THEME_ORDER[(i + 1) % PROGRESS_THEME_ORDER.length];
-  }
-  return 'car';
-}
-
-/** 强制把任意字符串收敛成已知主题；未知值回退到 cigarette。 */
-export function normalizeProgressTheme(t: unknown): 'cigarette' | 'car' | 'key' {
-  if (t === 'car' || t === 'key' || t === 'cigarette') return t;
-  return 'cigarette';
-}
-
-/**
  * 边界兜底后的目标页数。0 表示「关闭目标页数」（隐藏进度条），>9999 封顶。
  *
  * 输入语义：

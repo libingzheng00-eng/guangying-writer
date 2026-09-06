@@ -36,7 +36,6 @@ export function defaultSettings(): ScriptSettings {
     contdText: '（续）',
     showContd: true,
     contdCharacter: true,
-    progressTheme: 'cigarette',
     wordsPerMinute: 220,
     revisionMode: false,
     printNotes: false,

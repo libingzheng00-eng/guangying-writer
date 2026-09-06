@@ -190,8 +190,6 @@ export interface ScriptSettings {
   showContd: boolean;
   /** 同一人物在同场景内再次说话时，自动显示 (CONT'D) 后缀（v1.2.9 同款，缺省视为开启） */
   contdCharacter?: boolean;
-  /** 写作进度条主题（v1.2.9 同款）：cigarette=香烟→爱心 / car=汽车→旗帜 / key=钥匙→宝石；缺省视为 cigarette */
-  progressTheme?: 'cigarette' | 'car' | 'key';
   wordsPerMinute: number;
   revisionMode: boolean;
   printNotes: boolean;

@@ -3,7 +3,6 @@ import { useStore } from '../store/store';
 import { usePagination } from '../hooks/PaginationProvider';
 import {
   computeSceneBands,
-  normalizeProgressTheme,
   overPages as computeOverPages,
   writtenPagesExcludingTitle,
   type SceneBand,
@@ -54,11 +53,9 @@ export function ProgressBar() {
   const project = useStore((s) => s.project);
   const activeId = useStore((s) => s.activeId);
   const pageCount = useStore((s) => s.pageCount);
-  const updateSettings = useStore((s) => s.updateSettings);
   const requestFocus = useStore((s) => s.requestFocus);
   const { pageOf } = usePagination();
 
-  const theme = normalizeProgressTheme(project.settings.progressTheme);
   const target = Math.max(0, project.targetPages || 0);
   const current = activeId && pageOf[activeId] !== undefined ? pageOf[activeId] + 1 : 0;
   const pct = target > 0 ? Math.max(0, Math.min(100, Math.round((current / target) * 100))) : 0;
@@ -132,13 +129,8 @@ export function ProgressBar() {
     void target1;
   };
 
-  const cycleTheme = () => {
-    const order = ['cigarette', 'car', 'key'] as const;
-    updateSettings({ progressTheme: order[(order.indexOf(theme) + 1) % order.length] });
-  };
-
   return (
-    <div className={`write-progress write-progress--${theme}`}>
+    <div className="write-progress write-progress--typewriter">
       <div className="write-progress__label">
         <span className="write-progress__eyebrow">当前页</span>
         <div className="write-progress__value">
@@ -186,7 +178,7 @@ export function ProgressBar() {
             className={'write-progress__end' + (completionPct >= 100 ? ' is-reached' : '')}
             style={{ left: 'calc(100% - 4px)' }}
             title="写作目标终点"
-            dangerouslySetInnerHTML={{ __html: fogPSvg(`${theme}-end`) }}
+            aria-hidden
           />
         ) : null}
         {target > 0 ? (
@@ -195,15 +187,6 @@ export function ProgressBar() {
           <span className="write-progress__hint">设定目标页数后显示进度</span>
         )}
       </div>
-
-      <button
-        type="button"
-        className="write-progress__theme"
-        onClick={cycleTheme}
-        title="切换进度条主题（点此循环：香烟 → 汽车 → 钥匙）"
-      >
-        <span className="fog-ico" dangerouslySetInnerHTML={{ __html: fogPSvg(theme) }} />
-      </button>
 
       <div
         className={'write-progress__scenes' + (overP > 0 ? ' is-over-target' : '')}

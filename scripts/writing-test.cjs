@@ -7,7 +7,7 @@
  *   - characterForDialogue 反查人物
  *   - contdLabelFor 仅在「当前对白人物 === 上一页最末人物」时返回带姓名版本，否则回退为「（续）」
  *   - shouldShowContdSuffix 同人物 (CONT'D) 判定（v1.2.9 同款逻辑）
- *   - 进度条主题循环、场景条带、调色板、超目标（第五项）
+ *   - 进度条场景条带、调色板、超目标（第五项）
  *
  * 所有断言仅使用合成数据，不包含任何真实剧本内容。
  * 用法： node scripts/writing-test.cjs
@@ -44,10 +44,7 @@ process.on('exit', () => {
     computeSceneBands,
     writtenPagesExcludingTitle,
     overPages,
-    nextProgressTheme,
-    normalizeProgressTheme,
     SCENE_BAND_PALETTE,
-    PROGRESS_THEME_ORDER,
     clampTargetPages,
     normalizeTargetPages,
     RESIZE_LIMITS,
@@ -215,16 +212,6 @@ process.on('exit', () => {
   shouldShowContdSuffix(baseProject, baseProject.elements[4]);
   ok('shouldShowContdSuffix 不会修改 project 其它字段', projectBefore === JSON.stringify(baseProject));
 
-  console.log('\n== 进度条主题循环（v1.2.9 同款） ==');
-  ok('PROGRESS_THEME_ORDER 顺序为 cigarette → car → key', JSON.stringify(PROGRESS_THEME_ORDER) === '["cigarette","car","key"]');
-  ok('cigarette → car', nextProgressTheme('cigarette') === 'car');
-  ok('car → key', nextProgressTheme('car') === 'key');
-  ok('key → cigarette（循环）', nextProgressTheme('key') === 'cigarette');
-  ok('undefined → car（视为默认 cigarette 的下一个）', nextProgressTheme(undefined) === 'car');
-  ok('未知值 → car（视为默认 cigarette 的下一个）', nextProgressTheme('rocket') === 'car');
-  ok('normalizeProgressTheme 已知通过', normalizeProgressTheme('car') === 'car');
-  ok('normalizeProgressTheme 未知回退', normalizeProgressTheme('whatever') === 'cigarette');
-  ok('normalizeProgressTheme undefined 回退', normalizeProgressTheme(undefined) === 'cigarette');
 
   console.log('\n== overPages 超目标计算 ==');
   ok('未超目标 → 0', overPages(50, 100) === 0);
@@ -322,11 +309,6 @@ process.on('exit', () => {
   const projectBefore2 = JSON.stringify(bandProject);
   computeSceneBands(bandProject);
   ok('computeSceneBands 不会修改 project', JSON.stringify(bandProject) === projectBefore2);
-
-  console.log('\n== 三套主题（与 v1.2.9 一致） ==');
-  ok('默认主题 = cigarette', normalizeProgressTheme('cigarette') === 'cigarette');
-  ok('car 主题有效', normalizeProgressTheme('car') === 'car');
-  ok('key 主题有效', normalizeProgressTheme('key') === 'key');
 
   console.log('\n== clampTargetPages：0 / 负数 / NaN / 超大数 边界兜底 ==');
   ok('undefined → 0', clampTargetPages(undefined) === 0);

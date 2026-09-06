@@ -5,8 +5,6 @@ import type { ElementType, Revision, TextAlign } from '../model/types';
 import { uid } from '../utils/id';
 import { DEFAULT_FONT_COLOR } from '../store/store';
 import { hexToRgba, isHexColor } from '../utils/color';
-import { fogPList, fogPSvg } from './ProgressBar';
-import { normalizeProgressTheme } from '../model/progress';
 
 /** 写作字体颜色预设（第一个为默认荧光黄） */
 const FONT_COLOR_PRESETS = [
@@ -353,27 +351,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 恢复默认
               </button>
             </div>
-          </div>
-          <div className="field">
-            <label>写作进度条主题</label>
-            <div className="segmented">
-              {fogPList().map((c) => (
-                <button
-                  key={c.key}
-                  className={normalizeProgressTheme(settings.progressTheme) === c.key ? 'is-active' : ''}
-                  onClick={() => update({ progressTheme: c.key })}
-                  title={`${c.label}（终点 ${c.end}）`}
-                >
-                  <span
-                    className="fog-ico"
-                    style={{ marginRight: 4 }}
-                    dangerouslySetInnerHTML={{ __html: fogPSvg(c.key) }}
-                  />
-                  {c.label}
-                </button>
-              ))}
-            </div>
-            <p className="hint">香烟终点是爱心，汽车终点是旗帜，钥匙终点是宝石。也可以直接点进度条上的图标快速切换。</p>
           </div>
           <div className="field">
             <label>预览</label>
