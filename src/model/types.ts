@@ -60,6 +60,14 @@ export interface SceneMeta {
 /**
  * 节拍卡 / 灵感卡（对标 Final Draft 的 Beat Board）。
  * 与场景解耦：可独立存在，也可选择性地链接到某个场景。
+ *
+ * 卡片种类：
+ * - 'beat'：默认文字灵感卡
+ * - 'sound'：声音卡（仅出现在目标页数区域）
+ * - 'image'：自由板图片卡
+ * - 'wimg'：写作页内图片卡
+ *
+ * 历史兼容：所有新增字段都是可选的；旧 `.zhsp` 不含这些字段也能正常打开、保存和再次打开。
  */
 export interface Beat {
   id: string;
@@ -70,6 +78,16 @@ export interface Beat {
   y: number;
   /** 关联的场景卡 id（SceneMeta.id），可选 */
   sceneId?: string;
+  /** 卡片种类；旧数据缺省时按 'beat' 处理 */
+  kind?: 'beat' | 'sound' | 'image' | 'wimg';
+  /** 卡片标题（声音/图片卡的语义化名称） */
+  title?: string;
+  /** 图片 dataURL（仅 sound/image/wimg 用得到；声音卡可空） */
+  img?: string;
+  /** 自定义宽度（像素），缺省时按卡片默认宽度渲染 */
+  w?: number;
+  /** 自定义高度（像素），缺省时按卡片默认高度渲染 */
+  h?: number;
 }
 
 /** 自由板卡片之间的关系线；endpoint 用 scene:元素id 或 beat:卡片id 标识。 */

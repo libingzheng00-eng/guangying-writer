@@ -5,6 +5,13 @@
 - 隐私修正：首次启动项目改为空白稿，源码与后续构建不再包含原内置具体剧本内容。
 - 文档补充：说明 v1.2.9 成品版与 v1.3.0-alpha 源码版的差异，避免误把 alpha 当稳定版发布。
 
+## v1.3.0-alpha.2
+
+- `Beat` 接口新增可选字段 `kind` / `title` / `img` / `w` / `h`，为后续声音卡、图片卡、写作页图片卡预留类型空间；所有新字段都是可选的，旧 `.zhsp` 工程可直接打开和保存。
+- `.zhsp` 解析新增 `normalizeBeat` 函数：仅对缺失的必填字段做最小兜底，不覆盖原有 `text/color/x/y/sceneId`；可选字段在缺省时保持 `undefined`，序列化时不会写入文件，保证 round-trip 完全无损。
+- `sceneNumber` 默认值由 `both` 改为 `left`；旧 `.zhsp` 文件里显式保存的 `both` / `right` / `none` 仍按原值加载。同时为 `sceneNumber` 加入白名单校验，非法值兜底为 `left`，避免垃圾数据让 UI 选中错位。
+- 新增 `npm run test:zhsp`（`scripts/zhsp-compat-test.cjs`）：用合成数据覆盖默认值、显式 `both/right/none`、非法值、旧格式 Beat round-trip、新格式 Beat round-trip 和残缺 Beat 解析等场景，不含任何真实剧本内容。
+
 ## v1.3.0-alpha.1（源码功能回迁进行中）
 
 - 统计报表的区块标题层次更清晰；人物名称可直接修改，保存时会同步所有同名正文人物元素。

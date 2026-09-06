@@ -26,7 +26,7 @@ export function defaultSettings(): ScriptSettings {
     marginLeft: 3.5,
     marginRight: 2.5,
     indent: JSON.parse(JSON.stringify(DEFAULT_INDENT)),
-    sceneNumber: 'both',
+    sceneNumber: 'left',
     autoNumberScenes: true,
     sceneNumberPrefix: '',
     showPageNumbers: true,
