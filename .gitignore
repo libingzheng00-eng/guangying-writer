@@ -1,0 +1,13 @@
+# Dependencies and generated application files
+node_modules/
+dist-renderer/
+release/
+
+# Local macOS and editor files
+.DS_Store
+*.log
+.vite/
+.tmp-app.*
+
+# Local project documents may contain private writing material
+*.zhsp

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>墨场 · 写作主题预览</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+    color: #e9ff3a;
+  }
+  /* 写作背景：东京高层住宅窗外的雨夜景 */
+  .write-bg {
+    position: fixed; inset: 0; z-index: 0;
+    background-color: #05070b;
+    background-image: url('src/assets/tokyo-rainy-night.png');
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+  }
+  .write-bg::before {
+    content: ''; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 7px 7px at 14% 22%, rgba(88,166,255,0.16) 0%, transparent 70%),
+      radial-gradient(ellipse 5px 5px at 82% 16%, rgba(255,179,71,0.13) 0%, transparent 70%),
+      radial-gradient(ellipse 9px 9px at 48% 10%, rgba(88,166,255,0.10) 0%, transparent 70%),
+      radial-gradient(ellipse 6px 6px at 90% 62%, rgba(248,81,73,0.10) 0%, transparent 70%),
+      radial-gradient(ellipse 4px 4px at 28% 74%, rgba(88,166,255,0.13) 0%, transparent 70%);
+  }
+  .write-bg::after {
+    content: ''; position: absolute; inset: -20%;
+    background-image:
+      repeating-linear-gradient(102deg, rgba(200,220,255,0.05) 0px, rgba(200,220,255,0.05) 1px, transparent 1px, transparent 7px),
+      linear-gradient(120deg, transparent 0%, rgba(88,166,255,0.02) 35%, transparent 55%, rgba(255,179,71,0.015) 80%, transparent 100%);
+    background-size: 100% 100%, 300% 100%;
+    opacity: 0.7;
+  }
+  /* 滚动容器在背景之上 */
+  .stage { position: absolute; inset: 0; overflow-y: auto; z-index: 1; padding: 40px 0 160px; }
+  /* 磨砂玻璃稿纸：窗外雨夜隐约透出 */
+  .script-flow {
+    width: 620px; margin: 0 auto; padding: 48px 56px;
+    background: rgba(8, 12, 20, 0.42);
+    -webkit-backdrop-filter: blur(10px) saturate(1.1);
+    backdrop-filter: blur(10px) saturate(1.1);
+    border: 1px solid rgba(88, 166, 255, 0.12);
+    box-shadow: 0 18px 60px rgba(0,0,0,0.55), 0 0 40px rgba(88,166,255,0.05), 0 0 8px rgba(88,166,255,0.35);
+    line-height: 1.5;
+  }
+  .el { margin: 0 0 2px; text-shadow: 0 0 6px rgba(233,255,58,0.4), 0 0 14px rgba(233,255,58,0.18); }
+  .scene { font-weight: 700; letter-spacing: 0.5px; }
+  .scene .no { color: #9aa7b5; text-shadow: none; margin-right: 0.5em; }
+  .action { }
+  .char { margin-left: 38%; font-weight: 600; }
+  .dialogue { margin-left: 18%; margin-right: 18%; }
+  .paren { margin-left: 28%; margin-right: 28%; color: #cfe06a; }
+  .trans { margin-left: 50%; text-transform: uppercase; letter-spacing: 1px; }
+  /* 分页辅助提醒：去掉黑底，改为玻璃小药丸 */
+  .page-break-line { border-top: 1px dashed rgba(88,166,255,0.5); margin: 18px -56px 6px; position: relative; }
+  .page-break-line::after {
+    content: '分页'; position: absolute; right: 0; top: -8px;
+    font-size: 10px; color: #58a6ff;
+    background: rgba(20, 25, 34, 0.72);
+    border: 1px solid rgba(88, 166, 255, 0.14);
+    padding: 0 5px; border-radius: 6px;
+  }
+  .stage__hint {
+    position: fixed; left: 12px; bottom: 10px; z-index: 2;
+    font-size: 11px; color: rgba(201,209,217,0.6);
+    background: rgba(20,25,34,0.6); padding: 4px 8px; border-radius: 6px;
+  }
+</style>
+</head>
+<body>
+  <div class="write-bg"></div>
+  <div class="stage">
+    <div class="script-flow">
+      <p class="el scene"><span class="no">1.</span>内景 涩谷公寓 · 深夜</p>
+      <p class="el action">雨敲打着高层住宅的窗户。远处的东京夜景在玻璃上晕开成一片模糊的光海。</p>
+      <p class="el char">凛</p>
+      <p class="el paren">（轻声）</p>
+      <p class="el dialogue">你听见了吗？这座城市，连下雨都有节奏。</p>
+      <p class="el action">她把额头抵在冰凉的窗面上，霓虹的影子在眼底晃动。</p>
+
+      <div class="page-break-line"></div>
+
+      <p class="el scene"><span class="no">2.</span>外景 东京街头 · 雨夜</p>
+      <p class="el action">伞群像黑色的蘑菇，在积水里漂移动。远处高楼的灯火被雨水拉成一条条金线。</p>
+      <p class="el trans">切至</p>
+      <p class="el char">旁白</p>
+      <p class="el dialogue">有些夜晚，你分不清是自己在看城市，还是城市在看着你。</p>
+    </div>
+  </div>
+  <div class="stage__hint">预览：东京雨夜背景 + 荧光黄字体 + 分页玻璃标签（非黑底）</div>
+</body>
+</html>

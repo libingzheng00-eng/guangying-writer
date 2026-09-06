@@ -1,0 +1,136 @@
+/**
+ * 用 jsdom 真实挂载 React 应用，验证首屏渲染与副作用不报错，并输出关键状态。
+ * 用法： node scripts/render-test.cjs
+ */
+const path = require('node:path');
+const fs = require('node:fs');
+const esbuild = require('esbuild');
+const { JSDOM } = require('jsdom');
+
+const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
+  url: 'http://localhost/',
+  pretendToBeVisual: true,
+});
+
+const w = dom.window;
+global.window = w;
+global.document = w.document;
+global.navigator = w.navigator;
+global.self = w;
+global.location = w.location;
+global.history = w.history;
+[
+  'HTMLElement',
+  'HTMLDivElement',
+  'HTMLInputElement',
+  'HTMLTextAreaElement',
+  'Node',
+  'NodeFilter',
+  'Element',
+  'Event',
+  'KeyboardEvent',
+  'MouseEvent',
+  'DOMParser',
+  'Blob',
+  'Range',
+  'Selection',
+  'getComputedStyle',
+  'requestAnimationFrame',
+  'cancelAnimationFrame',
+  'localStorage',
+  'sessionStorage',
+  'MutationObserver',
+].forEach((k) => {
+  if (w[k] !== undefined) global[k] = w[k];
+});
+if (!global.requestAnimationFrame) global.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 16);
+// 注意：不要把 global.performance 指向 jsdom 的实现，会造成递归
+
+const errors = [];
+const origError = console.error;
+console.error = (...args) => {
+  errors.push(args.map(String).join(' '));
+  origError(...args);
+};
+w.addEventListener('error', (e) => errors.push(`window.error: ${e.message}`));
+
+// 用与生产代码相同的入口生成可由 Node/jsdom 执行的临时 CJS 包。
+// 原脚本假定 .tmp-app.cjs 已由外部流程生成，导致干净克隆后的测试必然失败。
+const bundle = process.env.APP_BUNDLE || path.join(__dirname, '..', '.tmp-app.cjs');
+const temporaryBundle = !process.env.APP_BUNDLE;
+if (temporaryBundle) {
+  esbuild.buildSync({
+    entryPoints: [path.join(__dirname, '..', 'src', 'main.tsx')],
+    bundle: true,
+    outfile: bundle,
+    platform: 'node',
+    format: 'cjs',
+    loader: { '.css': 'css' },
+  });
+}
+const cleanTemporaryBundle = () => {
+  if (!temporaryBundle) return;
+  for (const file of [bundle, bundle.replace(/\.cjs$/, '.css')]) {
+    try { fs.unlinkSync(file); } catch { /* 不存在即可 */ }
+  }
+};
+process.on('exit', cleanTemporaryBundle);
+require(bundle);
+
+setTimeout(() => {
+  const q = (s) => document.querySelector(s);
+  const qa = (s) => Array.from(document.querySelectorAll(s));
+  const txt = (s) => (q(s) ? q(s).textContent.replace(/\s+/g, ' ').trim().slice(0, 300) : null);
+
+  const report = {
+    title: document.title,
+    mounted: !!q('.app-shell'),
+    toolbarButtons: qa('.toolbar button').length,
+    sidebarTabs: qa('.sidebar__tab').map((n) => n.textContent),
+    editorBlocks: qa('.script-flow .sc-el').length,
+    blockTypes: qa('.script-flow .sc-el').map((n) => n.dataset.type).slice(0, 12),
+    firstBlocks: qa('.script-flow .sc-el').slice(0, 6).map((n) => n.innerHTML.slice(0, 40)),
+    measureBlocks: qa('.sc-measure .sc-el').length,
+    statusbar: txt('.statusbar'),
+    navItems: qa('.nav-item').length,
+    navFirst: txt('.nav-item'),
+    placeholders: qa('.script-flow .sc-el.is-empty').length,
+  };
+
+  // 切换到其他视图，验证不崩溃
+  const clickByText = (label) => {
+    const btn = qa('button').find((b) => b.textContent.trim() === label);
+    if (btn) btn.click();
+    return !!btn;
+  };
+  const switches = {};
+  ['故事板', '预览', '统计', '写作', '自由板'].forEach((label) => {
+    switches[label] = clickByText(label);
+  });
+
+  setTimeout(() => {
+    // 自由板为最后一个视图，此时 React 已完成渲染
+    const board = switches['自由板']
+      ? {
+          canvas: !!q('.board__canvas'),
+          world: !!q('.board__world'),
+          sceneCards: qa('.bcard--scene').length,
+          beatCards: qa('.bcard--beat').length,
+          zoomCtl: !!q('.zoom-ctl'),
+          linkSelects: qa('.bcard__link').length,
+        }
+      : null;
+
+    console.log('=== 渲染检查 ===');
+    console.log(JSON.stringify({ ...report, viewSwitch: switches, board }, null, 2));
+    console.log('\n=== 切回写作视图后的元素数 ===');
+    clickByText('写作');
+    setTimeout(() => {
+      console.log('blocks after roundtrip:', qa('.script-flow .sc-el').length);
+      console.log('\n=== console.error 输出 ===');
+      console.log(errors.length ? errors.slice(0, 20).join('\n---\n') : '(无错误)');
+      process.exit(errors.length ? 1 : 0);
+    }, 400);
+    return;
+  }, 1200);
+}, 1200);
