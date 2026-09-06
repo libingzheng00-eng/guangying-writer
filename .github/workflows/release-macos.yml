@@ -1,0 +1,51 @@
+name: 发布 macOS 版本
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-macos-arm64:
+    runs-on: macos-14
+    steps:
+      - name: 获取源码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖并检查源码
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+          npm run test:render
+
+      - name: 打包 arm64 应用
+        run: bash package.sh
+
+      - name: 创建 DMG
+        run: |
+          hdiutil create \
+            -volname "墨场" \
+            -srcfolder "release/Mochang.app" \
+            -ov \
+            -format UDZO \
+            "release/Mochang-macOS-arm64-${GITHUB_REF_NAME}.dmg"
+
+      - name: 发布到 GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "墨场 $GITHUB_REF_NAME" \
+            --generate-notes \
+            "release/Mochang-macOS-arm64.zip" \
+            "release/Mochang-macOS-arm64-${GITHUB_REF_NAME}.dmg"

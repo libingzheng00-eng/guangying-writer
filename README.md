@@ -1,5 +1,13 @@
 # 墨场 · 中文编剧 — 开发者说明文档
 
+> 开源许可证：[MIT](LICENSE)。稳定版本会发布在 GitHub 的 **Releases** 页面；请从 Releases 下载最新版 DMG 或 ZIP，不要从源码页面下载自动生成的源码压缩包。
+
+## 公开发布方式
+
+仓库推送形如 `v1.3.0` 的版本标签后，GitHub Actions 会自动检查源码、构建 macOS arm64 应用、生成 DMG，并将 DMG 与 ZIP 附加到对应 GitHub Release。仓库首页的 Releases 区域会显示最新版本。
+
+未购买 Apple Developer ID 的版本仍是 ad-hoc 签名，首次在另一台 Mac 上打开可能需要用户在“隐私与安全性”中手动确认；它不是已公证的正式签名应用。
+
 > 一款对标 Final Draft 的**中文剧本创作软件**。Electron 31 + React 18 + Zustand + Vite + TypeScript（arm64 / Apple Silicon 原生），纯本地存储，无后端、无账号体系。
 
 本文件面向**日后维护与二次开发**，覆盖：环境搭建、开发与调试、构建、打包发布、整体架构、数据模型、主题系统、扩展方式、测试与已知坑。
