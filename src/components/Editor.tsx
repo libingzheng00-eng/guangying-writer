@@ -599,7 +599,7 @@ function TitlePageCard() {
         {tp.version ? <span>{tp.version}</span> : null}
         {tp.date ? <span>{tp.date}</span> : null}
       </div>
-      <div className="titlepage-card__hint">标题页 · 双击前往分页预览</div>
+      <div className="titlepage-card__hint">双击预览</div>
     </div>
   );
 }

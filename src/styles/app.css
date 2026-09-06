@@ -781,22 +781,12 @@ textarea {
   background: #fff;
 }
 .page-break-line {
-  border-top: 1px dashed #3a4a5d;
-  margin: 10px -2.6em 0;
+  border-top: 1px solid rgba(110, 132, 158, 0.22);
+  margin: 8px -2.6em 0;
   position: relative;
 }
 .page-break-line::after {
-  content: '分页';
-  position: absolute;
-  right: 0;
-  top: -8px;
-  font-size: 10px;
-  color: var(--accent);
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  padding: 0 5px;
-  border-radius: 6px;
-  box-shadow: var(--glow-cyan);
+  content: none;
 }
 
 .titlepage-card {
