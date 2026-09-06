@@ -6,3 +6,13 @@
  */
 export { recognizeType, characterForDialogue, contdLabelFor, nextTypeOnTab, nextTypeOnEnter, shouldShowContdSuffix, CONTD_SUFFIX } from '../src/model/flow';
 export type { ElementType, ScriptElement, ScriptProject } from '../src/model/types';
+export {
+  computeSceneBands,
+  writtenPagesExcludingTitle,
+  overPages,
+  nextProgressTheme,
+  normalizeProgressTheme,
+  SCENE_BAND_PALETTE,
+  CHARS_PER_LINE,
+  PROGRESS_THEME_ORDER,
+} from '../src/model/progress';

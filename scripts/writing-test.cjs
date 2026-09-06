@@ -1,11 +1,13 @@
 /**
  * scripts/writing-test.cjs
  *
- * 验证写作辅助相关纯函数（第三项）：
- *   - Tab 循环 7 类（action / character / parenthetical / dialogue / transition / shot / scene_heading）
+ * 验证写作辅助相关纯函数（第三项 + 第五项）：
+ *   - Tab 循环 9 类（action / character / parenthetical / dialogue / transition / shot / scene_heading / general / note）
  *   - recognizeType 智能识别（场次标题 / 转场 / 全大写人物 / 括号提示 / 镜头）
  *   - characterForDialogue 反查人物
  *   - contdLabelFor 仅在「当前对白人物 === 上一页最末人物」时返回带姓名版本，否则回退为「（续）」
+ *   - shouldShowContdSuffix 同人物 (CONT'D) 判定（v1.2.9 同款逻辑）
+ *   - 进度条主题循环、场景条带、调色板、超目标（第五项）
  *
  * 所有断言仅使用合成数据，不包含任何真实剧本内容。
  * 用法： node scripts/writing-test.cjs
@@ -31,7 +33,22 @@ process.on('exit', () => {
     logLevel: 'silent',
   });
 
-  const { recognizeType, characterForDialogue, contdLabelFor, nextTypeOnTab, nextTypeOnEnter, shouldShowContdSuffix, CONTD_SUFFIX } = require(bundle);
+  const {
+    recognizeType,
+    characterForDialogue,
+    contdLabelFor,
+    nextTypeOnTab,
+    nextTypeOnEnter,
+    shouldShowContdSuffix,
+    CONTD_SUFFIX,
+    computeSceneBands,
+    writtenPagesExcludingTitle,
+    overPages,
+    nextProgressTheme,
+    normalizeProgressTheme,
+    SCENE_BAND_PALETTE,
+    PROGRESS_THEME_ORDER,
+  } = require(bundle);
 
   const failures = [];
   const ok = (name, cond) => {
@@ -182,6 +199,119 @@ process.on('exit', () => {
   const projectBefore = JSON.stringify(baseProject);
   shouldShowContdSuffix(baseProject, baseProject.elements[4]);
   ok('shouldShowContdSuffix 不会修改 project 其它字段', projectBefore === JSON.stringify(baseProject));
+
+  console.log('\n== 进度条主题循环（v1.2.9 同款） ==');
+  ok('PROGRESS_THEME_ORDER 顺序为 cigarette → car → key', JSON.stringify(PROGRESS_THEME_ORDER) === '["cigarette","car","key"]');
+  ok('cigarette → car', nextProgressTheme('cigarette') === 'car');
+  ok('car → key', nextProgressTheme('car') === 'key');
+  ok('key → cigarette（循环）', nextProgressTheme('key') === 'cigarette');
+  ok('undefined → car（视为默认 cigarette 的下一个）', nextProgressTheme(undefined) === 'car');
+  ok('未知值 → car（视为默认 cigarette 的下一个）', nextProgressTheme('rocket') === 'car');
+  ok('normalizeProgressTheme 已知通过', normalizeProgressTheme('car') === 'car');
+  ok('normalizeProgressTheme 未知回退', normalizeProgressTheme('whatever') === 'cigarette');
+  ok('normalizeProgressTheme undefined 回退', normalizeProgressTheme(undefined) === 'cigarette');
+
+  console.log('\n== overPages 超目标计算 ==');
+  ok('未超目标 → 0', overPages(50, 100) === 0);
+  ok('正好等于 → 0', overPages(100, 100) === 0);
+  ok('超出 10 页 → 10', overPages(110, 100) === 10);
+  ok('target=0 → 0', overPages(50, 0) === 0);
+  ok('负数 writtenPages → 0（不出现负值）', overPages(-5, 100) === 0);
+
+  console.log('\n== writtenPagesExcludingTitle 去除标题页 ==');
+  const proj1 = {
+    titlePage: { show: true },
+    settings: { titlePageBreak: true },
+  };
+  ok('标题页独立 + pageCount=2 → 1（减去标题）', writtenPagesExcludingTitle(2, proj1) === 1);
+  ok('标题页独立 + pageCount=0 → 0', writtenPagesExcludingTitle(0, proj1) === 0);
+  ok('标题页独立 + pageCount=1 → 1（保底 1）', writtenPagesExcludingTitle(1, proj1) === 1);
+  const proj2 = { titlePage: { show: false }, settings: { titlePageBreak: true } };
+  ok('标题页未开 → 不减', writtenPagesExcludingTitle(3, proj2) === 3);
+  const proj3 = { titlePage: { show: true }, settings: { titlePageBreak: false } };
+  ok('标题页开了但未独立成页 → 不减', writtenPagesExcludingTitle(3, proj3) === 3);
+
+  console.log('\n== computeSceneBands 场景条带（v1.2.9 同款） ==');
+  const bandProject = {
+    settings: {
+      autoNumberScenes: true,
+      indent: {
+        action: { left: 0, right: 0, align: 'left', spaceBefore: 1 },
+        character: { left: 0, right: 0, align: 'left', spaceBefore: 1 },
+        dialogue: { left: 0, right: 0, align: 'left', spaceBefore: 0 },
+        scene_heading: { left: 0, right: 0, align: 'left', spaceBefore: 0 },
+        note: { left: 0, right: 0, align: 'left', spaceBefore: 0 },
+        act: { left: 0, right: 0, align: 'left', spaceBefore: 0 },
+        parenthetical: { left: 0, right: 0, align: 'left', spaceBefore: 0 },
+        transition: { left: 0, right: 0, align: 'left', spaceBefore: 0 },
+        shot: { left: 0, right: 0, align: 'left', spaceBefore: 0 },
+        general: { left: 0, right: 0, align: 'left', spaceBefore: 0 },
+      },
+    },
+    sceneMeta: [],
+    elements: [
+      { id: 'sc1', type: 'scene_heading', text: '1. 内景 测试地点 日' },
+      { id: 'a1', type: 'action', text: '人物走过镜头。' },
+      { id: 'c1', type: 'character', text: '角色甲' },
+      { id: 'd1', type: 'dialogue', text: '你好。' },
+      { id: 'n1', type: 'note', text: '备注不计入' },
+      { id: 'om1', type: 'action', text: '省略场景', omit: true },
+      { id: 'sc2', type: 'scene_heading', text: '2. 外景 测试地点 夜' },
+      { id: 'a2', type: 'action', text: '夜风吹过。' },
+      { id: 'c2', type: 'character', text: '角色乙' },
+      { id: 'd2', type: 'dialogue', text: '晚上好。' },
+    ],
+  };
+
+  const bands = computeSceneBands(bandProject);
+  ok('得到 2 个场景带', bands.length === 2);
+  ok('场景 1 编号 = "1"', bands[0] && bands[0].number === '1');
+  ok('场景 2 编号 = "2"', bands[1] && bands[1].number === '2');
+  ok('场景 1 颜色 = palette[0]', bands[0] && bands[0].color === SCENE_BAND_PALETTE[0]);
+  ok('场景 2 颜色 = palette[1]', bands[1] && bands[1].color === SCENE_BAND_PALETTE[1]);
+  ok('场景 1 weight > 0（不含 note/omit/act）', bands[0] && bands[0].weight > 0);
+  ok('场景 1 weight = scene_heading 1 + action 2 + character 2 + dialogue 1 = 6（含 scene_heading，note/omit 跳过）',
+    bands[0] && bands[0].weight === 6);
+  ok('场景 2 weight = scene_heading 1 + action 2 + character 2 + dialogue 1 = 6',
+    bands[1] && bands[1].weight === 6);
+  ok('pct 之和 ≈ 100', Math.round(bands.reduce((s, b) => s + b.pct, 0)) === 100);
+  ok('pct 是 number', typeof (bands[0] && bands[0].pct) === 'number');
+
+  // palette 循环：第 11 个场景应回到 palette[0]
+  const manySceneProj = {
+    settings: { ...bandProject.settings },
+    sceneMeta: [],
+    elements: [],
+  };
+  for (let i = 0; i < 11; i += 1) {
+    manySceneProj.elements.push({ id: `sc${i}`, type: 'scene_heading', text: `${i + 1}. 测试场景 ${i + 1}` });
+    manySceneProj.elements.push({ id: `a${i}`, type: 'action', text: '短动作。' });
+  }
+  const manyBands = computeSceneBands(manySceneProj);
+  ok('调色板循环：第 1 场 = palette[0]', manyBands[0].color === SCENE_BAND_PALETTE[0]);
+  ok('调色板循环：第 10 场 = palette[9]', manyBands[9].color === SCENE_BAND_PALETTE[9]);
+  ok('调色板循环：第 11 场 = palette[0]', manyBands[10].color === SCENE_BAND_PALETTE[0]);
+
+  // 空场景
+  ok('空项目 → 空数组', computeSceneBands({ settings: { indent: bandProject.settings.indent }, sceneMeta: [], elements: [] }).length === 0);
+  // 没场景时 pct 为 0（不会 NaN）
+  const zeroProj = {
+    settings: { indent: bandProject.settings.indent, autoNumberScenes: true },
+    sceneMeta: [],
+    elements: [{ id: 'sc1', type: 'scene_heading', text: '1. 测试' }, { id: 'a1', type: 'action', text: '' }],
+  };
+  const zeroBands = computeSceneBands(zeroProj);
+  ok('单场景 pct = 100', zeroBands.length === 1 && Math.round(zeroBands[0].pct) === 100);
+
+  // 不会修改 project
+  const projectBefore2 = JSON.stringify(bandProject);
+  computeSceneBands(bandProject);
+  ok('computeSceneBands 不会修改 project', JSON.stringify(bandProject) === projectBefore2);
+
+  console.log('\n== 三套主题（与 v1.2.9 一致） ==');
+  ok('默认主题 = cigarette', normalizeProgressTheme('cigarette') === 'cigarette');
+  ok('car 主题有效', normalizeProgressTheme('car') === 'car');
+  ok('key 主题有效', normalizeProgressTheme('key') === 'key');
 
   if (failures.length) {
     console.log(`\n=== FAIL: ${failures.length} test(s) failed ===`);

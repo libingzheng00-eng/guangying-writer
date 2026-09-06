@@ -127,6 +127,20 @@ process.on('exit', cleanTemporaryBundle);
   const qa = (s) => Array.from(document.querySelectorAll(s));
   const txt = (s) => (q(s) ? q(s).textContent.replace(/\s+/g, ' ').trim().slice(0, 300) : null);
 
+  // 第五项：进度条主题 / 场景条带 / 终点图标等只渲染在写作视图，必须先在写作视图抓。
+  // 兼容旧 alpha.1：用 .target-pages / .typewriter-progress__pointer；新 alpha.5 用 .write-progress__goal / .write-progress__marker。
+  const targetPagesVisible =
+    !!q('.target-pages input') ||
+    !!q('.write-progress__goal input');
+  const typewriterPointerVisible =
+    !!q('.typewriter-progress__pointer') ||
+    !!q('.write-progress__marker img');
+  // 新进度条独有：场景条带 / 主题切换按钮 / 终点图标
+  const progressSceneBands = qa('.write-progress__scene').length;
+  const progressThemeButton = !!q('.write-progress__theme');
+  const progressEndIcon = !!q('.write-progress__end svg');
+  const progressFillBar = !!q('.write-progress__fill');
+
   const report = {
     title: document.title,
     mounted: !!q('.app-shell'),
@@ -140,6 +154,7 @@ process.on('exit', cleanTemporaryBundle);
     navItems: qa('.nav-item').length,
     navFirst: txt('.nav-item'),
     placeholders: qa('.script-flow .sc-el.is-empty').length,
+    progressBar: txt('.write-progress') || '(未渲染)',
   };
 
   // 切换到其他视图，验证不崩溃
@@ -181,8 +196,14 @@ process.on('exit', cleanTemporaryBundle);
         relationInput.dispatchEvent(new w.Event('input', { bubbles: true }));
       }
       const featureChecks = {
-        targetPagesVisible: !!q('.target-pages input'),
-        typewriterPointerVisible: !!q('.typewriter-progress__pointer'),
+        // 兼容：alpha.1 旧选择器也接受，便于在不同 commit 之间跑回归
+        targetPagesVisible,
+        typewriterPointerVisible,
+        // 第五项进度条独有
+        progressSceneBands,
+        progressThemeButton,
+        progressEndIcon,
+        progressFillBar,
         boardRelationCreated: qa('.board-links line').length >= 1,
         boardRelationNoteEditable: !!relationInput,
       };

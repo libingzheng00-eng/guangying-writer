@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store/store';
 import { usePagination } from '../hooks/PaginationProvider';
 import { EditableBlock } from './ScriptBlock';
+import { ProgressBar } from './ProgressBar';
 import { caretOffset, splitHtml, domLength } from '../utils/dom';
 import { isBlank, plain, stripSceneNumber } from '../utils/text';
 import { nextTypeOnEnter, nextTypeOnTab, groupDual, recognizeType, shouldShowContdSuffix, CONTD_SUFFIX } from '../model/flow';
@@ -373,6 +374,7 @@ export function Editor() {
   return (
     <div className="editor" ref={scrollRef}>
       <div className="editor__scroll">
+        <ProgressBar />
         {settings.indent && project.titlePage.show ? <TitlePageCard /> : null}
         <MaterialPanel
           beats={project.beats}

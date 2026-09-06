@@ -1206,6 +1206,293 @@ textarea {
   border-radius: 4px;
   padding: 1px 6px;
 }
+
+/* ------------------------------ 写作进度条 (v1.2.9 同款) ------------------------------ */
+/*
+ * 三套主题：cigarette（香烟→爱心）/ car（汽车→旗帜）/ key（钥匙→宝石）。
+ * 主图标用 inline SVG（来自 twemoji 15.1.0，CC-BY 4.0），不引入额外图片资源。
+ */
+.write-progress {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    'label road theme'
+    'scenes scenes goal';
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+  padding: 10px 14px 12px;
+  margin: 0 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #11161f 0%, #0c1118 100%);
+  color: var(--text);
+  font-size: 12px;
+  user-select: none;
+}
+.write-progress__label {
+  grid-area: label;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 86px;
+}
+.write-progress__eyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+.write-progress__value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.write-progress__value strong {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.write-progress__divider {
+  color: var(--muted);
+}
+.write-progress__target {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.write-progress__unit {
+  color: var(--muted);
+  font-size: 11px;
+}
+.write-progress__road {
+  grid-area: road;
+  position: relative;
+  height: 22px;
+  border: 1px solid #3b414b;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #0c1118 0%, #0a0e15 100%);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  overflow: visible;
+}
+.write-progress__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  min-width: 1px;
+  background: linear-gradient(180deg, rgba(88, 166, 255, 0.32) 0%, rgba(88, 166, 255, 0.18) 100%);
+  border-right: 1px solid rgba(88, 166, 255, 0.65);
+  transition: width 0.18s ease;
+}
+.write-progress--cigarette .write-progress__fill {
+  background: linear-gradient(180deg, rgba(178, 158, 130, 0.42) 0%, rgba(178, 158, 130, 0.22) 100%);
+  border-right-color: #d99e82;
+}
+.write-progress--car .write-progress__fill {
+  background: linear-gradient(180deg, rgba(221, 46, 68, 0.36) 0%, rgba(221, 46, 68, 0.18) 100%);
+  border-right-color: #dd2e44;
+}
+.write-progress--key .write-progress__fill {
+  background: linear-gradient(180deg, rgba(255, 172, 51, 0.36) 0%, rgba(255, 172, 51, 0.18) 100%);
+  border-right-color: #ffac33;
+}
+.write-progress__milestone {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: rgba(110, 118, 129, 0.55);
+  pointer-events: none;
+}
+.write-progress__milestone.is-done {
+  background: rgba(88, 166, 255, 0.7);
+  box-shadow: 0 0 4px rgba(88, 166, 255, 0.4);
+}
+.write-progress__tip {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translate(8px, -50%);
+  padding: 2px 8px;
+  background: #1a202c;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  z-index: 4;
+}
+.write-progress__road:hover .write-progress__tip {
+  opacity: 1;
+}
+.write-progress__tip.is-invalid {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.write-progress__marker {
+  position: absolute;
+  top: -16px;
+  width: 56px;
+  height: 18px;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.write-progress__marker img {
+  max-width: 56px;
+  max-height: 18px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+.write-progress__end {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: #c9d1d9;
+  opacity: 0.55;
+}
+.write-progress__end.is-reached {
+  opacity: 1;
+  filter: drop-shadow(0 0 6px rgba(255, 235, 130, 0.7));
+}
+.write-progress__hint {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.write-progress__theme {
+  grid-area: theme;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: #0c1119;
+  cursor: pointer;
+  color: inherit;
+}
+.write-progress__theme:hover {
+  border-color: var(--accent);
+  background: #11161f;
+}
+.write-progress__scenes {
+  grid-area: scenes;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  background: #0a0e15;
+}
+.write-progress__scene {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 4px;
+  border: 0;
+  border-right: 1px solid rgba(0, 0, 0, 0.25);
+  background: transparent;
+  color: rgba(0, 0, 0, 0.85);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  transition: filter 0.12s ease;
+  overflow: hidden;
+}
+.write-progress__scene:last-child {
+  border-right: 0;
+}
+.write-progress__scene:hover {
+  filter: brightness(1.15);
+}
+.write-progress__scene.is-active {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  filter: brightness(1.25);
+}
+.write-progress__scene-no {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.write-progress__scenes-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.write-progress__scenes.is-over-target {
+  border-color: var(--danger);
+}
+.write-progress__over {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  background: rgba(248, 81, 73, 0.16);
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 600;
+}
+.write-progress__goal {
+  grid-area: goal;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  color: var(--muted);
+  justify-self: end;
+}
+.write-progress__goal input {
+  width: 52px;
+  min-width: 52px;
+  height: 22px;
+  padding: 1px 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: #0c1119;
+  color: #e6edf3;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.fog-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fog-ico svg {
+  display: block;
+}
 .zoom {
   display: flex;
   align-items: center;

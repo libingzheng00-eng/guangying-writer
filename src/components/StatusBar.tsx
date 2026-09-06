@@ -2,20 +2,20 @@ import React, { useMemo } from 'react';
 import { useStore } from '../store/store';
 import { computeStats } from '../model/stats';
 import { ELEMENT_META } from '../model/elements';
-import typewriterPointer from '../assets/typewriter-pointer.png';
 
+/**
+ * 底部状态栏：仅保留「写作统计 + 当前元素类型 + 修订模式 + 缩放」，
+ * 不再放目标页数 / 进度条 —— 这些已迁到 Editor 顶部的 ProgressBar（v1.2.9 同款）。
+ */
 export function StatusBar() {
   const project = useStore((s) => s.project);
   const pageCount = useStore((s) => s.pageCount);
   const activeId = useStore((s) => s.activeId);
   const zoom = useStore((s) => s.zoom);
   const setZoom = useStore((s) => s.setZoom);
-  const setTargetPages = useStore((s) => s.setTargetPages);
   const stats = useMemo(() => computeStats(project, pageCount), [project, pageCount]);
   const activeEl = project.elements.find((e) => e.id === activeId);
   const mins = stats.estimatedMinutes;
-  const targetPages = Math.max(1, project.targetPages || 100);
-  const progress = Math.min(100, Math.round((stats.estimatedPages / targetPages) * 100));
 
   return (
     <div className="statusbar">
@@ -33,28 +33,6 @@ export function StatusBar() {
       <div className="spacer" />
       {activeEl ? <span className="statusbar__type">{ELEMENT_META[activeEl.type].label}</span> : null}
       {project.settings.revisionMode ? <span className="badge">修订模式</span> : null}
-      <label className="target-pages" title="目标页数">
-        <span>目标</span>
-        <input
-          type="number"
-          min={1}
-          max={9999}
-          value={targetPages}
-          aria-label="目标页数"
-          onChange={(e) => setTargetPages(Number(e.target.value))}
-        />
-        <span>页</span>
-      </label>
-      <div className="typewriter-progress" aria-label={`已完成 ${progress}%`} title={`已完成 ${stats.estimatedPages} / ${targetPages} 页`}>
-        <div className="typewriter-progress__paper" style={{ width: `${progress}%` }} />
-        <img
-          className="typewriter-progress__pointer"
-          src={typewriterPointer}
-          alt="打字机进度指针"
-          draggable={false}
-          style={{ left: `${progress}%` }}
-        />
-      </div>
       <span className="zoom">
         <button onClick={() => setZoom(zoom - 0.1)}>－</button>
         <span>{Math.round(zoom * 100)}%</span>

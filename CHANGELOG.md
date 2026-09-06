@@ -5,6 +5,24 @@
 - 隐私修正：首次启动项目改为空白稿，源码与后续构建不再包含原内置具体剧本内容。
 - 文档补充：说明 v1.2.9 成品版与 v1.3.0-alpha 源码版的差异，避免误把 alpha 当稳定版发布。
 
+## v1.3.0-alpha.5
+
+- 新增 `src/model/progress.ts`：`computeSceneBands` 按预计排版行数计算每个场景的占比与调色板色带，跳过 `omit / note / act`，并把 `spaceBefore` 计入行数；`overPages` / `writtenPagesExcludingTitle` / `nextProgressTheme` / `normalizeProgressTheme` 同步抽象，便于纯函数测试。
+- 新增 `src/components/ProgressBar.tsx`：完整回迁 v1.2.9 的 Editor 顶部写作进度条：
+  - 左侧「当前页 / 目标」实时数值（取自分页 provider 的 `pageOf`）。
+  - 主进度条 `__road`：打字机指针 PNG 跟随 `completionPct`（已写页数 / 目标）；里程碑 `[25%, 75%]`（v2.6 已按用户要求移除 50%）。
+  - 进度条上方的 `__tip` 浮层根据鼠标位置显示「跳到第 N 页」或「第 N 页尚未写出」提示，72% 之后翻转避免被裁切。
+  - 主题切换按钮 `__theme` 点按循环 `cigarette → car → key`；旁边 `__end` 终点图标按主题切换（爱心 / 旗帜 / 宝石）。
+  - 场景条带 `__scenes`：每个 scene_heading 一段彩色按钮，调色板循环 10 色（`#78938b` 系列），按场景预计行数分配 `flexBasis`；点击跳转到该场景；超过目标页数时整条加 `is-over-target` 描边并显示「超出目标 X 页」。
+  - 右侧 `__goal` 目标页数输入回写 `project.targetPages`（沿用 `setTargetPages`，coalesce 合并连续输入）。
+- 三套主题图标全部用 inline SVG 渲染（来自 twemoji 15.1.0，CC-BY 4.0，github.com/jdecked/twemoji）；不引入额外图片资源，与 v1.2.9 视觉一致。
+- `src/components/StatusBar.tsx` 移除 alpha.1 占位的「目标页数输入 + 打字机进度」控件（已迁到 ProgressBar）；状态栏回归 v1.2.9 的「字数 / 页数 / 时长 / 场数 / 人物数 / 修订模式 / 缩放」纯统计形态。
+- `src/components/Editor.tsx` 在 `<TitlePageCard>` 之前插入 `<ProgressBar />`，与 v1.2.9 真实形态对齐。
+- `src/components/Dialogs.tsx` 在「外观」tab 加「写作进度条主题」segmented control（香烟 / 汽车 / 钥匙），按钮旁 inline SVG 图标，hint 文案沿用 v1.2.9 原句。
+- `src/styles/app.css` 新增 `.write-progress*` 全套样式（标签 / 主条 / 里程碑 / 提示浮层 / 指针 / 终点 / 主题按钮 / 场景条带 / 目标输入），并补 `fog-ico` SVG 容器样式；移除 `alpha.1` 的 `.target-pages / .typewriter-progress*` 等占位规则。
+- `settings.progressTheme` 新增可选字段 `'cigarette' | 'car' | 'key'`，旧 `.zhsp` 工程缺省视为 cigarette。
+- `scripts/writing-test.cjs` 新增 24 条进度条相关断言：三套主题循环、`overPages` / `writtenPagesExcludingTitle` 边界、`computeSceneBands` 跳过 omit/note/act + scene_heading 也折行 + 调色板循环 + 不修改 project。
+
 ## v1.3.0-alpha.4
 
 - 自由板卡片（BoardView）现在区分四种 kind：`beat` / `sound` / `image` / `wimg`：
