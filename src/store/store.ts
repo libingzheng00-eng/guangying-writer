@@ -201,6 +201,8 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   loadProject: (p, filePath = null) => {
+    // 工程切换必须切断上一工程的 resize 合并窗口，避免两个工程的操作串成一条撤销记录。
+    lastCoalesce = null;
     // 规范化幕标题：把「第2幕」这类阿拉伯数字写法统一为「第二幕」，避免格式不统一
     p.acts.forEach((a) => {
       const m = /^第(\d+)幕$/.exec(a.title);
@@ -220,6 +222,8 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   newProject: () => {
+    // 新建工程必须切断上一工程的 coalesce 状态。
+    lastCoalesce = null;
     const p = createProject();
     set((s) => ({
       project: p,
@@ -240,8 +244,14 @@ export const useStore = create<StoreState>((set, get) => ({
     const { project, past } = get();
     const next = cloneProject(project);
     fn(next);
-    next.updatedAt = Date.now();
     const history = opts?.history !== false;
+    // 组件可能在每次输入事件都调用 mutate；没有实际数据变化时不应制造
+    // 撤销点、清空重做栈或把 dirty 标成 true。
+    if (JSON.stringify(next) === JSON.stringify(project)) {
+      lastCoalesce = null;
+      return;
+    }
+    next.updatedAt = Date.now();
     let shouldPush = history;
     if (history && opts?.coalesce) {
       const now = Date.now();
@@ -250,6 +260,9 @@ export const useStore = create<StoreState>((set, get) => ({
       }
       lastCoalesce = { key: opts.coalesce, ts: now };
     } else if (history) {
+      lastCoalesce = null;
+    } else {
+      // 非历史状态更新也是一次操作边界，不能与前后的 resize 合并。
       lastCoalesce = null;
     }
     set({
