@@ -16,6 +16,7 @@ import { dualAfterEnter } from '../model/flow';
 import { plain, cnNum } from '../utils/text';
 import { uid } from '../utils/id';
 import { isHexColor } from '../utils/color';
+import { clampTargetPages } from '../model/progress';
 
 export type ViewMode = 'write' | 'cards' | 'board' | 'preview' | 'reports';
 export type SidebarMode = 'navigator' | 'outline' | 'inspector';
@@ -577,9 +578,12 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   setTargetPages: (pages) => {
+    // 边界兜底：0 / 负数 / NaN / 非数 → 0（关闭目标页数，进度条隐藏）
+    // >9999 → 9999；整数化后落入 [0, 9999]。
+    const next = clampTargetPages(pages);
     get().mutate(
       (p) => {
-        p.targetPages = Math.max(1, Math.min(9999, Math.round(pages) || 1));
+        p.targetPages = next;
       },
       { coalesce: 'target-pages' },
     );

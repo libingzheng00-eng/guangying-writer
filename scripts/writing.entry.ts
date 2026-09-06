@@ -15,4 +15,6 @@ export {
   SCENE_BAND_PALETTE,
   CHARS_PER_LINE,
   PROGRESS_THEME_ORDER,
+  clampTargetPages,
+  normalizeTargetPages,
 } from '../src/model/progress';

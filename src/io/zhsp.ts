@@ -1,6 +1,7 @@
 import type { Beat, ScriptProject, ScriptSettings } from '../model/types';
 import { FILE_VERSION, defaultSettings, emptyTitlePage } from '../model/project';
 import { DEFAULT_INDENT, DEFAULT_REVISIONS } from '../model/elements';
+import { normalizeTargetPages } from '../model/progress';
 
 export interface ZhspFile {
   app: 'zh-screenwriter';
@@ -71,7 +72,9 @@ export function parseProject(raw: string): ScriptProject {
     sceneMeta: Array.isArray(p.sceneMeta) ? p.sceneMeta : [],
     beats,
     boardLinks: Array.isArray(p.boardLinks) ? p.boardLinks : [],
-    targetPages: Math.max(1, typeof p.targetPages === 'number' && Number.isFinite(p.targetPages) ? Math.round(p.targetPages) : 100),
+    // 边界兜底：0 / 负数 / NaN / 超大数 → undefined（旧工程视为未设 → 启动时按 default 100 显示）；
+    // 旧工程显式保存的合法正整数原样保留；>9999 封顶。
+    targetPages: normalizeTargetPages(p.targetPages),
     acts: Array.isArray(p.acts) && p.acts.length ? p.acts : [{ id: 'act-1', title: '第一幕', color: '#cfe4ff' }],
     revisions: Array.isArray(p.revisions) && p.revisions.length ? p.revisions : DEFAULT_REVISIONS,
     settings,

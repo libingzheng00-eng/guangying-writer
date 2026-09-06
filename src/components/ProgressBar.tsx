@@ -241,13 +241,14 @@ export function ProgressBar() {
         ) : null}
       </div>
 
-      <label className="write-progress__goal" title="目标页数">
+      <label className="write-progress__goal" title="目标页数（0 = 关闭目标，隐藏进度条）">
         目标
         <input
           type="number"
-          min={1}
+          min={0}
           max={9999}
-          value={target || 100}
+          value={target}
+          placeholder="100"
           aria-label="目标页数"
           onChange={(e) => useStore.getState().setTargetPages(Number(e.target.value))}
         />

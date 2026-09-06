@@ -133,3 +133,43 @@ export function normalizeProgressTheme(t: unknown): 'cigarette' | 'car' | 'key' 
   if (t === 'car' || t === 'key' || t === 'cigarette') return t;
   return 'cigarette';
 }
+
+/**
+ * 边界兜底后的目标页数。0 表示「关闭目标页数」（隐藏进度条），>9999 封顶。
+ *
+ * 输入语义：
+ *   - `undefined / null / NaN / -Infinity / 非有限数` → 0（关闭）
+ *   - `<= 0`（含负数、0、-0） → 0（关闭）
+ *   - `> 9999` → 9999（封顶）
+ *   - `(0, 9999]` → Math.round 四舍五入到整数
+ *
+ * 不抛异常；不写日志；不依赖 React / Zustand；可在 Node 环境纯函数测试。
+ */
+export function clampTargetPages(input: unknown): number {
+  if (input == null) return 0;
+  if (typeof input !== 'number') return 0;
+  if (!Number.isFinite(input)) return 0;
+  if (input <= 0) return 0;
+  if (input > 9999) return 9999;
+  return Math.round(input);
+}
+
+/**
+ * 加载 / 解析 `.zhsp` 时用的归一化函数。
+ *
+ * 与 `clampTargetPages` 的区别：加载时**保留 `undefined`** 表示「未设置」，
+ * 旧工程缺省时不强行改成 0 或 100；运行时 `setTargetPages` 才必须落到 0..9999 整数。
+ *
+ *   - `undefined / null / 非数 / NaN / -Infinity` → `undefined`（视为未设）
+ *   - `<= 0` → `undefined`（0 在历史工程中语义模糊，按未设处理）
+ *   - `> 9999` → `9999`
+ *   - `(0, 9999]` → `Math.round`
+ */
+export function normalizeTargetPages(input: unknown): number | undefined {
+  if (input == null) return undefined;
+  if (typeof input !== 'number') return undefined;
+  if (!Number.isFinite(input)) return undefined;
+  if (input <= 0) return undefined;
+  if (input > 9999) return 9999;
+  return Math.round(input);
+}

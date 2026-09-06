@@ -48,6 +48,8 @@ process.on('exit', () => {
     normalizeProgressTheme,
     SCENE_BAND_PALETTE,
     PROGRESS_THEME_ORDER,
+    clampTargetPages,
+    normalizeTargetPages,
   } = require(bundle);
 
   const failures = [];
@@ -312,6 +314,39 @@ process.on('exit', () => {
   ok('默认主题 = cigarette', normalizeProgressTheme('cigarette') === 'cigarette');
   ok('car 主题有效', normalizeProgressTheme('car') === 'car');
   ok('key 主题有效', normalizeProgressTheme('key') === 'key');
+
+  console.log('\n== clampTargetPages：0 / 负数 / NaN / 超大数 边界兜底 ==');
+  ok('undefined → 0', clampTargetPages(undefined) === 0);
+  ok('null → 0', clampTargetPages(null) === 0);
+  ok('NaN → 0', clampTargetPages(NaN) === 0);
+  ok('Infinity → 0', clampTargetPages(Infinity) === 0);
+  ok('-Infinity → 0', clampTargetPages(-Infinity) === 0);
+  ok('字符串 "abc" → 0', clampTargetPages('abc') === 0);
+  ok('字符串 "100" → 0（typeof 检查，非 number 都视为 0）', clampTargetPages('100') === 0);
+  ok('对象 {} → 0', clampTargetPages({}) === 0);
+  ok('-5 → 0', clampTargetPages(-5) === 0);
+  ok('-0.1 → 0', clampTargetPages(-0.1) === 0);
+  ok('0 → 0（关闭目标）', clampTargetPages(0) === 0);
+  ok('0.4 → 0（<=0 视为关闭）', clampTargetPages(0.4) === 0);
+  ok('0.5 → 1（四舍五入到 1）', clampTargetPages(0.5) === 1);
+  ok('100 → 100', clampTargetPages(100) === 100);
+  ok('99.6 → 100（round）', clampTargetPages(99.6) === 100);
+  ok('9999 → 9999', clampTargetPages(9999) === 9999);
+  ok('10000 → 9999（封顶）', clampTargetPages(10000) === 9999);
+  ok('12000 → 9999', clampTargetPages(12000) === 9999);
+  ok('1e20 → 9999（Infinity 之前）', clampTargetPages(1e20) === 9999);
+  ok('1.5 → 2（round）', clampTargetPages(1.5) === 2);
+
+  console.log('\n== normalizeTargetPages：加载时保留 undefined ==');
+  ok('undefined → undefined（视为未设）', normalizeTargetPages(undefined) === undefined);
+  ok('null → undefined', normalizeTargetPages(null) === undefined);
+  ok('NaN → undefined', normalizeTargetPages(NaN) === undefined);
+  ok('字符串 → undefined', normalizeTargetPages('100') === undefined);
+  ok('0 → undefined（历史工程语义模糊）', normalizeTargetPages(0) === undefined);
+  ok('-5 → undefined', normalizeTargetPages(-5) === undefined);
+  ok('100 → 100（合法保留）', normalizeTargetPages(100) === 100);
+  ok('99.4 → 99', normalizeTargetPages(99.4) === 99);
+  ok('10000 → 9999（封顶）', normalizeTargetPages(10000) === 9999);
 
   if (failures.length) {
     console.log(`\n=== FAIL: ${failures.length} test(s) failed ===`);
