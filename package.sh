@@ -10,12 +10,12 @@ set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 
-APP_NAME="Mochang"                 # 磁盘上的 .app 文件名（用 ASCII，避免中文路径坑）
-DISPLAY_NAME="墨场 · 中文编剧"      # Finder / Launchpad 中显示的名称（支持中文）
-BUNDLE_ID="com.workbuddy.mochang"
-ARCH="arm64"                       # M1/M2 用 arm64；Intel 改 x64
+APP_NAME="${APP_NAME:-Mochang}"                 # 磁盘上的 .app 文件名（用 ASCII，避免中文路径坑）
+DISPLAY_NAME="${DISPLAY_NAME:-墨场 · 中文编剧}"  # Finder / Launchpad 中显示的名称（支持中文）
+BUNDLE_ID="${BUNDLE_ID:-com.workbuddy.mochang}"
+ARCH="${ARCH:-arm64}"                           # M1/M2 用 arm64；Intel 改 x64
 VERSION="$(node -p "require('./package.json').version")"
-OUT_DIR="release"
+OUT_DIR="${OUT_DIR:-release}"
 APP_DIR="$OUT_DIR/${APP_NAME}.app"
 ZIP_NAME="${APP_NAME}-macOS-${ARCH}.zip"
 
@@ -84,15 +84,11 @@ echo ""
 
 # ---- Step 6: Ad-hoc 自签名 + 压缩 ----
 echo "[6/6] Ad-hoc 自签名 + 压缩为 $ZIP_NAME …"
-if sudo codesign --force --deep --sign - "$APP_DIR" 2>/dev/null; then
-  echo "      自签名完成（sudo）✓"
-elif codesign --force --deep --sign - "$APP_DIR" 2>/dev/null; then
+if codesign --force --deep --sign - "$APP_DIR" 2>/dev/null; then
   echo "      自签名完成（无 sudo）✓"
 else
   echo "      ⚠️  自签名跳过（不影响打包，仅本机首次打开需手动放行）"
 fi
-# 清除 macOS 安全属性（含 com.apple.provenance / 隔离标记）；sudo 可用时优先用 sudo
-sudo xattr -cr "$APP_DIR" 2>/dev/null || xattr -cr "$APP_DIR" 2>/dev/null || true
 cd "$OUT_DIR"
 rm -f "$ZIP_NAME"
 zip -r -q "$ZIP_NAME" "${APP_NAME}.app"
@@ -110,10 +106,9 @@ echo "    应用： $APP_DIR  ($APP_SIZE)"
 echo "    压缩包：$OUT_DIR/$ZIP_NAME"
 echo ""
 echo "  使用说明："
-echo "    • 本机直接打开 .app 即可运行（已自签名 + 清 quarantine）。"
-echo "    • 若系统仍提示「已损坏/无法打开」，请到"
-echo "      「系统设置 → 隐私与安全性」点「仍要打开」，"
-echo "      或在本机执行一次：sudo spctl --master-disable"
+echo "    • 本包仅做 ad-hoc 自签名，未经过 Apple 公证。"
+echo "    • 若系统仍提示「已损坏/无法打开」，请停止运行并保留提示截图；"
+echo "      不要关闭 Gatekeeper 或执行 sudo spctl --master-disable。"
 echo "    • 分发给他人时，对方也需自行放行（未购买 Apple 开发者证书）。"
 echo "    • 想要正式 DMG / 公证（Notarization），请改用 electron-builder（见 README）。"
 echo "============================================"

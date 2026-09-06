@@ -52,7 +52,7 @@
 zh-screenwriter/
 ├── package.json            # 入口配置：main=electron/main.js、scripts、依赖
 ├── package.sh              # ★ 打包脚本（手动组装成 .app + .zip）
-├── 修复并启动.sh            # ★ 开发一键启动（修 Gatekeeper + 构建 + 启动 Electron）
+├── 修复并启动.sh            # 旧版本地辅助脚本（不会用于分发；不得关闭 Gatekeeper）
 ├── 启动墨场.command         # 双击调用上面的脚本（macOS）
 ├── vite.config.ts          # 渲染进程构建配置（outDir=dist-renderer, base='./'）
 ├── tsconfig.json           # TypeScript 配置（含 @/* 别名）
@@ -141,14 +141,7 @@ npm run typecheck
 | 开发（推荐） | `ZS_DEV=1 npx electron .` | Vite Dev Server (`localhost:5178`) | ✅ 改源码即刷新 |
 | 生产 | `npm run build && npx electron .` | 已构建的 `dist-renderer/index.html` | ❌ 需重新 build |
 
-**最省事的方式**：直接双击 **`启动墨场.command`**（或 `bash 修复并启动.sh`）。它会：
-1. 恢复被 macOS 移入废纸篓的 Electron.app；
-2. 关闭 Gatekeeper 全局拦截（`spctl --master-disable`）；
-3. 对 Electron.app 做 ad-hoc 自签名；
-4. `vite build`；
-5. 用 `open -a` 通过 LaunchServices 启动（避免二次拦截）。
-
-> 日常改代码：保持一个终端跑 `npx vite`（Dev Server），另一个终端 `ZS_DEV=1 npx electron .` 启动，即可获得热更新。遇到 Gatekeeper 拦截再跑一次 `修复并启动.sh`。
+日常改代码可先执行 `npm run build`，再用浏览器打开构建结果进行 UI 验证。Electron 若被 macOS 拦截，不要关闭 Gatekeeper、删除安全属性或执行全局放行命令；应使用经过签名/公证的测试包，或在另一台可信开发机上验证。
 
 ### 快捷键速查（写作视图内）
 
@@ -203,7 +196,7 @@ bash package.sh
 3. 重命名可执行文件 `Electron → Mochang`，并清理默认欢迎页 `default_app.asar`；
 4. 用 `PlistBuddy` 写入 `Info.plist`（`CFBundleName` / `CFBundleDisplayName` / `CFBundleExecutable` / `CFBundleIdentifier` / 版本）；
 5. 把 `electron/` + `dist-renderer/` + `package.json` 拷入 `Contents/Resources/app`；
-6. ad-hoc 自签名 `codesign --force --deep --sign -` + `xattr -cr` 清安全属性 + 压缩成 zip。
+6. 进行 ad-hoc 自签名 `codesign --force --deep --sign -` 并压缩成 zip；该签名不是 Apple 公证。
 
 ### 6.2 自定义产物
 
@@ -217,17 +210,13 @@ bash package.sh
 
 ### 6.3 ⚠️ macOS Gatekeeper / 未签名（M1 用户必读）
 
-本应用**未购买 Apple 开发者证书**，属于「 unidentified developer」应用。首次在他人/新机器打开会被 Gatekeeper 拦截，表现为：
+未购买 Apple Developer ID 并完成公证的版本，可能会被 Gatekeeper/XProtect 拦截，表现为：
 
 - 弹出「「Mochang」已损坏，无法打开」；或
 - 直接被丢进废纸篓；或
 - 双击瞬间消失（`zsh: killed`）。
 
-**本机自己用**（已跑过 `修复并启动.sh`）：直接双击 `release/Mochang.app` 即可，因为该脚本已执行过 `spctl --master-disable` + 自签名。
-
-**换机器 / 发给别人**：对方需自行放行，二选一：
-1. 「系统设置 → 隐私与安全性」底部点「仍要打开」；或
-2. 终端执行一次 `sudo spctl --master-disable`（允许任何来源）。
+**本机或换机器**：若出现系统安全拦截，不要关闭 Gatekeeper 或执行 `sudo spctl --master-disable`。保留提示信息，改用经 Apple 签名并公证的安装包；普通未签名包仅适合受控开发环境。
 
 > 想做**正式分发 + 自动更新 + 公证（Notarization）**，需购买 `Developer ID Application` 证书，改用 `electron-builder` 并配置 `mac.certificate` 与 `notarize`。本仓库已预置 `electron_builder_binaries_mirror` 镜像，迁移成本很低，详见 §16.5。
 
@@ -498,7 +487,7 @@ rm -f "$RES/app"
 ## 16. 已知问题与坑
 
 ### 16.1 Gatekeeper / 未签名（最重要）
-见 §6.3。未购买 Apple 开发者证书时，新机器首次打开会被拦截。本机开发用 `修复并启动.sh` 已解决；分发给他人才需对方放行。**不要把修复脚本误删**——它是 M1 上能跑起来的关键。
+见 §6.3。未公证的包可能在新机器上被拦截；不要通过关闭 Gatekeeper 来规避。面向用户分发前必须完成签名与公证。
 
 ### 16.2 中文输入法
 `Editor.tsx` 用 `contentEditable` + ` compositionstart/end` 监听处理中文输入法，避免拼音上屏时误触发元素切分。改编辑器输入逻辑时务必保留 composition 守卫。
@@ -579,7 +568,7 @@ rm -f "$RES/app"
 A：开发模式要 `ZS_DEV=1 npx electron .` 且 Vite Dev Server 在跑；生产模式改完需 `npm run build` 再 `npx electron .`。打包产物来自 `release/`，和 `npm run dev` 无关。
 
 **Q：打包后 `.app` 打开闪退 / 被丢废纸篓？**
-A：未签名导致的 Gatekeeper 拦截，见 §6.3。本机先确认跑过 `修复并启动.sh`。
+A：见 §6.3。不要通过关闭 Gatekeeper 或清除安全属性来绕过拦截；请使用经签名和公证的发布包。
 
 **Q：想换 app 图标？**
 A：准备 `.icns`（可用 `iconutil` 或在线工具生成），在 `package.sh` Step 4 写入 `CFBundleIconFile` 并 `cp` 到 `Contents/Resources/`。
