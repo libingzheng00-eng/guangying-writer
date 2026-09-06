@@ -374,30 +374,32 @@ export function Editor() {
   return (
     <div className="editor" ref={scrollRef}>
       <div className="editor__scroll">
-        <ProgressBar />
+        <div className="writing-tools">
+          <ProgressBar />
+          <MaterialPanel
+            beats={project.beats}
+            onAdd={(kind) => {
+              const id = addBeat(0, 0, '', kind);
+              if (kind === 'image' || kind === 'wimg') {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = () => {
+                  const f = input.files && input.files[0];
+                  if (!f) return;
+                  const rd = new FileReader();
+                  rd.onload = () => updateBeat(id, { img: String(rd.result || '') });
+                  rd.readAsDataURL(f);
+                };
+                input.click();
+              }
+              return id;
+            }}
+            onUpdate={updateBeat}
+            onDelete={deleteBeat}
+          />
+        </div>
         {settings.indent && project.titlePage.show ? <TitlePageCard /> : null}
-        <MaterialPanel
-          beats={project.beats}
-          onAdd={(kind) => {
-            const id = addBeat(0, 0, '', kind);
-            if (kind === 'image' || kind === 'wimg') {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = 'image/*';
-              input.onchange = () => {
-                const f = input.files && input.files[0];
-                if (!f) return;
-                const rd = new FileReader();
-                rd.onload = () => updateBeat(id, { img: String(rd.result || '') });
-                rd.readAsDataURL(f);
-              };
-              input.click();
-            }
-            return id;
-          }}
-          onUpdate={updateBeat}
-          onDelete={deleteBeat}
-        />
         <div className="script-flow" ref={contentRef} style={columnStyle}>
           {items.map((item, i) => {
             const list = Array.isArray(item) ? item : [item];

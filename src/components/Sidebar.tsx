@@ -13,9 +13,20 @@ const TABS: { key: SidebarMode; label: string }[] = [
 
 export function Sidebar() {
   const sidebar = useStore((s) => s.sidebar);
+  const sidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebar = useStore((s) => s.setSidebar);
+  const toggleSidebar = useStore((s) => s.toggleSidebar);
+  if (!sidebarOpen) {
+    return (
+      <aside className="sidebar is-collapsed" aria-label="已收起的侧栏">
+        <button className="sidebar__reveal" title="展开侧栏" aria-label="展开侧栏" onClick={toggleSidebar}>
+          <span aria-hidden>›</span>
+        </button>
+      </aside>
+    );
+  }
   return (
-    <div className="sidebar">
+    <aside className="sidebar" aria-label="导航侧栏">
       <div className="sidebar__tabs">
         {TABS.map((t) => (
           <button
@@ -32,7 +43,7 @@ export function Sidebar() {
         {sidebar === 'outline' ? <OutlinePanel /> : null}
         {sidebar === 'inspector' ? <InspectorPanel /> : null}
       </div>
-    </div>
+    </aside>
   );
 }
 

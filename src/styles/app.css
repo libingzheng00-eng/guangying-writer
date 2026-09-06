@@ -108,7 +108,8 @@ textarea {
   box-shadow: var(--toolbar-glow);
   -webkit-app-region: drag;
   position: relative;
-  z-index: 5;
+  z-index: 100;
+  isolation: isolate;
 }
 .toolbar button,
 .toolbar select,
@@ -237,10 +238,11 @@ textarea {
 
 .menu-wrap {
   position: relative;
+  z-index: 210;
 }
 .menu {
   position: absolute;
-  top: 32px;
+  top: calc(100% + 7px);
   right: 0;
   min-width: 210px;
   background: rgba(26, 32, 44, 0.9);
@@ -251,7 +253,7 @@ textarea {
     0 0 1px rgba(88, 166, 255, 0.1),
     var(--glow-cyan);
   padding: 6px;
-  z-index: 40;
+  z-index: 300;
   backdrop-filter: blur(14px) saturate(120%);
 }
 .menu__item {
@@ -286,6 +288,31 @@ textarea {
   min-height: 0;
   position: relative;
   z-index: 5;
+  transition: width 0.22s cubic-bezier(.22,.61,.36,1), flex-basis 0.22s cubic-bezier(.22,.61,.36,1), background 0.22s ease;
+}
+.sidebar.is-collapsed {
+  width: 34px;
+  flex-basis: 34px;
+  align-items: center;
+  background: linear-gradient(180deg, #171e2a 0%, #111722 100%);
+}
+.sidebar__reveal {
+  width: 30px;
+  height: 64px;
+  margin-top: 12px;
+  border: 1px solid rgba(88,166,255,.22);
+  border-radius: 0 8px 8px 0;
+  background: rgba(88,166,255,.08);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 25px;
+  line-height: 1;
+  transition: width .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.sidebar__reveal:hover {
+  width: 34px;
+  background: rgba(88,166,255,.16);
+  box-shadow: var(--glow-cyan);
 }
 .sidebar__tabs {
   display: flex;
@@ -549,6 +576,29 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
 }
+.writing-tools {
+  max-width: 880px;
+  margin: 0 auto 16px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.025));
+  box-shadow: 0 8px 26px rgba(0,0,0,.14);
+  overflow: hidden;
+}
+.writing-tools .write-progress {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  border-radius: 0;
+}
+.writing-tools .material-panel {
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 .material-panel[data-empty='true'] { padding: 8px 14px; }
 .material-panel__head {
   display: flex;
@@ -568,11 +618,12 @@ textarea {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
+  border: 1px solid rgba(255,255,255,.06);
   background: rgba(0, 0, 0, 0.18);
   border-radius: 6px;
 }
-.material-panel__item--sound { border-left: 3px solid rgba(204, 184, 135, 0.7); }
-.material-panel__item--wimg { border-left: 3px solid rgba(180, 130, 230, 0.7); }
+.material-panel__item--sound { box-shadow: inset 3px 0 0 rgba(204, 184, 135, 0.7); }
+.material-panel__item--wimg { box-shadow: inset 3px 0 0 rgba(180, 130, 230, 0.7); }
 .material-panel__icon { font-size: 18px; line-height: 1; color: rgba(204, 184, 135, 0.95); }
 .material-panel__thumb {
   width: 44px;
@@ -1474,8 +1525,9 @@ textarea {
   justify-self: end;
 }
 .write-progress__goal input {
-  width: 52px;
-  min-width: 52px;
+  width: 64px;
+  min-width: 64px;
+  flex: 0 0 64px;
   height: 22px;
   padding: 1px 4px;
   border: 1px solid var(--border-strong);
@@ -1484,6 +1536,7 @@ textarea {
   color: #e6edf3;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
+  text-align: right;
 }
 .fog-ico {
   display: inline-flex;

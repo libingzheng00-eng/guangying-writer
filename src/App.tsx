@@ -23,7 +23,6 @@ const LS_KEY = 'mojiang:autosave';
 
 export default function App() {
   const view = useStore((s) => s.view);
-  const sidebarOpen = useStore((s) => s.sidebarOpen);
   const toast = useStore((s) => s.toast);
   const fontColor = useStore((s) => s.fontColor);
   const project = useStore((s) => s.project);
@@ -191,7 +190,7 @@ export default function App() {
         <div className="write-bg" aria-hidden style={{ backgroundImage: writeBg }} />
         <Toolbar commands={commands} onOpenSettings={() => setDialog('settings')} onOpenTitle={() => setDialog('title')} />
         <div className="app-body">
-          {sidebarOpen ? <Sidebar /> : null}
+          <Sidebar />
           <main className="app-main">
             {view === 'write' ? <Editor /> : null}
             {view === 'cards' ? <CardsView /> : null}
