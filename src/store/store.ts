@@ -104,7 +104,7 @@ interface StoreState {
   setScenePos: (elementId: string, x: number, y: number) => void;
 
   /* 自由画布：节拍卡 / 灵感卡 */
-  addBeat: (x: number, y: number, text?: string) => string;
+  addBeat: (x: number, y: number, text?: string, kind?: Beat['kind']) => string;
   updateBeat: (id: string, patch: Partial<Beat>) => void;
   moveBeat: (id: string, x: number, y: number) => void;
   deleteBeat: (id: string) => void;
@@ -482,10 +482,13 @@ export const useStore = create<StoreState>((set, get) => ({
     );
   },
 
-  addBeat: (x, y, text = '') => {
+  addBeat: (x, y, text = '', kind) => {
     const id = uid('bt');
     get().mutate((p) => {
-      p.beats.push({ id, text, color: '#fff7d6', x, y });
+      const color = kind === 'sound' ? '#ccb887' : '#fff7d6';
+      const beat: Beat = { id, text, color, x, y };
+      if (kind) beat.kind = kind;
+      p.beats.push(beat);
     });
     return id;
   },

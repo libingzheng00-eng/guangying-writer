@@ -5,6 +5,21 @@
 - 隐私修正：首次启动项目改为空白稿，源码与后续构建不再包含原内置具体剧本内容。
 - 文档补充：说明 v1.2.9 成品版与 v1.3.0-alpha 源码版的差异，避免误把 alpha 当稳定版发布。
 
+## v1.3.0-alpha.4
+
+- 自由板卡片（BoardView）现在区分四种 kind：`beat` / `sound` / `image` / `wimg`：
+  - 灵感（beat）：原有 textarea 编辑区
+  - 声音（sound）：标题输入 + 音频图标 ♪，默认色 `#ccb887`
+  - 图片（image）：`<img>` 缩略图 + 标题输入
+  - 写作图片（wimg）：同 image，但归入写作页素材面板
+- 自由板工具条增加 **「＋ 灵感卡 / ＋ 声音 / ＋ 图片 / ＋ 写作图」** 一组按钮，图片类卡点击后弹出系统文件选择器，`FileReader.readAsDataURL` 写入 `Beat.img`
+- 写作页（Editor）顶部新增 **素材面板**：
+  - 空状态：仅显示「＋ 声音 / ＋ 写作图片」按钮与说明（声音与写作图片归入此处，不计入正文页数）
+  - 有素材时按类型分两区：声音卡（含标题编辑、删除）、写作图片（缩略图 + 标题 + 删除）
+- 数据层：`addBeat(x, y, text, kind?)` 新增可选第四参数 `kind`，与 v1.2.9 同款默认色（sound 用 `#ccb887`）；其它 kind 默认黄
+- 卡片按钮条统一在 BoardView 和 Editor 可见，操作语义一致
+- `BeatCardProps.onChange` 现在接受 `Partial<Pick<Beat, 'text'|'color'|'title'|'img'|'w'|'h'>>`，支持新字段就地编辑
+
 ## v1.3.0-alpha.3
 
 - 写作辅助快捷键：`Tab` / `Shift+Tab` 现在循环 9 个常用类型（动作 / 人物 / 括号提示 / 对白 / 转场 / 镜头 / 场次标题 / 一般性文本 / 备忘），与 v1.2.9 / Final Draft 主线一致；`act` 通过工具栏切换。

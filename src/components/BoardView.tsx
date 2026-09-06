@@ -196,9 +196,46 @@ export function BoardView() {
         <button className="btn btn--ghost" onClick={addSceneCard}>
           ＋场景卡
         </button>
-        <button className="btn btn--primary" onClick={() => addBeat(pan.x > 0 ? 60 : 60, 60)}>
-          ＋灵感卡
-        </button>
+        <div className="board__add-beat">
+          <button className="btn btn--primary" onClick={() => addBeat(pan.x > 0 ? 60 : 60, 60, '', 'beat')}>
+            ＋灵感卡
+          </button>
+          <button className="btn btn--ghost" onClick={() => addBeat(pan.x > 0 ? 60 : 60, 60, '', 'sound')}>
+            ＋声音
+          </button>
+          <button className="btn btn--ghost" onClick={() => {
+            const id = addBeat(pan.x > 0 ? 60 : 60, 60, '', 'image');
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = () => {
+              const f = input.files && input.files[0];
+              if (!f) return;
+              const rd = new FileReader();
+              rd.onload = () => { useStore.getState().updateBeat(id, { img: String(rd.result || '') }); };
+              rd.readAsDataURL(f);
+            };
+            input.click();
+          }}>
+            ＋图片
+          </button>
+          <button className="btn btn--ghost" onClick={() => {
+            const id = addBeat(pan.x > 0 ? 60 : 60, 60, '', 'wimg');
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = () => {
+              const f = input.files && input.files[0];
+              if (!f) return;
+              const rd = new FileReader();
+              rd.onload = () => { useStore.getState().updateBeat(id, { img: String(rd.result || '') }); };
+              rd.readAsDataURL(f);
+            };
+            input.click();
+          }}>
+            ＋写作图
+          </button>
+        </div>
         <div className="zoom-ctl">
           <button className="icon-btn" onClick={() => setZoom((z) => Math.max(0.4, z - 0.1))}>
             －
@@ -277,7 +314,7 @@ function SceneCard({ scene, pos, linking, onLink }: SceneCardProps & { linking: 
 interface BeatCardProps {
   beat: Beat;
   scenes: Scene[];
-  onChange: (patch: { text?: string; color?: string }) => void;
+  onChange: (patch: Partial<Pick<Beat, 'text' | 'color' | 'title' | 'img' | 'w' | 'h'>>) => void;
   onDelete: () => void;
   onLink: (sceneId?: string) => void;
   linking: boolean;
@@ -285,25 +322,42 @@ interface BeatCardProps {
 }
 
 function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLink }: BeatCardProps) {
+  const kind = beat.kind || 'beat';
+  const isMedia = kind === 'image' || kind === 'wimg';
+  const isSound = kind === 'sound';
+  const hasMedia = isMedia && !!beat.img;
   return (
     <div
       data-card
       data-drag="beat"
       data-id={beat.id}
-      className="bcard bcard--beat"
-      style={{ left: beat.x, top: beat.y, background: beat.color }}
+      data-kind={kind}
+      className={`bcard bcard--beat bcard--${kind}`}
+      style={{ left: beat.x, top: beat.y, background: beat.color, width: beat.w, height: beat.h }}
     >
       <div className="bcard__head">
-        <span className="bcard__tag bcard__tag--beat">灵感</span>
+        <span className={`bcard__tag bcard__tag--${kind}`}>{isSound ? '声音' : isMedia ? (kind === 'wimg' ? '写作图' : '图片') : '灵感'}</span>
         <span className="bcard__actions"><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onBoardLink} title="连接到另一张卡片">↗</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除">×</button></span>
       </div>
-      <textarea
-        className="bcard__edit"
-        value={beat.text}
-        placeholder="写点灵感、悬念或主题…"
-        onMouseDown={(e) => e.stopPropagation()}
-        onChange={(e) => onChange({ text: e.target.value })}
-      />
+      {hasMedia ? (
+        <div className="bcard__media" onMouseDown={(e) => e.stopPropagation()}>
+          <img className="bcard__media-img" src={beat.img} alt={beat.title || (kind === 'wimg' ? '写作图' : '图片')} />
+          {beat.title ? <input className="bcard__media-title" value={beat.title} placeholder="名称" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange({ title: e.target.value })} /> : null}
+        </div>
+      ) : isSound ? (
+        <div className="bcard__media bcard__media--sound" onMouseDown={(e) => e.stopPropagation()}>
+          <span className="bcard__sound-icon" aria-hidden>♪</span>
+          <input className="bcard__media-title" value={beat.title || beat.text} placeholder="声音标题" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange({ title: e.target.value, text: e.target.value })} />
+        </div>
+      ) : (
+        <textarea
+          className="bcard__edit"
+          value={beat.text}
+          placeholder="写点灵感、悬念或主题…"
+          onMouseDown={(e) => e.stopPropagation()}
+          onChange={(e) => onChange({ text: e.target.value })}
+        />
+      )}
       <div className="bcard__foot" onMouseDown={(e) => e.stopPropagation()}>
         <div className="bcard__dots">
           {CARD_COLORS.map((c) => (
