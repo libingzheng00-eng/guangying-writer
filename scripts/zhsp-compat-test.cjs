@@ -40,7 +40,7 @@ function wrap(oldA, extras = {}) {
     logLevel: 'silent',
   });
 
-  const { parseProject, serializeProject, defaultSettings, createProject } = require(bundle);
+  const { parseProject, serializeProject, defaultSettings, createProject, sceneEndpoint, beatEndpoint, cardEndpoint, FALLBACK_CARD_W, FALLBACK_SCENE_H, FALLBACK_BEAT_H } = require(bundle);
 
   const failures = [];
   const ok = (name, cond) => {
@@ -151,6 +151,113 @@ function wrap(oldA, extras = {}) {
   const bothSerialized = serializeProject(bothProject);
   const bothReparsed = parseProject(bothSerialized);
   ok('round-trip sceneNumber=both', bothReparsed.settings.sceneNumber === 'both');
+
+  // ===== alpha.6.1 起：SceneMeta.w / h 持久化 + endpoints 跟随（Item 6a 收尾） =====
+
+  console.log('\n== 场景 7：SceneMeta.w / h round-trip（合成工程含一张已 resize 的场景卡） ==');
+  // 准备一个工程：1 个场景标题元素 + 1 个 sceneMeta，自定义 w/h
+  const sizedScene = {
+    baseProject,
+    overrides: {
+      elements: [
+        { id: 'el-1', type: 'scene_heading', text: '1. 内景 / 合成咖啡馆', sceneNumber: '1' },
+      ],
+      sceneMeta: [
+        { id: 'sc-1', elementId: 'el-1', title: '合成场景', synopsis: '合成', color: '#cfe4ff', x: 100, y: 200, w: 320, h: 180 },
+      ],
+      beats: [
+        { id: 'b-r1', text: '已 resize 的卡', color: '#FCEBEB', x: 50, y: 80, kind: 'image', w: 480, h: 360 },
+      ],
+      boardLinks: [
+        { id: 'l-1', from: 'scene:el-1', to: 'beat:b-r1' },
+      ],
+    },
+  };
+  // 直接构造一个 project（含 sceneMeta / beats / boardLinks），不依赖 elements 派生。
+  const customProject = {
+    ...baseProject,
+    elements: sizedScene.overrides.elements,
+    sceneMeta: sizedScene.overrides.sceneMeta,
+    beats: sizedScene.overrides.beats,
+    boardLinks: sizedScene.overrides.boardLinks,
+  };
+  const customSerialized = serializeProject(customProject);
+  const customReparsed = parseProject(customSerialized);
+  ok('round-trip 后 sceneMeta 数量 = 1', customReparsed.sceneMeta.length === 1);
+  ok('round-trip SceneMeta.w 保留 = 320', customReparsed.sceneMeta[0].w === 320);
+  ok('round-trip SceneMeta.h 保留 = 180', customReparsed.sceneMeta[0].h === 180);
+  ok('round-trip SceneMeta.x 保留 = 100', customReparsed.sceneMeta[0].x === 100);
+  ok('round-trip SceneMeta.y 保留 = 200', customReparsed.sceneMeta[0].y === 200);
+  ok('round-trip Beat.w 保留 = 480', customReparsed.beats[0].w === 480);
+  ok('round-trip Beat.h 保留 = 360', customReparsed.beats[0].h === 360);
+  ok('round-trip boardLinks 数量 = 1', customReparsed.boardLinks.length === 1);
+
+  console.log('\n== 场景 8：旧 .zhsp（无 SceneMeta.w/h、无 Beat.w/h）仍正常打开 ==');
+  // 故意制造一个"alpha.6 之前"格式的工程：sceneMeta / beats 都没有 w/h 字段
+  const oldScene = {
+    baseProject,
+    overrides: {
+      elements: [
+        { id: 'el-1', type: 'scene_heading', text: '1. 内景 / 合成老场景', sceneNumber: '1' },
+      ],
+      sceneMeta: [
+        { id: 'sc-1', elementId: 'el-1', title: '合成旧场景', synopsis: '合成', color: '#cfe4ff', x: 50, y: 50 },
+      ],
+      beats: [
+        { id: 'b-old', text: '合成老卡', color: '#FCEBEB', x: 30, y: 30 }, // 无 w/h / kind / title / img
+      ],
+      boardLinks: [
+        { id: 'l-1', from: 'scene:el-1', to: 'beat:b-old' },
+      ],
+    },
+  };
+  const oldCustomProject = {
+    ...baseProject,
+    elements: oldScene.overrides.elements,
+    sceneMeta: oldScene.overrides.sceneMeta,
+    beats: oldScene.overrides.beats,
+    boardLinks: oldScene.overrides.boardLinks,
+  };
+  // wrap() 这里不能直接用（它要求 JSON.stringify），改用 serializeProject → JSON.stringify 链路模拟：
+  const oldSerializedText = serializeProject(oldCustomProject);
+  // 直接 parse 这个 JSON 文本，验证 round-trip 不抛异常
+  const oldReparsed2 = parseProject(oldSerializedText);
+  ok('旧 .zhsp 打开不抛异常', oldReparsed2.sceneMeta.length === 1 && oldReparsed2.beats.length === 1);
+  ok('旧 SceneMeta 解析后 w 是 undefined', oldReparsed2.sceneMeta[0].w === undefined);
+  ok('旧 SceneMeta 解析后 h 是 undefined', oldReparsed2.sceneMeta[0].h === undefined);
+  ok('旧 Beat 解析后 w 是 undefined', oldReparsed2.beats[0].w === undefined);
+  ok('旧 Beat 解析后 h 是 undefined', oldReparsed2.beats[0].h === undefined);
+  ok('旧 .zhsp 的 sceneMeta / beats / boardLinks 保留全字段', oldReparsed2.sceneMeta[0].x === 50 && oldReparsed2.sceneMeta[0].y === 50 && oldReparsed2.beats[0].x === 30 && oldReparsed2.beats[0].y === 30);
+  // 把"旧格式 .zhsp 装包 JSON 文本"喂回 parseProject：必须不抛
+  const reconstructed = JSON.parse(oldSerializedText);
+  ok('序列化文本含 sceneMeta w 缺省（无 key 写入）', reconstructed.project.sceneMeta[0].w === undefined);
+  ok('序列化文本不含 undefined 字面值', !/undefined/.test(oldSerializedText));
+
+  console.log('\n== 场景 9：关系线 endpoints 在重开后仍按卡片中心连接 ==');
+  // 用卡片的中心 (x + w/2, y + h/2) 作为 endpoint。对于旧工程无 w/h 的，
+  // sceneEndpoint 走 FALLBACK_CARD_W / FALLBACK_SCENE_H；beatEndpoint 走 FALLBACK_CARD_W / FALLBACK_BEAT_H。
+  // 重开自定义尺寸的工程：endpoints 应基于持久化的 w/h 算
+  const epNewScene = sceneEndpoint(customReparsed.sceneMeta[0], { x: 0, y: 0 });
+  const epNewBeat = beatEndpoint(customReparsed.beats[0]);
+  ok('已 resize 场景卡 endpoint x = 100 + 320/2 = 260', epNewScene.x === 100 + 320 / 2);
+  ok('已 resize 场景卡 endpoint y = 200 + 180/2 = 290', epNewScene.y === 200 + 180 / 2);
+  ok('已 resize 节拍卡 endpoint x = 50 + 480/2 = 290', epNewBeat.x === 50 + 480 / 2);
+  ok('已 resize 节拍卡 endpoint y = 80 + 360/2 = 260', epNewBeat.y === 80 + 360 / 2);
+
+  // 重开旧工程：endpoints 应基于 fallback 算
+  const epOldScene = sceneEndpoint(oldReparsed2.sceneMeta[0], { x: 0, y: 0 });
+  const epOldBeat = beatEndpoint(oldReparsed2.beats[0]);
+  ok('旧场景卡 endpoint x = 50 + 220/2 = 160', epOldScene.x === 50 + FALLBACK_CARD_W / 2);
+  ok('旧场景卡 endpoint y = 50 + 96/2 = 98', epOldScene.y === 50 + FALLBACK_SCENE_H / 2);
+  ok('旧节拍卡 endpoint x = 30 + 220/2 = 140', epOldBeat.x === 30 + FALLBACK_CARD_W / 2);
+  ok('旧节拍卡 endpoint y = 30 + 92/2 = 76', epOldBeat.y === 30 + FALLBACK_BEAT_H / 2);
+
+  console.log('\n== 场景 10：endpoints 对 NaN / Infinity / 字符串缺省不会炸 ==');
+  const dirtyScene = { x: 100, y: 100, w: NaN, h: Infinity };
+  const epDirty = sceneEndpoint(dirtyScene, { x: 0, y: 0 });
+  ok('NaN/Infinity → 走 fallback（场景卡）', epDirty.x === 100 + FALLBACK_CARD_W / 2 && epDirty.y === 100 + FALLBACK_SCENE_H / 2);
+  const cardEpDirty = cardEndpoint({ x: 0, y: 0 }, { w: 'bad', h: null }, { w: 200, h: 100 });
+  ok('cardEndpoint 字符串/null → 走 fallback', cardEpDirty.x === 100 && cardEpDirty.y === 50);
 
   if (failures.length) {
     console.log(`\n=== FAIL: ${failures.length} test(s) failed ===`);

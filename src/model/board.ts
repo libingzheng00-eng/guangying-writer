@@ -75,6 +75,42 @@ export const FALLBACK_SCENE_H = 96;
 export const FALLBACK_BEAT_H = 92;
 
 /**
+ * 关系线连接点（endpoints）计算：卡片中心。
+ *
+ * 旧工程（alpha.6 之前保存的）没有 scene.w / beat.w 字段；新工程 resize 后 w / h
+ * 一定会写入 .zhsp。`cardEndpoint` 接受可选的 w / h：缺省时按 `defaults` 兜底，
+ * NaN / Infinity / 非数也走兜底。这样 endpoints 在「重开旧工程」「旧工程 + 新 resize」
+ * 「新工程 + 重开 resize 后」三种场景下都能给出稳定的位置。
+ *
+ * 注意：返回值仍是相对坐标（卡片中心），BoardView 在 useMemo 里把它写入 Map<string, { x, y }>。
+ */
+export function cardEndpoint(
+  pos: { x: number; y: number },
+  size: { w?: number; h?: number } | undefined,
+  defaults: { w: number; h: number },
+): { x: number; y: number } {
+  const toNum = (v: unknown, fallback: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+  const w = toNum(size?.w, defaults.w);
+  const h = toNum(size?.h, defaults.h);
+  return { x: pos.x + w / 2, y: pos.y + h / 2 };
+}
+
+/** 场景卡连接点：缺 w / h 时按 FALLBACK_CARD_W / FALLBACK_SCENE_H 兜底 */
+export function sceneEndpoint(scene: { x?: number; y?: number; w?: number; h?: number }, fallbackPos: { x: number; y: number }): { x: number; y: number } {
+  return cardEndpoint(
+    { x: scene.x ?? fallbackPos.x, y: scene.y ?? fallbackPos.y },
+    { w: scene.w, h: scene.h },
+    { w: FALLBACK_CARD_W, h: FALLBACK_SCENE_H },
+  );
+}
+
+/** 节拍卡连接点：缺 w / h 时按 FALLBACK_CARD_W / FALLBACK_BEAT_H 兜底 */
+export function beatEndpoint(beat: { x: number; y: number; w?: number; h?: number }): { x: number; y: number } {
+  return cardEndpoint(beat, { w: beat.w, h: beat.h }, { w: FALLBACK_CARD_W, h: FALLBACK_BEAT_H });
+}
+
+/**
  * 把 width / height 强制收敛到合法区间。
  *
  * @param kind  卡片类型（image / wimg / beat / sound）

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store/store';
 import { deriveScenes } from '../model/project';
 import { CARD_COLORS } from '../model/elements';
-import { clampSize, sizeLimitFor, FALLBACK_CARD_W, FALLBACK_SCENE_H, FALLBACK_BEAT_H } from '../model/board';
+import { clampSize, sizeLimitFor, sceneEndpoint, beatEndpoint } from '../model/board';
 import type { Beat, BoardLink, Scene } from '../model/types';
 
 type Filter = 'both' | 'scenes' | 'beats';
@@ -188,17 +188,13 @@ export function BoardView() {
   const endpoints = useMemo(() => {
     const out = new Map<string, { x: number; y: number }>();
     scenes.forEach((scene, index) => {
-      const pos = scene.x != null && scene.y != null ? { x: scene.x, y: scene.y } : autoPos(index);
-      // 关系线连接点 = 卡片中心。旧工程（无 w/h）按 FALLBACK_CARD_W / FALLBACK_SCENE_H
-      // 兜底，与 alpha.6 之前的"y+68 / y+78"位置差异很小，但 resize 后会跟随卡片中心走。
-      const w = scene.w ?? FALLBACK_CARD_W;
-      const h = scene.h ?? FALLBACK_SCENE_H;
-      out.set(`scene:${scene.elementId}`, { x: pos.x + w / 2, y: pos.y + h / 2 });
+      // scene.x / scene.y 缺省时按 autoPos 兜底；w / h 缺省时按 FALLBACK_* 兜底
+      // （详见 src/model/board.ts 的 sceneEndpoint 纯函数）。
+      const fallback = autoPos(index);
+      out.set(`scene:${scene.elementId}`, sceneEndpoint(scene, fallback));
     });
     project.beats.forEach((beat) => {
-      const w = beat.w ?? FALLBACK_CARD_W;
-      const h = beat.h ?? FALLBACK_BEAT_H;
-      out.set(`beat:${beat.id}`, { x: beat.x + w / 2, y: beat.y + h / 2 });
+      out.set(`beat:${beat.id}`, beatEndpoint(beat));
     });
     return out;
   }, [scenes, project.beats]);
