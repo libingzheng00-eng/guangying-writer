@@ -5,6 +5,7 @@ release/
 release-alpha-test/
 release-alpha-test-r2/
 release-alpha-test-r3/
+release-alpha-test-r4/
 
 # Local macOS and editor files
 .DS_Store
