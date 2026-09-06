@@ -18,3 +18,10 @@ export {
   clampTargetPages,
   normalizeTargetPages,
 } from '../src/model/progress';
+export {
+  RESIZE_LIMITS,
+  sizeLimitFor,
+  defaultSize,
+  clampSize,
+  resizeBy,
+} from '../src/model/board';

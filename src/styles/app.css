@@ -1918,6 +1918,50 @@ textarea {
   background: var(--danger-soft);
   color: var(--danger);
 }
+
+/* ------------------------------ 自由板卡片缩放手柄（v1.2.9 同款） ------------------------------ */
+/*
+ * 卡片右下角的小手柄，鼠标 hover 时显示斜线指示可拖动。
+ * 仅 image / wimg 卡显示（其它 kind 不显示）。
+ */
+.bcard {
+  position: relative;
+}
+.bcard__resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.32);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+  line-height: 18px;
+  cursor: nwse-resize;
+  user-select: none;
+  /* 默认隐藏，hover 卡片时显示，避免污染卡片视觉 */
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  /* 渐变斜线指示 */
+  background-image:
+    linear-gradient(135deg, transparent 38%, currentColor 38%, currentColor 42%, transparent 42%, transparent 58%, currentColor 58%, currentColor 62%, transparent 62%),
+    linear-gradient(135deg, transparent 70%, currentColor 70%, currentColor 74%, transparent 74%);
+  background-color: rgba(0, 0, 0, 0.32);
+  background-size: auto, auto;
+  /* 覆盖 hover 卡片时的对比度 */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.bcard:hover .bcard__resize,
+.bcard__resize:focus-visible {
+  opacity: 1;
+}
+.bcard__resize:hover {
+  color: #fff;
+  background-color: rgba(0, 0, 0, 0.55);
+}
 .zoom-ctl {
   display: flex;
   align-items: center;

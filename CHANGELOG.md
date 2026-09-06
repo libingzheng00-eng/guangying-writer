@@ -5,6 +5,25 @@
 - 隐私修正：首次启动项目改为空白稿，源码与后续构建不再包含原内置具体剧本内容。
 - 文档补充：说明 v1.2.9 成品版与 v1.3.0-alpha 源码版的差异，避免误把 alpha 当稳定版发布。
 
+## v1.3.0-alpha.6
+
+- 自由板（BoardView）图片 / 写作图卡（image / wimg）右下角新增「缩放」手柄 `.bcard__resize`，hover 卡片时显示斜线指示，鼠标拖动调整卡片大小，松开时落位到 `beat.w` / `beat.h`。
+- 尺寸约束（v1.2.9 同款）：
+  - image / wimg：min 180×140，max 760×680，default 176×140
+  - beat / sound：min 220×170，max 720×640，default 220×170
+- 拖动期间实时更新 DOM 尺寸（视觉反馈），松手时通过 `resizeBeat(id, w, h)` 一次落位；非法输入（NaN / Infinity / 字符串 / null）由 `clampSize` 兜底回退到该类型 default，min/max 越界则 clamp 到合法区间。
+- 撤销合并使用独立 coalesce key `beatresize:${id}`，与 text 编辑 / 移动 / 颜色修改互不干扰；连续 resize 在一条 undo 内完成。
+- 新增 `src/model/board.ts`：纯函数 `RESIZE_LIMITS / sizeLimitFor / defaultSize / clampSize / resizeBy`，纯函数测试覆盖：合法区间、min/max 边界、单边越界、负数 / 0、NaN / Infinity / -Infinity、字符串 / null / undefined、浮点 round 收敛、zoom 0 容错（回退到 1）、resizeBy zoom 归一化。
+- 新增 36 条纯函数断言。
+- CSS：`.bcard__resize` 右下角 18×18，hover 卡片时显示；cursor `nwse-resize`；user-select: none。
+
+## v1.3.0-alpha.5.1
+
+- 目标页数边界兜底：`src/model/progress.ts` 新增 `clampTargetPages`（运行用，0 表示关闭目标页数；>9999 封顶；非数 / 负数 / NaN 收敛到 0）与 `normalizeTargetPages`（加载用，保留 undefined 表示未设）。
+- `store.setTargetPages` 改用 `clampTargetPages`，`.zhsp` 加载用 `normalizeTargetPages`，ProgressBar 输入框 value 改为显示真实值（target=0 时显示 0）、placeholder=100、min=0、title 加 0 = 关闭目标 提示。
+- 新增 29 条断言。
+- 验证：typecheck ✅ / build ✅ / test:render ✅ (10/10) / test:zhsp ✅ (40/40) / test:writing ✅ (126/126，含 29 条新增)。
+
 ## v1.3.0-alpha.5
 
 - 新增 `src/model/progress.ts`：`computeSceneBands` 按预计排版行数计算每个场景的占比与调色板色带，跳过 `omit / note / act`，并把 `spaceBefore` 计入行数；`overPages` / `writtenPagesExcludingTitle` / `nextProgressTheme` / `normalizeProgressTheme` 同步抽象，便于纯函数测试。

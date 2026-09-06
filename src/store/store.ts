@@ -17,6 +17,7 @@ import { plain, cnNum } from '../utils/text';
 import { uid } from '../utils/id';
 import { isHexColor } from '../utils/color';
 import { clampTargetPages } from '../model/progress';
+import { clampSize } from '../model/board';
 
 export type ViewMode = 'write' | 'cards' | 'board' | 'preview' | 'reports';
 export type SidebarMode = 'navigator' | 'outline' | 'inspector';
@@ -107,6 +108,8 @@ interface StoreState {
   /* 自由画布：节拍卡 / 灵感卡 */
   addBeat: (x: number, y: number, text?: string, kind?: Beat['kind']) => string;
   updateBeat: (id: string, patch: Partial<Beat>) => void;
+  /** resize 节拍卡到指定尺寸，coalesce 合并连续 resize；非法值由 clampSize 兜底 */
+  resizeBeat: (id: string, w: number, h: number) => void;
   moveBeat: (id: string, x: number, y: number) => void;
   deleteBeat: (id: string) => void;
   linkBeat: (id: string, sceneId?: string) => void;
@@ -501,6 +504,23 @@ export const useStore = create<StoreState>((set, get) => ({
         if (b) Object.assign(b, patch);
       },
       { coalesce: `beat:${id}` },
+    );
+  },
+
+  /**
+   * resize 节拍卡：使用独立 coalesce key（`beatresize:${id}`），与 text 编辑互不干扰。
+   * 非法输入（NaN / Infinity / 负数 / 巨大数）由 clampSize 收敛到合法区间。
+   */
+  resizeBeat: (id, w, h) => {
+    get().mutate(
+      (p) => {
+        const b = p.beats.find((x) => x.id === id);
+        if (!b) return;
+        const next = clampSize(b.kind, w, h);
+        b.w = next.w;
+        b.h = next.h;
+      },
+      { coalesce: `beatresize:${id}` },
     );
   },
 

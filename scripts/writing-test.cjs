@@ -50,6 +50,11 @@ process.on('exit', () => {
     PROGRESS_THEME_ORDER,
     clampTargetPages,
     normalizeTargetPages,
+    RESIZE_LIMITS,
+    sizeLimitFor,
+    defaultSize,
+    clampSize,
+    resizeBy,
   } = require(bundle);
 
   const failures = [];
@@ -347,6 +352,59 @@ process.on('exit', () => {
   ok('100 → 100（合法保留）', normalizeTargetPages(100) === 100);
   ok('99.4 → 99', normalizeTargetPages(99.4) === 99);
   ok('10000 → 9999（封顶）', normalizeTargetPages(10000) === 9999);
+
+  console.log('\n== RESIZE_LIMITS：四套尺寸约束（v1.2.9 同款） ==');
+  ok('image minW=180 / minH=140 / maxW=760 / maxH=680',
+    RESIZE_LIMITS.image.minW === 180 && RESIZE_LIMITS.image.minH === 140 &&
+    RESIZE_LIMITS.image.maxW === 760 && RESIZE_LIMITS.image.maxH === 680);
+  ok('wimg 与 image 同约束', JSON.stringify(RESIZE_LIMITS.wimg) === JSON.stringify(RESIZE_LIMITS.image));
+  ok('beat minW=220 / minH=170', RESIZE_LIMITS.beat.minW === 220 && RESIZE_LIMITS.beat.minH === 170);
+  ok('sound 与 beat 同约束', JSON.stringify(RESIZE_LIMITS.sound) === JSON.stringify(RESIZE_LIMITS.beat));
+  ok('defaultSize(image) → 176×140', defaultSize('image').w === 176 && defaultSize('image').h === 140);
+  ok('defaultSize(beat) → 220×170', defaultSize('beat').w === 220 && defaultSize('beat').h === 170);
+  ok('sizeLimitFor(unknown) 回退到 beat', sizeLimitFor(undefined).defaultW === 220);
+  ok('sizeLimitFor(\"weird\") 回退到 beat', sizeLimitFor('weird').minW === 220);
+
+  console.log('\n== clampSize：min/max + 异常值兜底 ==');
+  // 合法区间内
+  ok('image 200×200 → 200×200', clampSize('image', 200, 200).w === 200 && clampSize('image', 200, 200).h === 200);
+  ok('image 500×500 → 500×500', clampSize('image', 500, 500).w === 500 && clampSize('image', 500, 500).h === 500);
+  // 拖到 max 之上：封顶
+  ok('image 1000×1000 → 760×680（封顶）', clampSize('image', 1000, 1000).w === 760 && clampSize('image', 1000, 1000).h === 680);
+  ok('image 1e6 × 1e6 → 760×680', clampSize('image', 1e6, 1e6).w === 760 && clampSize('image', 1e6, 1e6).h === 680);
+  // 拖到 min 之下：兜底到 min
+  ok('image 50×50 → 180×140（兜底）', clampSize('image', 50, 50).w === 180 && clampSize('image', 50, 50).h === 140);
+  ok('image 0×0 → 180×140（兜底）', clampSize('image', 0, 0).w === 180 && clampSize('image', 0, 0).h === 140);
+  ok('image -100×-50 → 180×140（负数兜底）', clampSize('image', -100, -50).w === 180 && clampSize('image', -100, -50).h === 140);
+  // 异常值：NaN / Infinity / 字符串 / null
+  ok('image NaN×NaN → default 176×140', clampSize('image', NaN, NaN).w === 176 && clampSize('image', NaN, NaN).h === 140);
+  ok('image Infinity×Infinity → default 176×140（非法值 fallback）', clampSize('image', Infinity, Infinity).w === 176 && clampSize('image', Infinity, Infinity).h === 140);
+  ok('image -Infinity×-Infinity → default 176×140', clampSize('image', -Infinity, -Infinity).w === 176 && clampSize('image', -Infinity, -Infinity).h === 140);
+  ok('image 字符串 → default', clampSize('image', 'abc', 'def').w === 176 && clampSize('image', 'abc', 'def').h === 140);
+  ok('image null → default', clampSize('image', null, null).w === 176 && clampSize('image', null, null).h === 140);
+  // 边界值：恰好 = min / max
+  ok('image 180×140（边界 min）→ 180×140', clampSize('image', 180, 140).w === 180 && clampSize('image', 180, 140).h === 140);
+  ok('image 760×680（边界 max）→ 760×680', clampSize('image', 760, 680).w === 760 && clampSize('image', 760, 680).h === 680);
+  // 浮点 → 整数
+  ok('image 199.6×139.4 → 200×140（round + 浮点收敛）', clampSize('image', 199.6, 139.4).w === 200 && clampSize('image', 199.6, 139.4).h === 140);
+  // 单边越界
+  ok('image 1000×300（仅 w 越界）→ 760×300', clampSize('image', 1000, 300).w === 760 && clampSize('image', 1000, 300).h === 300);
+  ok('image 300×50（仅 h 越界）→ 300×140', clampSize('image', 300, 50).w === 300 && clampSize('image', 300, 50).h === 140);
+  // beat / sound 区间
+  ok('beat 100×100 → 220×170（兜底）', clampSize('beat', 100, 100).w === 220 && clampSize('beat', 100, 100).h === 170);
+  ok('sound 100×100 → 220×170（兜底）', clampSize('sound', 100, 100).w === 220 && clampSize('sound', 100, 100).h === 170);
+  ok('beat 1000×1000 → 720×640（封顶）', clampSize('beat', 1000, 1000).w === 720 && clampSize('beat', 1000, 1000).h === 640);
+  // 未知 kind 回退 beat
+  ok('unknown kind → beat 区间 100×100 → 220×170', clampSize('weird', 100, 100).w === 220 && clampSize('weird', 100, 100).h === 170);
+
+  console.log('\n== resizeBy：起始尺寸 + 鼠标位移（带 zoom） ==');
+  ok('起始 200×200 + 位移 (50,50) zoom=1 → 250×250', resizeBy('image', 200, 200, 50, 50, 1).w === 250 && resizeBy('image', 200, 200, 50, 50, 1).h === 250);
+  ok('起始 200×200 + 位移 (200,200) zoom=1 → 400×400', resizeBy('image', 200, 200, 200, 200, 1).w === 400 && resizeBy('image', 200, 200, 200, 200, 1).h === 400);
+  ok('zoom=2 → 位移只算一半：200×200 + (200,200) zoom=2 → 300×300', resizeBy('image', 200, 200, 200, 200, 2).w === 300 && resizeBy('image', 200, 200, 200, 200, 2).h === 300);
+  ok('zoom=0.5 → 位移放大一倍：200×200 + (50,50) zoom=0.5 → 300×300', resizeBy('image', 200, 200, 50, 50, 0.5).w === 300 && resizeBy('image', 200, 200, 50, 50, 0.5).h === 300);
+  ok('zoom=0（非法）回退到 1：200×200 + (50,50) zoom=0 → 250×250', resizeBy('image', 200, 200, 50, 50, 0).w === 250 && resizeBy('image', 200, 200, 50, 50, 0).h === 250);
+  ok('resizeBy 也 clamp：起始 100×100 + (2000,2000) → max 760×680', resizeBy('image', 100, 100, 2000, 2000, 1).w === 760 && resizeBy('image', 100, 100, 2000, 2000, 1).h === 680);
+  ok('resizeBy 也兜底：起始 200×200 + (-1000,-1000) → min 180×140', resizeBy('image', 200, 200, -1000, -1000, 1).w === 180 && resizeBy('image', 200, 200, -1000, -1000, 1).h === 140);
 
   if (failures.length) {
     console.log(`\n=== FAIL: ${failures.length} test(s) failed ===`);
