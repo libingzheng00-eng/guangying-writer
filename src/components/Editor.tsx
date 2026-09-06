@@ -35,6 +35,7 @@ export function Editor() {
   const requestFocus = useStore((s) => s.requestFocus);
   const addBeat = useStore((s) => s.addBeat);
   const updateBeat = useStore((s) => s.updateBeat);
+  const moveBeat = useStore((s) => s.moveBeat);
   const deleteBeat = useStore((s) => s.deleteBeat);
   const { breaks, lineHeightPx, contentWidthPx } = usePagination();
 
@@ -43,6 +44,8 @@ export function Editor() {
   /** ⌘⇧N 备忘切换：记住每个元素上一次的非备忘类型，便于从 note 切回 */
   const noteMemoryRef = useRef(new Map<string, ElementType>());
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
+  const [showSoundCards, setShowSoundCards] = useState(true);
+  const [showImageCards, setShowImageCards] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -371,34 +374,45 @@ export function Editor() {
     lineHeight: settings.lineHeight,
   };
 
+  const writingSounds = project.beats.filter((b) => (b.kind || 'beat') === 'sound');
+  const writingImages = project.beats.filter((b) => (b.kind || 'beat') === 'wimg');
+  const addWritingMaterial = (kind: 'sound' | 'wimg') => {
+    const count = kind === 'sound' ? writingSounds.length : writingImages.length;
+    const x = Math.max(36, (scrollRef.current?.clientWidth || 980) - 292);
+    const y = 92 + count * 30 + (kind === 'wimg' ? 132 : 0);
+    const id = addBeat(x, y, '', kind);
+    if (kind === 'wimg') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = () => {
+        const f = input.files && input.files[0];
+        if (!f) return;
+        const rd = new FileReader();
+        rd.onload = () => updateBeat(id, { img: String(rd.result || '') });
+        rd.readAsDataURL(f);
+      };
+      input.click();
+    }
+  };
+
   return (
     <div className="editor" ref={scrollRef}>
+      <ProgressBar>
+        <MaterialControls
+          soundCount={writingSounds.length}
+          imageCount={writingImages.length}
+          showSound={showSoundCards}
+          showImages={showImageCards}
+          onToggleSound={() => setShowSoundCards((v) => !v)}
+          onToggleImages={() => setShowImageCards((v) => !v)}
+          onAddSound={() => addWritingMaterial('sound')}
+          onAddImage={() => addWritingMaterial('wimg')}
+        />
+      </ProgressBar>
       <div className="editor__scroll">
-        <div className="writing-tools">
-          <ProgressBar />
-          <MaterialPanel
-            beats={project.beats}
-            onAdd={(kind) => {
-              const id = addBeat(0, 0, '', kind);
-              if (kind === 'image' || kind === 'wimg') {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.onchange = () => {
-                  const f = input.files && input.files[0];
-                  if (!f) return;
-                  const rd = new FileReader();
-                  rd.onload = () => updateBeat(id, { img: String(rd.result || '') });
-                  rd.readAsDataURL(f);
-                };
-                input.click();
-              }
-              return id;
-            }}
-            onUpdate={updateBeat}
-            onDelete={deleteBeat}
-          />
-        </div>
+        <WritingMaterialCards cards={writingSounds} kind="sound" visible={showSoundCards} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
+        <WritingMaterialCards cards={writingImages} kind="wimg" visible={showImageCards} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
         {settings.indent && project.titlePage.show ? <TitlePageCard /> : null}
         <div className="script-flow" ref={contentRef} style={columnStyle}>
           {items.map((item, i) => {
@@ -509,44 +523,59 @@ export function Editor() {
   }
 }
 
-interface MaterialPanelProps {
-  beats: typeof useStore extends never ? never : any;
-  onAdd: (kind: 'sound' | 'image' | 'wimg') => string;
-  onUpdate: (id: string, patch: any) => void;
-  onDelete: (id: string) => void;
+function MaterialControls({
+  soundCount, imageCount, showSound, showImages, onToggleSound, onToggleImages, onAddSound, onAddImage,
+}: {
+  soundCount: number; imageCount: number; showSound: boolean; showImages: boolean;
+  onToggleSound: () => void; onToggleImages: () => void; onAddSound: () => void; onAddImage: () => void;
+}) {
+  return (
+    <span className="writing-material-controls" aria-label="写作素材">
+      <span className="writing-material-controls__group">
+        <button type="button" aria-label="显示或隐藏声音卡" aria-pressed={showSound} title={showSound ? '暂时隐藏声音卡' : '显示声音卡'} onClick={onToggleSound}>◌ <b>{soundCount}</b></button>
+        <button type="button" aria-label="新建声音卡" title="新建声音卡" onClick={onAddSound}>＋</button>
+      </span>
+      <span className="writing-material-controls__group">
+        <button type="button" aria-label="显示或隐藏图片卡" aria-pressed={showImages} title={showImages ? '暂时隐藏图片卡' : '显示图片卡'} onClick={onToggleImages}>▣ <b>{imageCount}</b></button>
+        <button type="button" aria-label="新建图片卡" title="新建图片卡" onClick={onAddImage}>＋</button>
+      </span>
+    </span>
+  );
 }
 
-function MaterialPanel(props: MaterialPanelProps) {
-  const { beats, onAdd, onUpdate, onDelete } = props;
-  const sounds = beats.filter((b: any) => (b.kind || 'beat') === 'sound');
-  const wimgs = beats.filter((b: any) => (b.kind || 'beat') === 'wimg');
-  const total = sounds.length + wimgs.length;
+function WritingMaterialCards({ cards, kind, visible, onUpdate, onMove, onDelete }: {
+  cards: Array<{ id: string; x: number; y: number; text: string; title?: string; img?: string }>;
+  kind: 'sound' | 'wimg'; visible: boolean;
+  onUpdate: (id: string, patch: { title?: string; text?: string }) => void;
+  onMove: (id: string, x: number, y: number) => void;
+  onDelete: (id: string) => void;
+}) {
+  const dragRef = useRef<{ id: string; x: number; y: number; startX: number; startY: number } | null>(null);
+  const image = kind === 'wimg';
+  const onPointerDown = (event: React.PointerEvent<HTMLElement>, card: { id: string; x: number; y: number }) => {
+    if ((event.target as HTMLElement).closest('input, textarea, button')) return;
+    dragRef.current = { id: card.id, x: card.x, y: card.y, startX: event.clientX, startY: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    onMove(drag.id, Math.max(16, Math.round(drag.x + event.clientX - drag.startX)), Math.max(76, Math.round(drag.y + event.clientY - drag.startY)));
+  };
+  const stopDrag = () => { dragRef.current = null; };
   return (
-    <div className="material-panel" data-empty={total === 0 ? 'true' : undefined}>
-      <div className="material-panel__head">
-        <span className="material-panel__title">素材</span>
-        {total ? <span className="material-panel__count">{sounds.length} 声音 · {wimgs.length} 图片</span> : <span className="material-panel__hint">不计入正文页数</span>}
-        <div className="material-panel__actions">
-          <button className="btn btn--ghost" onClick={() => onAdd('sound')}>＋声音</button>
-          <button className="btn btn--ghost" onClick={() => onAdd('wimg')}>＋图片</button>
-        </div>
-      </div>
-      {total ? <ul className="material-panel__list" aria-label="写作素材">
-        {sounds.map((b: any) => (
-          <li key={b.id} className="material-panel__item material-panel__item--sound">
-            <span className="material-panel__icon" aria-hidden>♪</span>
-            <input className="material-panel__title-input" value={b.title || b.text} placeholder="声音标题" aria-label="声音标题" onChange={(e) => onUpdate(b.id, { title: e.target.value, text: e.target.value })} />
-            <button className="material-panel__del" title="删除声音" aria-label="删除声音" onClick={() => onDelete(b.id)}>×</button>
-          </li>
-        ))}
-        {wimgs.map((b: any) => (
-          <li key={b.id} className="material-panel__item material-panel__item--wimg">
-            {b.img ? <img className="material-panel__thumb" src={b.img} alt="" /> : <span className="material-panel__thumb material-panel__thumb--empty" aria-hidden>图</span>}
-            <input className="material-panel__title-input" value={b.title || ''} placeholder="图片名称" aria-label="图片名称" onChange={(e) => onUpdate(b.id, { title: e.target.value })} />
-            <button className="material-panel__del" title="删除图片" aria-label="删除图片" onClick={() => onDelete(b.id)}>×</button>
-          </li>
-        ))}
-      </ul> : null}
+    <div className={'writing-material-layer' + (image ? ' writing-material-layer--image' : '') + (visible ? '' : ' is-hidden')} aria-hidden={!visible}>
+      {cards.map((card) => (
+        <article key={card.id} className={'writing-material-card' + (image ? ' writing-material-card--image' : '')} style={{ left: card.x, top: card.y }} onPointerDown={(e) => onPointerDown(e, card)} onPointerMove={onPointerMove} onPointerUp={stopDrag}>
+          <header className="writing-material-card__head">
+            <span className="writing-material-card__kind" aria-hidden>{image ? '▣' : '◌'}</span>
+            <input value={card.title || ''} placeholder={image ? '图片批注' : '声音设计'} aria-label={image ? '图片卡标题' : '声音卡标题'} onChange={(e) => onUpdate(card.id, image ? { title: e.target.value } : { title: e.target.value, text: e.target.value })} />
+            <span className="writing-material-card__drag" title="拖动卡片" aria-hidden>⠿</span>
+            <button type="button" title={image ? '删除这张图片卡' : '删除这张声音卡'} aria-label={image ? '删除这张图片卡' : '删除这张声音卡'} onClick={() => onDelete(card.id)}>×</button>
+          </header>
+          {image ? (card.img ? <img src={card.img} alt={card.title || '图片卡'} draggable={false} /> : <div className="writing-material-card__empty">等待导入图片</div>) : <textarea value={card.text} placeholder="声音、环境、节奏或情绪提示…" aria-label="声音卡内容" onChange={(e) => onUpdate(card.id, { text: e.target.value })} />}
+        </article>
+      ))}
     </div>
   );
 }

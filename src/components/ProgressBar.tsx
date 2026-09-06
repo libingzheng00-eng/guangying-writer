@@ -49,7 +49,7 @@ export function fogPList(): { key: 'cigarette' | 'car' | 'key'; label: string; e
   return THEMES.map((t) => ({ key: t.key, label: t.label, end: t.endLabel }));
 }
 
-export function ProgressBar() {
+export function ProgressBar({ children }: { children?: React.ReactNode }) {
   const project = useStore((s) => s.project);
   const activeId = useStore((s) => s.activeId);
   const pageCount = useStore((s) => s.pageCount);
@@ -236,6 +236,7 @@ export function ProgressBar() {
           onChange={(e) => useStore.getState().setTargetPages(Number(e.target.value))}
         />
         页
+        {children}
       </label>
     </div>
   );
