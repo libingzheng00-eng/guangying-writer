@@ -2,6 +2,7 @@
 node_modules/
 dist-renderer/
 release/
+release-alpha-test/
 
 # Local macOS and editor files
 .DS_Store
