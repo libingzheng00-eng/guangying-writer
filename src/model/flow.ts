@@ -1,8 +1,10 @@
-import type { ElementType, ScriptElement } from './types';
+import type { ElementType, ScriptElement, ScriptProject } from './types';
 import { isDialogueType } from './elements';
+import { plain } from '../utils/text';
 
 /**
- * Tab / Shift+Tab 的元素类型循环（参考 Final Draft）
+ * Tab / Shift+Tab 的元素类型循环（参考 Final Draft 主线）
+ * 仅循环 7 个常用类型；act / general / note 通过工具栏或专用快捷键切换。
  */
 const TAB_CYCLE: ElementType[] = [
   'action',
@@ -12,14 +14,12 @@ const TAB_CYCLE: ElementType[] = [
   'transition',
   'shot',
   'scene_heading',
-  'act',
-  'general',
-  'note',
 ];
 
 export function nextTypeOnTab(current: ElementType, shift = false): ElementType {
   const i = TAB_CYCLE.indexOf(current);
-  if (i < 0) return 'action';
+  // 不在循环里的类型（act / general / note 等）落到 action，避免静默吞掉按键
+  if (i < 0) return shift ? 'scene_heading' : 'action';
   const n = TAB_CYCLE.length;
   return TAB_CYCLE[(i + (shift ? -1 : 1) + n) % n];
 }
@@ -162,6 +162,66 @@ export function guessType(line: string, prev?: ScriptElement): ElementType {
   }
   if (prev && prev.type === 'character') return 'dialogue';
   return 'action';
+}
+
+/**
+ * Final Draft 风格的「正在输入」识别：根据一行文本的形态给出可能的元素类型。
+ * 仅当空块第一次输入时才调用，避免误判用户后续编辑。
+ * 返回 null 表示没有命中，保持当前类型。
+ */
+export function recognizeType(line: string): ElementType | null {
+  const s = line.trim();
+  if (!s) return null;
+  // 场次标题
+  if (/^\d+[.、．]\s*\S+/.test(s)) return 'scene_heading';
+  if (/^第\s*[0-9一二三四五六七八九十百千]+\s*[场鏡镜幕]/.test(s)) return 'scene_heading';
+  if (/^(内景|外景|内\/外景|外\/内景|内外景)[\s.．、:]/.test(s)) return 'scene_heading';
+  if (/^(INT|EXT|I\/E|E\/I)[\s.．、:]/.test(s)) return 'scene_heading';
+  // 转场：短行，结尾「：」「:」或常见转场词
+  if (s.length <= 12 && /[：:]\s*$/.test(s)) return 'transition';
+  if (s.length <= 12 && /(切至|切出|淡入|淡出|叠化|溶至|黑场|字幕)[：:]?\s*(\.|。)?$/.test(s)) return 'transition';
+  if (/^FADE\s+(IN|OUT)[:.]?\s*$/i.test(s)) return 'transition';
+  // 全大写英文 → character
+  if (/^[A-Z][A-Z0-9 .'’\-]{0,20}$/.test(s) && /[A-Z]/.test(s) && !/[a-z]/.test(s)) return 'character';
+  // 括号提示
+  if (/^[（(].+[）)]$/.test(s)) return 'parenthetical';
+  // 镜头
+  if (/^(特写|大特写|近景|中景|全景|远景|俯拍|仰拍|主观镜头|插入镜头|跟拍|摇摄|推镜|拉镜)\s*-?\s*$/.test(s)) return 'shot';
+  return null;
+}
+
+/**
+ * 给定一个对白元素 id，反向查最近的人物名（在遇到场次标题前截止）。
+ * 找不到返回 null（不会抛）。
+ */
+export function characterForDialogue(project: { elements: ScriptElement[] }, dialogueId: string): string | null {
+  const idx = project.elements.findIndex((e) => e.id === dialogueId);
+  if (idx < 0) return null;
+  for (let i = idx; i >= 0; i -= 1) {
+    const el = project.elements[i];
+    if (el.type === 'character') {
+      const name = plain(el.text).trim();
+      return name || null;
+    }
+    if (el.type === 'scene_heading') break;
+  }
+  return null;
+}
+
+/**
+ * 「（续）」标签：仅当「当前对白所属人物 === 上一页最末对白所属人物」时返回带姓名的版本，
+ * 否则回退为不带姓名的「（续）」，避免跨人物 / 跨场次时仍沿用旧角色名误导读者。
+ */
+export function contdLabelFor(
+  item: { elements: ScriptElement[] },
+  project: ScriptProject,
+  prevChar: string | null,
+): string {
+  const name = characterForDialogue(project, item.elements[0].id);
+  if (name && prevChar && name === prevChar) {
+    return `${name}${project.settings.contdText}`;
+  }
+  return '（续）';
 }
 
 export { isDialogueType };

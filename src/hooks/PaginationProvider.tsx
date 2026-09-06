@@ -2,9 +2,9 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import type { ScriptElement, ScriptProject } from '../model/types';
 import { useStore } from '../store/store';
 import { StaticBlock } from '../components/ScriptBlock';
-import { keepWithNext, canSplit } from '../model/flow';
+import { keepWithNext, canSplit, contdLabelFor, characterForDialogue } from '../model/flow';
 import { PAPER_MM } from '../model/stats';
-import { plain, stripSceneNumber } from '../utils/text';
+import { stripSceneNumber } from '../utils/text';
 import { fontStackOf } from '../model/elements';
 import { deriveScenes } from '../model/project';
 
@@ -136,8 +136,24 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
       let cur: Placed[] = [];
       let curH = 0;
       let curRev: string | null = null;
+      /** 上一页最末一段对白所属人物；只有「当前对白人物 === 上一页最末人物」才显示「角色名（续）」 */
+      let prevPageLastCharacter: string | null = null;
+
+      const lastCharacterOf = (placed: Placed[]): string | null => {
+        for (let i = placed.length - 1; i >= 0; i -= 1) {
+          const it = placed[i];
+          const els = it.elements;
+          for (let j = els.length - 1; j >= 0; j -= 1) {
+            if (els[j].type === 'dialogue') {
+              return characterForDialogue(project, els[j].id);
+            }
+          }
+        }
+        return null;
+      };
 
       const flush = () => {
+        prevPageLastCharacter = lastCharacterOf(cur);
         pages.push({ index: pages.length, items: cur, revColor: curRev });
         cur = [];
         curH = 0;
@@ -187,7 +203,7 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
               lines: rest,
               skipLines: chunkStart,
               more: false,
-              contd: chunkStart > 0 && reserve ? contdLabel(item, project) : undefined,
+              contd: chunkStart > 0 && reserve ? contdLabelFor(item, project, prevPageLastCharacter) : undefined,
               spaceBefore: mtLines,
             });
             curH += need;
@@ -343,16 +359,4 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
       {children}
     </Ctx.Provider>
   );
-}
-
-function contdLabel(item: Item, project: ScriptProject): string {
-  // 找到该对白所属人物
-  const idx = project.elements.findIndex((e) => e.id === item.elements[0].id);
-  for (let i = idx; i >= 0; i -= 1) {
-    if (project.elements[i].type === 'character') {
-      return `${plain(project.elements[i].text).trim()}${project.settings.contdText}`;
-    }
-    if (project.elements[i].type === 'scene_heading') break;
-  }
-  return `（续）`;
 }

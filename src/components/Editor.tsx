@@ -4,10 +4,10 @@ import { usePagination } from '../hooks/PaginationProvider';
 import { EditableBlock } from './ScriptBlock';
 import { caretOffset, splitHtml, domLength } from '../utils/dom';
 import { isBlank, plain, stripSceneNumber } from '../utils/text';
-import { nextTypeOnEnter, nextTypeOnTab, groupDual } from '../model/flow';
+import { nextTypeOnEnter, nextTypeOnTab, groupDual, recognizeType } from '../model/flow';
 import { characterNames, sceneHeadings, deriveScenes } from '../model/project';
 import { COMMON_SHOTS, COMMON_TRANSITIONS, fontStackOf } from '../model/elements';
-import type { ScriptElement } from '../model/types';
+import type { ScriptElement, ElementType } from '../model/types';
 
 interface SuggestState {
   id: string;
@@ -36,6 +36,8 @@ export function Editor() {
 
   const refs = useRef(new Map<string, HTMLDivElement>());
   const composingRef = useRef(false);
+  /** ⌘⇧N 备忘切换：记住每个元素上一次的非备忘类型，便于从 note 切回 */
+  const noteMemoryRef = useRef(new Map<string, ElementType>());
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -194,6 +196,36 @@ export function Editor() {
         return;
       }
 
+      // ⌘/Ctrl+Shift+N：备忘切换。在「备忘」与上一次非备忘类型之间来回切换。
+      if (meta && e.shiftKey && (e.key === 'N' || e.key === 'n')) {
+        e.preventDefault();
+        if (el.type === 'note') {
+          const fallback = noteMemoryRef.current.get(el.id) || 'action';
+          setType(el.id, fallback);
+          noteMemoryRef.current.set(el.id, fallback);
+        } else {
+          noteMemoryRef.current.set(el.id, el.type);
+          setType(el.id, 'note');
+        }
+        return;
+      }
+
+      // ⌘/Ctrl+A：选中脚本流内的全部内容。
+      if (meta && (e.key === 'a' || e.key === 'A') && !e.shiftKey) {
+        e.preventDefault();
+        const flow = contentRef.current;
+        if (flow) {
+          const range = document.createRange();
+          range.selectNodeContents(flow);
+          const sel = window.getSelection();
+          if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        }
+        return;
+      }
+
       if (e.key === 'Backspace') {
         const off = caretOffset(node);
         const sel = window.getSelection();
@@ -290,10 +322,20 @@ export function Editor() {
       if (project.settings.smartQuotes && el.type === 'dialogue') {
         value = value.replace(/"/g, (m, i) => (i % 2 === 0 ? '“' : '”'));
       }
+      // Final Draft 风格的智能识别：仅在「之前为空 + 新文本非空 + 识别命中」时改类型，避免误判后续编辑。
+      const previous = useStore.getState().project.elements.find((e) => e.id === el.id);
+      const wasEmpty = previous ? isBlank(previous.text) : isBlank(el.text);
+      const trimmedNew = plain(value).trim();
+      if (wasEmpty && trimmedNew && previous && previous.type !== 'note') {
+        const recognized = recognizeType(trimmedNew);
+        if (recognized && recognized !== previous.type) {
+          setType(previous.id, recognized);
+        }
+      }
       setText(el.id, value);
       updateSuggest({ ...el, text: value });
     },
-    [project.settings.smartQuotes, setText, updateSuggest],
+    [project.settings.smartQuotes, setText, setType, updateSuggest],
   );
 
   const handlePaste = useCallback(
