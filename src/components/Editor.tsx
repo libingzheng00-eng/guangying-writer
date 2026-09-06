@@ -521,68 +521,32 @@ function MaterialPanel(props: MaterialPanelProps) {
   const sounds = beats.filter((b: any) => (b.kind || 'beat') === 'sound');
   const wimgs = beats.filter((b: any) => (b.kind || 'beat') === 'wimg');
   const total = sounds.length + wimgs.length;
-  if (total === 0) {
-    return (
-      <div className="material-panel" data-empty="true">
-        <div className="material-panel__head">
-          <span className="material-panel__title">素材</span>
-          <span className="material-panel__hint">声音与写作图片归入此处，不计入正文页数。</span>
-        </div>
-        <div className="material-panel__actions">
-          <button className="btn btn--ghost" onClick={() => onAdd('sound')}>＋ 声音</button>
-          <button className="btn btn--ghost" onClick={() => onAdd('wimg')}>＋ 写作图片</button>
-        </div>
-      </div>
-    );
-  }
   return (
-    <div className="material-panel">
+    <div className="material-panel" data-empty={total === 0 ? 'true' : undefined}>
       <div className="material-panel__head">
         <span className="material-panel__title">素材</span>
-        <span className="material-panel__count">{sounds.length} 声音 · {wimgs.length} 写作图片</span>
+        {total ? <span className="material-panel__count">{sounds.length} 声音 · {wimgs.length} 图片</span> : <span className="material-panel__hint">不计入正文页数</span>}
         <div className="material-panel__actions">
-          <button className="btn btn--ghost" onClick={() => onAdd('sound')}>＋ 声音</button>
-          <button className="btn btn--ghost" onClick={() => onAdd('wimg')}>＋ 写作图片</button>
+          <button className="btn btn--ghost" onClick={() => onAdd('sound')}>＋声音</button>
+          <button className="btn btn--ghost" onClick={() => onAdd('wimg')}>＋图片</button>
         </div>
       </div>
-      {sounds.length ? (
-        <div className="material-panel__section">
-          <h4>声音卡</h4>
-          <ul className="material-panel__list">
-            {sounds.map((b: any) => (
-              <li key={b.id} className="material-panel__item material-panel__item--sound">
-                <span className="material-panel__icon" aria-hidden>♪</span>
-                <input
-                  className="material-panel__title-input"
-                  value={b.title || b.text}
-                  placeholder="声音标题"
-                  onChange={(e) => onUpdate(b.id, { title: e.target.value, text: e.target.value })}
-                />
-                <button className="material-panel__del" title="删除" onClick={() => onDelete(b.id)}>×</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {wimgs.length ? (
-        <div className="material-panel__section">
-          <h4>写作图片</h4>
-          <ul className="material-panel__list">
-            {wimgs.map((b: any) => (
-              <li key={b.id} className="material-panel__item material-panel__item--wimg">
-                {b.img ? <img className="material-panel__thumb" src={b.img} alt={b.title || '写作图片'} /> : <span className="material-panel__thumb material-panel__thumb--empty" aria-hidden>图</span>}
-                <input
-                  className="material-panel__title-input"
-                  value={b.title || ''}
-                  placeholder="图片名称"
-                  onChange={(e) => onUpdate(b.id, { title: e.target.value })}
-                />
-                <button className="material-panel__del" title="删除" onClick={() => onDelete(b.id)}>×</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      {total ? <ul className="material-panel__list" aria-label="写作素材">
+        {sounds.map((b: any) => (
+          <li key={b.id} className="material-panel__item material-panel__item--sound">
+            <span className="material-panel__icon" aria-hidden>♪</span>
+            <input className="material-panel__title-input" value={b.title || b.text} placeholder="声音标题" aria-label="声音标题" onChange={(e) => onUpdate(b.id, { title: e.target.value, text: e.target.value })} />
+            <button className="material-panel__del" title="删除声音" aria-label="删除声音" onClick={() => onDelete(b.id)}>×</button>
+          </li>
+        ))}
+        {wimgs.map((b: any) => (
+          <li key={b.id} className="material-panel__item material-panel__item--wimg">
+            {b.img ? <img className="material-panel__thumb" src={b.img} alt="" /> : <span className="material-panel__thumb material-panel__thumb--empty" aria-hidden>图</span>}
+            <input className="material-panel__title-input" value={b.title || ''} placeholder="图片名称" aria-label="图片名称" onChange={(e) => onUpdate(b.id, { title: e.target.value })} />
+            <button className="material-panel__del" title="删除图片" aria-label="删除图片" onClick={() => onDelete(b.id)}>×</button>
+          </li>
+        ))}
+      </ul> : null}
     </div>
   );
 }

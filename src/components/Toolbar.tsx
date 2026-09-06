@@ -15,8 +15,6 @@ const VIEWS: { key: ViewMode; label: string }[] = [
 export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: ReturnType<typeof useCommands>; onOpenSettings: () => void; onOpenTitle: () => void }) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
-  const sidebarOpen = useStore((s) => s.sidebarOpen);
-  const toggleSidebar = useStore((s) => s.toggleSidebar);
   const project = useStore((s) => s.project);
   const activeId = useStore((s) => s.activeId);
   const activeRev = useStore((s) => s.activeRev);
@@ -50,9 +48,6 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
   return (
     <div className="toolbar" ref={menuRef}>
       <div className="toolbar__group">
-        <button className="icon-btn" title="显示/隐藏侧栏" onClick={toggleSidebar}>
-          {sidebarOpen ? '◧' : '◨'}
-        </button>
         <span className="doc-title">
           {project.name}
           {dirty ? <i className="dot-dirty">●</i> : null}

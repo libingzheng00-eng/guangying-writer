@@ -27,6 +27,9 @@ export function Sidebar() {
   }
   return (
     <aside className="sidebar" aria-label="导航侧栏">
+      <button className="sidebar__collapse" title="收起侧栏" aria-label="收起侧栏" onClick={toggleSidebar}>
+        <span aria-hidden>‹</span>
+      </button>
       <div className="sidebar__tabs">
         {TABS.map((t) => (
           <button

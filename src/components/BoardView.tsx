@@ -329,6 +329,12 @@ export function BoardView() {
     setPan({ x: 0, y: 0 });
   };
 
+  // 新卡片从现有场景卡之后依次排入网格，避免首次创建就与场景或前一张卡重叠。
+  const addBoardBeat = (kind: Beat['kind']) => {
+    const position = autoPos(scenes.length + project.beats.length);
+    return addBeat(position.x, position.y, '', kind);
+  };
+
   const addSceneCard = () => {
     // 在画布中心新增一场，并给卡片一个位置
     const last = scenes[scenes.length - 1];
@@ -390,14 +396,14 @@ export function BoardView() {
           ＋场景卡
         </button>
         <div className="board__add-beat">
-          <button className="btn btn--primary" onClick={() => addBeat(pan.x > 0 ? 60 : 60, 60, '', 'beat')}>
+          <button className="btn btn--primary" onClick={() => addBoardBeat('beat')}>
             ＋灵感卡
           </button>
-          <button className="btn btn--ghost" onClick={() => addBeat(pan.x > 0 ? 60 : 60, 60, '', 'sound')}>
+          <button className="btn btn--ghost" onClick={() => addBoardBeat('sound')}>
             ＋声音
           </button>
           <button className="btn btn--ghost" onClick={() => {
-            const id = addBeat(pan.x > 0 ? 60 : 60, 60, '', 'image');
+            const id = addBoardBeat('image');
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'image/*';
@@ -413,7 +419,7 @@ export function BoardView() {
             ＋图片
           </button>
           <button className="btn btn--ghost" onClick={() => {
-            const id = addBeat(pan.x > 0 ? 60 : 60, 60, '', 'wimg');
+            const id = addBoardBeat('wimg');
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'image/*';
@@ -608,7 +614,7 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
       style={{ left: beat.x, top: beat.y, background: beat.color, width: beat.w, height: beat.h }}
     >
       <div className="bcard__head">
-        <span className={`bcard__tag bcard__tag--${kind}`}>{isSound ? '声音' : isMedia ? (kind === 'wimg' ? '写作图' : '图片') : '灵感'}</span>
+        {(isSound || isMedia) ? <span className={`bcard__tag bcard__tag--${kind}`}>{isSound ? '声音' : kind === 'wimg' ? '写作图' : '图片'}</span> : null}
         <span className="bcard__actions"><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onBoardLink} title="连接到另一张卡片">↗</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除">×</button></span>
       </div>
       <div className="bcard__body">
