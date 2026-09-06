@@ -30,6 +30,8 @@ export function parseProject(raw: string): ScriptProject {
     elements: Array.isArray(p.elements) ? p.elements : [],
     sceneMeta: Array.isArray(p.sceneMeta) ? p.sceneMeta : [],
     beats: Array.isArray(p.beats) ? p.beats : [],
+    boardLinks: Array.isArray(p.boardLinks) ? p.boardLinks : [],
+    targetPages: Math.max(1, typeof p.targetPages === 'number' && Number.isFinite(p.targetPages) ? Math.round(p.targetPages) : 100),
     acts: Array.isArray(p.acts) && p.acts.length ? p.acts : [{ id: 'act-1', title: '第一幕', color: '#cfe4ff' }],
     revisions: Array.isArray(p.revisions) && p.revisions.length ? p.revisions : DEFAULT_REVISIONS,
     settings,

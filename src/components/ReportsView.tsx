@@ -6,6 +6,7 @@ import { ELEMENT_META } from '../model/elements';
 export function ReportsView() {
   const project = useStore((s) => s.project);
   const pageCount = useStore((s) => s.pageCount);
+  const renameCharacter = useStore((s) => s.renameCharacter);
   const stats = useMemo(() => computeStats(project, pageCount), [project, pageCount]);
   const scenes = useMemo(() => sceneStats(project), [project]);
   const chars = useMemo(() => characterStats(project), [project]);
@@ -45,7 +46,7 @@ export function ReportsView() {
         </div>
 
         <section className="report-block">
-          <h3>场景统计</h3>
+          <div className="report-block__title"><h3>场景统计</h3><span>按正文场次汇总</span></div>
           <table className="table">
             <thead>
               <tr>
@@ -76,7 +77,7 @@ export function ReportsView() {
         </section>
 
         <section className="report-block">
-          <h3>人物统计</h3>
+          <div className="report-block__title"><h3>人物统计</h3><span>改名会同步正文中的人物元素</span></div>
           <table className="table">
             <thead>
               <tr>
@@ -89,7 +90,21 @@ export function ReportsView() {
             <tbody>
               {chars.map((c) => (
                 <tr key={c.name}>
-                  <td>{c.name}</td>
+                  <td>
+                    <input
+                      className="character-name-edit"
+                      defaultValue={c.name}
+                      aria-label={`修改人物 ${c.name}`}
+                      onBlur={(e) => renameCharacter(c.name, e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (e.key === 'Escape') {
+                          e.currentTarget.value = c.name;
+                          e.currentTarget.blur();
+                        }
+                      }}
+                    />
+                  </td>
                   <td className="mono">{c.scenes.length}</td>
                   <td className="mono">{c.lines}</td>
                   <td className="mono">{c.words}</td>
@@ -107,7 +122,7 @@ export function ReportsView() {
         </section>
 
         <section className="report-block">
-          <h3>元素分布</h3>
+          <div className="report-block__title"><h3>元素分布</h3><span>不含备忘</span></div>
           <div className="element-dist">
             {Object.entries(stats.elementCounts).map(([type, n]) => (
               <div className="element-dist__row" key={type}>

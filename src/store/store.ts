@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   Act,
+  BoardLink,
   Beat,
   ElementType,
   Revision,
@@ -108,6 +109,13 @@ interface StoreState {
   moveBeat: (id: string, x: number, y: number) => void;
   deleteBeat: (id: string) => void;
   linkBeat: (id: string, sceneId?: string) => void;
+  addBoardLink: (from: string, to: string) => void;
+  updateBoardLink: (id: string, patch: Partial<BoardLink>) => void;
+  deleteBoardLink: (id: string) => void;
+
+  /* 人物 / 篇幅 */
+  renameCharacter: (from: string, to: string) => boolean;
+  setTargetPages: (pages: number) => void;
 
   /* 文档级 */
   updateSettings: (patch: Partial<ScriptSettings>) => void;
@@ -508,6 +516,7 @@ export const useStore = create<StoreState>((set, get) => ({
   deleteBeat: (id) => {
     get().mutate((p) => {
       p.beats = p.beats.filter((x) => x.id !== id);
+      p.boardLinks = (p.boardLinks || []).filter((link) => link.from !== `beat:${id}` && link.to !== `beat:${id}`);
     });
   },
 
@@ -516,6 +525,61 @@ export const useStore = create<StoreState>((set, get) => ({
       const b = p.beats.find((x) => x.id === id);
       if (b) b.sceneId = sceneId;
     });
+  },
+
+  addBoardLink: (from, to) => {
+    if (!from || !to || from === to) return;
+    get().mutate((p) => {
+      const links = (p.boardLinks ||= []);
+      if (links.some((link) => (link.from === from && link.to === to) || (link.from === to && link.to === from))) return;
+      links.push({ id: uid('link'), from, to, note: '' });
+    });
+  },
+
+  updateBoardLink: (id, patch) => {
+    get().mutate(
+      (p) => {
+        const link = (p.boardLinks || []).find((x) => x.id === id);
+        if (link) Object.assign(link, patch);
+      },
+      { coalesce: `boardlink:${id}` },
+    );
+  },
+
+  deleteBoardLink: (id) => {
+    get().mutate((p) => {
+      p.boardLinks = (p.boardLinks || []).filter((link) => link.id !== id);
+    });
+  },
+
+  renameCharacter: (from, to) => {
+    const nextName = to.trim();
+    if (!nextName || nextName === from) return false;
+    const exists = get().project.elements.some((el) => el.type === 'character' && plain(el.text).trim() === nextName);
+    if (exists) {
+      get().notify('已有同名人物，请先合并或使用其他名称', 'error');
+      return false;
+    }
+    let changed = 0;
+    get().mutate((p) => {
+      p.elements.forEach((el) => {
+        if (el.type === 'character' && plain(el.text).trim() === from) {
+          el.text = nextName;
+          changed += 1;
+        }
+      });
+    });
+    if (changed) get().notify(`已将 ${from} 改为 ${nextName}`, 'ok');
+    return changed > 0;
+  },
+
+  setTargetPages: (pages) => {
+    get().mutate(
+      (p) => {
+        p.targetPages = Math.max(1, Math.min(9999, Math.round(pages) || 1));
+      },
+      { coalesce: 'target-pages' },
+    );
   },
 
   updateSettings: (patch) => {

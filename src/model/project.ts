@@ -72,6 +72,8 @@ export function createProject(name = '未命名剧本'): ScriptProject {
     elements: [newElement('scene_heading', '内景 咖啡厅 日'), newElement('action', ''), newElement('character', ''), newElement('dialogue', '')],
     sceneMeta: [],
     beats: [],
+    boardLinks: [],
+    targetPages: 100,
     acts: [defaultActs()[0]],
     revisions: DEFAULT_REVISIONS.map((r) => ({ ...r })),
     settings: defaultSettings(),

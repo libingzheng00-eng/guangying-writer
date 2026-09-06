@@ -72,6 +72,14 @@ export interface Beat {
   sceneId?: string;
 }
 
+/** 自由板卡片之间的关系线；endpoint 用 scene:元素id 或 beat:卡片id 标识。 */
+export interface BoardLink {
+  id: string;
+  from: string;
+  to: string;
+  note?: string;
+}
+
 /** 派生出来的完整场景视图（导航、卡片、报表共用） */
 export interface Scene {
   id: string;
@@ -176,6 +184,10 @@ export interface ScriptProject {
   sceneMeta: SceneMeta[];
   /** 自由画布上的节拍卡 / 灵感卡（不绑定场次） */
   beats: Beat[];
+  /** 自由板卡片关系线；缺失时按空数组处理，兼容旧项目。 */
+  boardLinks?: BoardLink[];
+  /** 剧本目标页数；缺失时按 100 页处理，兼容旧项目。 */
+  targetPages?: number;
   acts: Act[];
   revisions: Revision[];
   settings: ScriptSettings;

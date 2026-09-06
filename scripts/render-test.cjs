@@ -121,16 +121,54 @@ setTimeout(() => {
         }
       : null;
 
-    console.log('=== 渲染检查 ===');
-    console.log(JSON.stringify({ ...report, viewSwitch: switches, board }, null, 2));
-    console.log('\n=== 切回写作视图后的元素数 ===');
-    clickByText('写作');
+    // 新功能回归：两张卡建立关系线；备注控件和目标页数必须可见。
+    const connectors = qa('.bcard__connect');
+    if (connectors.length > 1) {
+      connectors[0].click();
+    }
     setTimeout(() => {
-      console.log('blocks after roundtrip:', qa('.script-flow .sc-el').length);
-      console.log('\n=== console.error 输出 ===');
-      console.log(errors.length ? errors.slice(0, 20).join('\n---\n') : '(无错误)');
-      process.exit(errors.length ? 1 : 0);
-    }, 400);
+      const nextConnector = qa('.bcard__connect').find((node) => !node.classList.contains('is-active'));
+      if (nextConnector) nextConnector.click();
+      setTimeout(() => {
+      const relationInput = q('.board-link-note input');
+      if (relationInput) {
+        relationInput.value = '人物关系';
+        relationInput.dispatchEvent(new w.Event('input', { bubbles: true }));
+      }
+      const featureChecks = {
+        targetPagesVisible: !!q('.target-pages input'),
+        typewriterPointerVisible: !!q('.typewriter-progress__pointer'),
+        boardRelationCreated: qa('.board-links line').length >= 1,
+        boardRelationNoteEditable: !!relationInput,
+      };
+      clickByText('统计');
+      setTimeout(() => {
+        const characterInput = q('.character-name-edit');
+        if (characterInput) {
+          const oldName = characterInput.value;
+          characterInput.focus();
+          characterInput.value = '林小满·改';
+          characterInput.blur();
+          featureChecks.characterRenameControl = oldName !== '';
+        } else featureChecks.characterRenameControl = false;
+        setTimeout(() => {
+          clickByText('写作');
+          setTimeout(() => {
+            featureChecks.characterRenameSynced = qa('.script-flow .sc-el[data-type="character"]').some((node) => node.textContent.trim() === '林小满·改');
+            console.log('=== 渲染检查 ===');
+            console.log(JSON.stringify({ ...report, viewSwitch: switches, board, featureChecks }, null, 2));
+            console.log('\n=== 切回写作视图后的元素数 ===');
+            console.log('blocks after roundtrip:', qa('.script-flow .sc-el').length);
+            console.log('\n=== console.error 输出 ===');
+            console.log(errors.length ? errors.slice(0, 20).join('\n---\n') : '(无错误)');
+            const failed = Object.entries(featureChecks).filter(([, ok]) => !ok).map(([name]) => name);
+            if (failed.length) console.log(`\n=== 功能回归失败 ===\n${failed.join(', ')}`);
+            process.exit(errors.length || failed.length ? 1 : 0);
+          }, 400);
+        }, 250);
+      }, 250);
+      }, 150);
+    }, 250);
     return;
   }, 1200);
 }, 1200);

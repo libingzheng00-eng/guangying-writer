@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store/store';
 import { deriveScenes } from '../model/project';
 import { CARD_COLORS } from '../model/elements';
-import type { Scene } from '../model/types';
+import type { Beat, BoardLink, Scene } from '../model/types';
 
 type Filter = 'both' | 'scenes' | 'beats';
 
@@ -26,6 +26,9 @@ export function BoardView() {
   const updateBeat = useStore((s) => s.updateBeat);
   const deleteBeat = useStore((s) => s.deleteBeat);
   const linkBeat = useStore((s) => s.linkBeat);
+  const addBoardLink = useStore((s) => s.addBoardLink);
+  const updateBoardLink = useStore((s) => s.updateBoardLink);
+  const deleteBoardLink = useStore((s) => s.deleteBoardLink);
   const addSceneAfter = useStore((s) => s.addSceneAfter);
 
   const scenes = useMemo(() => deriveScenes(project), [project]);
@@ -33,6 +36,7 @@ export function BoardView() {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [filter, setFilter] = useState<Filter>('both');
+  const [linkFrom, setLinkFrom] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   // 拖拽状态：{ mode: 'card'|'beat'|'pan', id, sx, sy, ox, oy, moved }
@@ -153,6 +157,25 @@ export function BoardView() {
   const showScenes = filter !== 'beats';
   const showBeats = filter !== 'scenes';
 
+  const endpoints = useMemo(() => {
+    const out = new Map<string, { x: number; y: number }>();
+    scenes.forEach((scene, index) => {
+      const pos = scene.x != null && scene.y != null ? { x: scene.x, y: scene.y } : autoPos(index);
+      out.set(`scene:${scene.elementId}`, { x: pos.x + CARD_W / 2, y: pos.y + 68 });
+    });
+    project.beats.forEach((beat) => out.set(`beat:${beat.id}`, { x: beat.x + CARD_W / 2, y: beat.y + 78 }));
+    return out;
+  }, [scenes, project.beats]);
+  const boardLinks = (project.boardLinks || []).filter((link) => endpoints.has(link.from) && endpoints.has(link.to));
+  const onCardLink = (endpoint: string) => {
+    if (!linkFrom) {
+      setLinkFrom(endpoint);
+      return;
+    }
+    if (linkFrom !== endpoint) addBoardLink(linkFrom, endpoint);
+    setLinkFrom(null);
+  };
+
   return (
     <div className="board">
       <div className="board__bar">
@@ -168,6 +191,7 @@ export function BoardView() {
           </button>
         </div>
         <span className="hint">拖拽卡片摆放 · 拖空白平移 · 滚轮缩放 · 双击空白加灵感卡</span>
+        {linkFrom ? <button className="btn btn--ghost board__link-state" onClick={() => setLinkFrom(null)}>选择另一张卡片连接 · 取消</button> : null}
         <div className="spacer" />
         <button className="btn btn--ghost" onClick={addSceneCard}>
           ＋场景卡
@@ -200,10 +224,11 @@ export function BoardView() {
           className="board__world"
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
         >
+          <BoardLinks links={boardLinks} endpoints={endpoints} onChange={updateBoardLink} onDelete={deleteBoardLink} />
           {showScenes &&
             scenes.map((sc, i) => {
               const pos = sc.x != null && sc.y != null ? { x: sc.x, y: sc.y } : autoPos(i);
-              return <SceneCard key={sc.id} scene={sc} index={i} pos={pos} />;
+              return <SceneCard key={sc.id} scene={sc} index={i} pos={pos} linking={linkFrom === `scene:${sc.elementId}`} onLink={() => onCardLink(`scene:${sc.elementId}`)} />;
             })}
           {showBeats &&
             project.beats.map((b) => (
@@ -214,6 +239,8 @@ export function BoardView() {
                 onChange={(patch) => updateBeat(b.id, patch)}
                 onDelete={() => deleteBeat(b.id)}
                 onLink={(sid) => linkBeat(b.id, sid)}
+                linking={linkFrom === `beat:${b.id}`}
+                onBoardLink={() => onCardLink(`beat:${b.id}`)}
               />
             ))}
         </div>
@@ -228,7 +255,7 @@ interface SceneCardProps {
   pos: { x: number; y: number };
 }
 
-function SceneCard({ scene, pos }: SceneCardProps) {
+function SceneCard({ scene, pos, linking, onLink }: SceneCardProps & { linking: boolean; onLink: () => void }) {
   return (
     <div
       data-card
@@ -239,7 +266,7 @@ function SceneCard({ scene, pos }: SceneCardProps) {
     >
       <div className="bcard__head">
         <span className="bcard__no">{scene.number}</span>
-        <span className="bcard__tag">场</span>
+        <span className="bcard__actions"><span className="bcard__tag">场</span><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onLink} title="连接到另一张卡片">↗</button></span>
       </div>
       <div className="bcard__title">{scene.title || scene.heading || '（未命名场景）'}</div>
       <div className="bcard__synopsis">{scene.synopsis || scene.heading}</div>
@@ -248,14 +275,16 @@ function SceneCard({ scene, pos }: SceneCardProps) {
 }
 
 interface BeatCardProps {
-  beat: { id: string; text: string; color: string; x: number; y: number; sceneId?: string };
+  beat: Beat;
   scenes: Scene[];
   onChange: (patch: { text?: string; color?: string }) => void;
   onDelete: () => void;
   onLink: (sceneId?: string) => void;
+  linking: boolean;
+  onBoardLink: () => void;
 }
 
-function BeatCard({ beat, scenes, onChange, onDelete, onLink }: BeatCardProps) {
+function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLink }: BeatCardProps) {
   return (
     <div
       data-card
@@ -266,9 +295,7 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink }: BeatCardProps) {
     >
       <div className="bcard__head">
         <span className="bcard__tag bcard__tag--beat">灵感</span>
-        <button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除">
-          ×
-        </button>
+        <span className="bcard__actions"><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onBoardLink} title="连接到另一张卡片">↗</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除">×</button></span>
       </div>
       <textarea
         className="bcard__edit"
@@ -304,4 +331,12 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink }: BeatCardProps) {
       </div>
     </div>
   );
+}
+
+function BoardLinks({ links, endpoints, onChange, onDelete }: { links: BoardLink[]; endpoints: Map<string, { x: number; y: number }>; onChange: (id: string, patch: Partial<BoardLink>) => void; onDelete: (id: string) => void }) {
+  return <svg className="board-links" aria-label="卡片关系线">{links.map((link) => {
+    const a = endpoints.get(link.from)!; const b = endpoints.get(link.to)!;
+    const x = (a.x + b.x) / 2; const y = (a.y + b.y) / 2;
+    return <g key={link.id}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} /><foreignObject x={x - 78} y={y - 13} width="176" height="28"><div className="board-link-note"><input value={link.note || ''} placeholder="关系备注" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange(link.id, { note: e.target.value })} /><button type="button" title="删除连线" onMouseDown={(e) => e.stopPropagation()} onClick={() => onDelete(link.id)}>×</button></div></foreignObject></g>;
+  })}</svg>;
 }
