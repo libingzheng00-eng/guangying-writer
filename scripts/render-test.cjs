@@ -54,6 +54,36 @@ console.error = (...args) => {
 };
 w.addEventListener('error', (e) => errors.push(`window.error: ${e.message}`));
 
+// Tests use synthetic, non-user content. The shipped first-run project stays blank.
+localStorage.setItem('mojiang:autosave', JSON.stringify({
+  project: {
+    id: 'qa-project',
+    name: '功能测试稿',
+    createdAt: 1,
+    updatedAt: 1,
+    titlePage: {},
+    elements: [
+      { id: 'qa-scene-1', type: 'scene_heading', text: '内景 测试地点 日' },
+      { id: 'qa-character-1', type: 'character', text: '角色甲' },
+      { id: 'qa-dialogue-1', type: 'dialogue', text: '测试对白。' },
+      { id: 'qa-scene-2', type: 'scene_heading', text: '外景 测试地点 夜' },
+      { id: 'qa-character-2', type: 'character', text: '角色甲（V.O）' },
+      { id: 'qa-dialogue-2', type: 'dialogue', text: '第二句测试对白。' },
+    ],
+    sceneMeta: [],
+    beats: [
+      { id: 'qa-beat-1', text: '测试卡片甲', color: '#FCEBEB', x: 40, y: 40 },
+      { id: 'qa-beat-2', text: '测试卡片乙', color: '#E6F1FB', x: 340, y: 240 },
+    ],
+    boardLinks: [],
+    targetPages: 100,
+    acts: [{ id: 'act-1', title: '第一幕', color: '#cfe4ff' }],
+    revisions: [],
+    settings: {},
+  },
+  filePath: null,
+}));
+
 // 用与生产代码相同的入口生成可由 Node/jsdom 执行的临时 CJS 包。
 // 原脚本假定 .tmp-app.cjs 已由外部流程生成，导致干净克隆后的测试必然失败。
 const bundle = process.env.APP_BUNDLE || path.join(__dirname, '..', '.tmp-app.cjs');
@@ -147,14 +177,14 @@ setTimeout(() => {
         if (characterInput) {
           const oldName = characterInput.value;
           characterInput.focus();
-          characterInput.value = '林小满·改';
+          characterInput.value = '角色甲·改';
           characterInput.blur();
           featureChecks.characterRenameControl = oldName !== '';
         } else featureChecks.characterRenameControl = false;
         setTimeout(() => {
           clickByText('写作');
           setTimeout(() => {
-            featureChecks.characterRenameSynced = qa('.script-flow .sc-el[data-type="character"]').some((node) => node.textContent.trim() === '林小满·改');
+            featureChecks.characterRenameSynced = qa('.script-flow .sc-el[data-type="character"]').some((node) => node.textContent.trim() === '角色甲·改');
             console.log('=== 渲染检查 ===');
             console.log(JSON.stringify({ ...report, viewSwitch: switches, board, featureChecks }, null, 2));
             console.log('\n=== 切回写作视图后的元素数 ===');

@@ -2,6 +2,8 @@
 
 > 开源许可证：[MIT](LICENSE)。稳定版本会发布在 GitHub 的 **Releases** 页面；请从 Releases 下载最新版 DMG 或 ZIP，不要从源码页面下载自动生成的源码压缩包。
 
+> 当前状态（2026-09-06）：源码仍是 `v1.3.0-alpha` 回迁分支，不能替代完整稳定版。用户本机可用的最新成品是独立安装的 v1.2.9。详见 [MIGRATION.md](MIGRATION.md) 和 [DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md)。首次启动模板必须保持为空白，仓库和发布包禁止包含用户剧本。
+
 ## 公开发布方式
 
 仓库推送形如 `v1.3.0` 的版本标签后，GitHub Actions 会自动检查源码、构建 macOS arm64 应用、生成 DMG，并将 DMG 与 ZIP 附加到对应 GitHub Release。仓库首页的 Releases 区域会显示最新版本。
