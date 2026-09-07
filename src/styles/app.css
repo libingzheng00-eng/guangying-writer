@@ -2442,6 +2442,7 @@ textarea {
 .editor > .write-progress .write-progress__scene { filter: saturate(.5) brightness(.88); }
 .editor > .write-progress .write-progress__goal { min-width: max-content; padding-left: 12px; gap: 4px; }
 .editor > .write-progress .write-progress__goal input { width: 58px; min-width: 58px; height: 28px; padding: 0 8px; color: #f0dfcd; border-color: rgba(221,205,186,.22); background: #202327; text-align: center; }
+.editor > .write-progress { grid-template-areas: 'label road goal' '. scenes .'; }
 
 .writing-material-controls { display: inline-flex; align-items: center; gap: 5px; margin-left: 7px; }
 .writing-material-controls__group { display: inline-flex; align-items: stretch; }
@@ -2456,9 +2457,9 @@ textarea {
 .writing-material-layer { position: absolute; inset: 0; z-index: 7; pointer-events: none; opacity: 1; visibility: visible; transition: opacity 160ms ease, visibility 160ms ease; }
 .writing-material-layer--image { z-index: 6; }
 .writing-material-layer.is-hidden { opacity: 0; visibility: hidden; }
-.writing-material-card { position: absolute; width: 252px; min-height: 138px; padding: 10px; pointer-events: auto; color: #f2f2f7; border: 1px solid rgba(255,255,255,.18); border-left: 3px solid #d9b48c; border-radius: 14px; background: linear-gradient(150deg, rgba(217,180,140,.08), transparent 45%), rgba(28,28,38,.70); box-shadow: 0 18px 44px rgba(0,0,0,.42); cursor: grab; -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5); }
+.writing-material-card { position: absolute; width: 278px; min-height: 138px; padding: 10px; pointer-events: auto; color: #f2f2f7; border: 1px solid rgba(255,255,255,.18); border-radius: 14px; background: linear-gradient(150deg, rgba(217,180,140,.08), transparent 45%), rgba(28,28,38,.70); box-shadow: 0 18px 44px rgba(0,0,0,.42); cursor: grab; -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5); }
 .writing-material-card:active { cursor: grabbing; }
-.writing-material-card--image { min-height: 0; border-left-color: #8fb8d9; }
+.writing-material-card--image { min-height: 0; }
 .writing-material-card__head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
 .writing-material-card__kind { color: #e3c49a; font-size: 12px; font-weight: 700; }
 .writing-material-card--image .writing-material-card__kind { color: #b7d5ec; }
@@ -2471,6 +2472,43 @@ textarea {
 .writing-material-card textarea { display: block; width: 100%; min-height: 86px; padding: 8px 9px; resize: vertical; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; outline: none; background: rgba(0,0,0,.28); color: #f2f2f7; font: 12px/1.6 -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; }
 .writing-material-card img { display: block; width: 100%; border-radius: 9px; pointer-events: none; }
 .writing-material-card__empty { display: grid; min-height: 106px; place-items: center; border: 1px dashed rgba(143,184,217,.34); border-radius: 9px; color: #9ebbd1; font-size: 12px; }
+
+/* 写作不是排版辅助工具：空元素不显示提示字，分页也不在稿纸中留虚线。 */
+.editor .sc-el--editable:hover { background: transparent; }
+.editor .sc-el.is-empty::before { content: none; }
+.editor .page-break-line { display: none; }
+
+/* 自由板：把颜色选择移至顶部工具栏，卡片只保留内容、关联和删除。 */
+.bcard { border-top-width: 1px; }
+.bcard--beat { border-top-width: 1px; }
+.bcard__head { margin-bottom: 3px; }
+.bcard__foot { justify-content: flex-end; margin-top: 5px; }
+.bcard__link { max-width: 132px; }
+.board__color-bar { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid rgba(88,166,255,.18); border-radius: 7px; background: rgba(7,12,18,.35); }
+.board__color-bar span { color: var(--muted); font-size: 11px; }
+.board__color-bar button { width: 14px; height: 14px; padding: 0; border: 1px solid rgba(255,255,255,.35); border-radius: 50%; cursor: pointer; transition: transform .14s ease; }
+.board__color-bar button:hover { transform: scale(1.18); }
+
+/* 日间模式为本机偏好：采用低反光纸面和深灰文字，不影响剧本或导出。 */
+.app-shell[data-theme='day'] { --bg: #edf2f5; --panel: #f7f9fa; --panel-2: #e7edf1; --border: #cbd5dc; --border-strong: #aebcc6; --text: #26333c; --muted: #65727c; --accent: #2f78b7; --accent-soft: rgba(47,120,183,.12); --accent-glow: rgba(47,120,183,.16); --glass-bg: rgba(255,255,255,.70); --glass-border: rgba(69,91,107,.20); --card-glow: 0 10px 26px rgba(52,70,82,.12); --neon-yellow: #273640; --neon-yellow-soft: #82909a; --neon-yellow-glow: none; }
+.app-shell[data-theme='day'] .toolbar { background: linear-gradient(180deg,#fbfcfd,#eef3f6); box-shadow: 0 1px 8px rgba(56,75,88,.08); }
+.app-shell[data-theme='day'] .sidebar { background: rgba(241,245,247,.90); }
+.app-shell[data-theme='day'] .sidebar__collapse, .app-shell[data-theme='day'] .sidebar__reveal { background: #e6edf1; color: #367ab6; border-color: rgba(47,120,183,.28); }
+.app-shell[data-theme='day'] .doc-title, .app-shell[data-theme='day'] .cards__label, .app-shell[data-theme='day'] .reports__label, .app-shell[data-theme='day'] .preview__label { color: #26333c; }
+.app-shell[data-theme='day'] .script-flow { background: rgba(255,255,255,.76); border-color: rgba(61,84,100,.16); box-shadow: 0 12px 38px rgba(48,67,80,.14); }
+.app-shell[data-theme='day'] .sc-el--editable { color: #273640; text-shadow: none; }
+.app-shell[data-theme='day'] .editor > .write-progress { background: linear-gradient(180deg,#f4f1ec,#e9e5de); border-color: rgba(57,49,42,.12); }
+.app-shell[data-theme='day'] .editor > .write-progress .write-progress__road { background: repeating-linear-gradient(90deg, transparent 0 31px, rgba(70,59,49,.11) 31px 32px), linear-gradient(180deg,#dad5cd 0 18%,#eeeae4 18% 79%,#ccc5bb 79%); border-color: rgba(73,61,50,.22); }
+.app-shell[data-theme='day'] .editor > .write-progress .write-progress__goal input, .app-shell[data-theme='day'] .writing-material-controls button { color: #4c3d32; background: rgba(255,255,255,.72); border-color: rgba(73,61,50,.18); }
+.app-shell[data-theme='day'] .writing-material-card { color: #273640; background: rgba(255,255,255,.88); border-color: rgba(68,89,104,.22); box-shadow: 0 14px 32px rgba(47,64,76,.18); }
+.app-shell[data-theme='day'] .writing-material-card textarea { color: #273640; background: rgba(236,241,244,.82); border-color: rgba(68,89,104,.18); }
+.app-shell[data-theme='day'] .writing-material-card__head input { color: #273640; }
+.app-shell[data-theme='day'] .bcard { color: #273640; border-color: rgba(68,89,104,.20); }
+.app-shell[data-theme='day'] .bcard--scene { background: rgba(255,255,255,.78); }
+.app-shell[data-theme='day'] .bcard__title, .app-shell[data-theme='day'] .bcard__edit, .app-shell[data-theme='day'] .bcard__media-title { color: #273640; }
+.app-shell[data-theme='day'] .bcard__synopsis { color: #65727c; }
+.app-shell[data-theme='day'] .bcard__edit, .app-shell[data-theme='day'] .bcard__media { background: rgba(225,233,238,.70); }
+.app-shell[data-theme='day'] .board__color-bar { background: rgba(255,255,255,.72); border-color: rgba(47,120,183,.20); }
 
 @media (max-width: 1100px) {
   .editor > .write-progress { grid-template-columns: 74px minmax(160px, 1fr) max-content; column-gap: 8px; padding-inline: 9px; }

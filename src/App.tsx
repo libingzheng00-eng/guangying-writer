@@ -25,13 +25,16 @@ export default function App() {
   const view = useStore((s) => s.view);
   const toast = useStore((s) => s.toast);
   const fontColor = useStore((s) => s.fontColor);
+  const appTheme = useStore((s) => s.appTheme);
   const project = useStore((s) => s.project);
   const version = useStore((s) => s.version);
   const [dialog, setDialog] = useState<null | 'settings' | 'title'>(null);
   const commands = useCommands();
   // 原源码包遗漏了示例背景图。使用内置渐变保证开源仓库可以直接构建；
   // 后续若添加可再分发的原创图片，可在此处作为可选的视觉资源接入。
-  const writeBg = 'radial-gradient(circle at 76% 12%, rgba(63, 82, 104, .18), transparent 34%), linear-gradient(140deg, #111820 0%, #17232e 52%, #0d1218 100%)';
+  const writeBg = appTheme === 'day'
+    ? 'radial-gradient(circle at 76% 12%, rgba(155, 181, 199, .22), transparent 34%), linear-gradient(140deg, #edf2f5 0%, #e5ebef 52%, #dce4e9 100%)'
+    : 'radial-gradient(circle at 76% 12%, rgba(63, 82, 104, .18), transparent 34%), linear-gradient(140deg, #111820 0%, #17232e 52%, #0d1218 100%)';
 
   /* 启动：读取自动保存或示例剧本 */
   useEffect(() => {
@@ -186,7 +189,7 @@ export default function App() {
 
   return (
     <PaginationProvider>
-      <div className="app-shell">
+      <div className="app-shell" data-theme={appTheme}>
         <div className="write-bg" aria-hidden style={{ backgroundImage: writeBg }} />
         <Toolbar commands={commands} onOpenSettings={() => setDialog('settings')} onOpenTitle={() => setDialog('title')} />
         <div className="app-body">

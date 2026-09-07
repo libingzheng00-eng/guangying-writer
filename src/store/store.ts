@@ -27,6 +27,7 @@ import {
 
 export type ViewMode = 'write' | 'cards' | 'board' | 'preview' | 'reports';
 export type SidebarMode = 'navigator' | 'outline' | 'inspector';
+export type AppTheme = 'night' | 'day';
 
 export interface FocusRequest {
   id: string;
@@ -62,6 +63,8 @@ interface StoreState {
   zoom: number;
   /** 写作字体颜色（app 级外观设置，不写入 .zhsp） */
   fontColor: string;
+  /** 应用外观（app 级设置，不写入 .zhsp） */
+  appTheme: AppTheme;
   past: ScriptProject[];
   future: ScriptProject[];
 
@@ -75,6 +78,7 @@ interface StoreState {
   setPageCount: (n: number) => void;
   setZoom: (n: number) => void;
   setFontColor: (c: string) => void;
+  setAppTheme: (theme: AppTheme) => void;
 
   loadProject: (p: ScriptProject, filePath?: string | null) => void;
   newProject: () => void;
@@ -152,6 +156,7 @@ const HISTORY_LIMIT = 120;
 
 /* --------- 写作字体颜色：app 级外观设置，只存 localStorage，不写入 project --------- */
 const LS_FONT_COLOR = 'mojiang:fontColor';
+const LS_APP_THEME = 'mojiang:appTheme';
 export const DEFAULT_FONT_COLOR = '#e9ff3a';
 
 function loadFontColor(): string {
@@ -162,6 +167,9 @@ function loadFontColor(): string {
   } catch {
     return DEFAULT_FONT_COLOR;
   }
+}
+function loadAppTheme(): AppTheme {
+  try { return localStorage.getItem(LS_APP_THEME) === 'day' ? 'day' : 'night'; } catch { return 'night'; }
 }
 let lastCoalesce: { key: string; ts: number } | null = null;
 
@@ -180,6 +188,7 @@ export const useStore = create<StoreState>((set, get) => ({
   pageCount: 0,
   zoom: 1,
   fontColor: loadFontColor(),
+  appTheme: loadAppTheme(),
   past: [],
   future: [],
   selectedIds: [],
@@ -198,6 +207,10 @@ export const useStore = create<StoreState>((set, get) => ({
       /* 忽略存储失败 */
     }
     set({ fontColor: c });
+  },
+  setAppTheme: (appTheme) => {
+    try { localStorage.setItem(LS_APP_THEME, appTheme); } catch { /* 忽略存储失败 */ }
+    set({ appTheme });
   },
 
   loadProject: (p, filePath = null) => {

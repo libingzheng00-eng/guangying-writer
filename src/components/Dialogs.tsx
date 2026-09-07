@@ -81,6 +81,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const updateRevisions = useStore((s) => s.updateRevisions);
   const fontColor = useStore((s) => s.fontColor);
   const setFontColor = useStore((s) => s.setFontColor);
+  const appTheme = useStore((s) => s.appTheme);
+  const setAppTheme = useStore((s) => s.setAppTheme);
   const [tab, setTab] = useState<'page' | 'indent' | 'revision' | 'appearance' | 'general'>('page');
 
   const num = (v: string, fallback = 0) => {
@@ -317,6 +319,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
       {tab === 'appearance' ? (
         <div className="form">
+          <div className="field">
+            <label>界面模式</label>
+            <div className="segmented appearance-theme-switch" role="group" aria-label="界面模式">
+              <button className={appTheme === 'night' ? 'is-active' : ''} onClick={() => setAppTheme('night')}>夜间</button>
+              <button className={appTheme === 'day' ? 'is-active' : ''} onClick={() => setAppTheme('day')}>日间</button>
+            </div>
+            <p className="hint">只影响本机界面外观，不会写入剧本文件，也不会影响导出。</p>
+          </div>
           <div className="field">
             <label>写作字体颜色</label>
             <div className="rev-picker">

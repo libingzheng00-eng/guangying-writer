@@ -28,6 +28,7 @@ export function BoardView() {
   const addBeat = useStore((s) => s.addBeat);
   const moveBeat = useStore((s) => s.moveBeat);
   const updateBeat = useStore((s) => s.updateBeat);
+  const updateSceneMeta = useStore((s) => s.updateSceneMeta);
   const resizeBeat = useStore((s) => s.resizeBeat);
   const deleteBeat = useStore((s) => s.deleteBeat);
   const linkBeat = useStore((s) => s.linkBeat);
@@ -374,6 +375,12 @@ export function BoardView() {
     if (linkFrom !== endpoint) addBoardLink(linkFrom, endpoint);
     setLinkFrom(null);
   };
+  const applySelectedColor = (color: string) => {
+    selectedIds.forEach((id) => {
+      if (id.startsWith('scene:')) updateSceneMeta(id.slice(6), { color });
+      if (id.startsWith('beat:')) updateBeat(id.slice(5), { color });
+    });
+  };
 
   return (
     <div className="board">
@@ -390,6 +397,12 @@ export function BoardView() {
           </button>
         </div>
         <span className="hint">拖拽卡片摆放 · 拖空白平移 · 滚轮缩放 · 双击空白加灵感卡</span>
+        {selectedIds.length ? (
+          <div className="board__color-bar" role="group" aria-label="所选卡片颜色">
+            <span>颜色</span>
+            {CARD_COLORS.map((color) => <button key={color} type="button" style={{ background: color }} title="设为此颜色" onClick={() => applySelectedColor(color)} />)}
+          </div>
+        ) : null}
         {linkFrom ? <button className="btn btn--ghost board__link-state" onClick={() => setLinkFrom(null)}>选择另一张卡片连接 · 取消</button> : null}
         <div className="spacer" />
         <button className="btn btn--ghost" onClick={addSceneCard}>
@@ -639,16 +652,6 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
         )}
       </div>
       <div className="bcard__foot" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="bcard__dots">
-          {CARD_COLORS.map((c) => (
-            <button
-              key={c}
-              className="bcard__dot"
-              style={{ background: c }}
-              onClick={() => onChange({ color: c })}
-            />
-          ))}
-        </div>
         <select
           className="bcard__link"
           value={beat.sceneId || ''}
