@@ -385,24 +385,22 @@ export function BoardView() {
   return (
     <div className="board">
       <div className="board__bar">
-        <div className="segmented">
-          <button className={filter === 'both' ? 'is-active' : ''} onClick={() => setFilter('both')}>
-            全部
+        <div className="segmented board__subtabs" role="tablist" aria-label="自由板子板块">
+          <button role="tab" aria-selected={filter === 'both'} className={filter === 'both' ? 'is-active' : ''} onClick={() => setFilter('both')}>
+            总览
           </button>
-          <button className={filter === 'scenes' ? 'is-active' : ''} onClick={() => setFilter('scenes')}>
-            场景卡
+          <button role="tab" aria-selected={filter === 'scenes'} className={filter === 'scenes' ? 'is-active' : ''} onClick={() => setFilter('scenes')}>
+            场景板
           </button>
-          <button className={filter === 'beats' ? 'is-active' : ''} onClick={() => setFilter('beats')}>
-            灵感卡
+          <button role="tab" aria-selected={filter === 'beats'} className={filter === 'beats' ? 'is-active' : ''} onClick={() => setFilter('beats')}>
+            灵感板
           </button>
         </div>
         <span className="hint">拖拽卡片摆放 · 拖空白平移 · 滚轮缩放 · 双击空白加灵感卡</span>
-        {selectedIds.length ? (
-          <div className="board__color-bar" role="group" aria-label="所选卡片颜色">
+        <div className="board__color-bar" role="group" aria-label="所选卡片颜色">
             <span>颜色</span>
-            {CARD_COLORS.map((color) => <button key={color} type="button" style={{ background: color }} title="设为此颜色" onClick={() => applySelectedColor(color)} />)}
-          </div>
-        ) : null}
+            {CARD_COLORS.map((color) => <button key={color} type="button" style={{ background: color }} disabled={!selectedIds.length} title={selectedIds.length ? '设为此颜色' : '先选中卡片'} onClick={() => applySelectedColor(color)} />)}
+        </div>
         {linkFrom ? <button className="btn btn--ghost board__link-state" onClick={() => setLinkFrom(null)}>选择另一张卡片连接 · 取消</button> : null}
         <div className="spacer" />
         <button className="btn btn--ghost" onClick={addSceneCard}>
@@ -691,6 +689,6 @@ function BoardLinks({ links, endpoints, onChange, onDelete }: { links: BoardLink
   return <svg className="board-links" aria-label="卡片关系线">{links.map((link) => {
     const a = endpoints.get(link.from)!; const b = endpoints.get(link.to)!;
     const x = (a.x + b.x) / 2; const y = (a.y + b.y) / 2;
-    return <g key={link.id}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} /><foreignObject x={x - 78} y={y - 13} width="176" height="28"><div className="board-link-note"><input value={link.note || ''} placeholder="关系备注" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange(link.id, { note: e.target.value })} /><button type="button" title="删除连线" onMouseDown={(e) => e.stopPropagation()} onClick={() => onDelete(link.id)}>×</button></div></foreignObject></g>;
+    return <g key={link.id}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} /><foreignObject x={x - 105} y={y - 12} width="210" height="26"><div className="board-link-note"><input value={link.note || ''} placeholder="关系备注" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange(link.id, { note: e.target.value })} /><button type="button" title="删除连线" onMouseDown={(e) => e.stopPropagation()} onClick={() => onDelete(link.id)}>×</button></div></foreignObject></g>;
   })}</svg>;
 }

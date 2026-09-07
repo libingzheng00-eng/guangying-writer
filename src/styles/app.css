@@ -944,8 +944,8 @@ textarea {
 .cards__grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  min-height: 90px;
+  gap: 16px;
+  min-height: 110px;
 }
 .cards__empty {
   color: var(--muted);
@@ -956,10 +956,10 @@ textarea {
   text-align: center;
 }
 .card {
-  width: 236px;
-  min-height: 132px;
+  width: 332px;
+  min-height: 192px;
   border-radius: 10px;
-  padding: 10px;
+  padding: 14px;
   cursor: grab;
   display: flex;
   flex-direction: column;
@@ -1022,10 +1022,12 @@ textarea {
 }
 .card__title {
   font-weight: 600;
+  font-size: 15px;
+  min-height: 30px;
 }
 .card__synopsis {
   flex: 1;
-  min-height: 54px;
+  min-height: 92px;
   resize: vertical;
   font-size: 12px;
   line-height: 1.55;
@@ -1306,6 +1308,7 @@ textarea {
   flex-direction: column;
   gap: 2px;
   min-width: 68px;
+  align-items: center;
 }
 .write-progress__eyebrow {
   color: var(--muted);
@@ -1314,20 +1317,28 @@ textarea {
 }
 .write-progress__value {
   display: flex;
-  align-items: baseline;
-  gap: 4px;
+  align-items: center;
+  gap: 1px;
+  font-family: "Snell Roundhand", "Bradley Hand", "Segoe Print", cursive;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: .015em;
+  -webkit-text-stroke: .16px currentColor;
 }
 .write-progress__value strong {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 27px;
+  font-weight: 750;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 .write-progress__divider {
   color: var(--muted);
+  font-size: 22px;
 }
 .write-progress__target {
   color: var(--muted);
+  font-size: 24px;
   font-variant-numeric: tabular-nums;
 }
 .write-progress__unit {
@@ -1725,6 +1736,7 @@ textarea {
 .board {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   height: 100%;
   background-color: transparent;
   /* 夜の街の遠景：暗いベースに微かな青と暖色の光 */
@@ -1741,11 +1753,19 @@ textarea {
   background: var(--panel);
   border-bottom: 0.5px solid var(--border);
   flex-wrap: wrap;
+  min-width: 0;
+  overflow: hidden;
 }
 .board__bar .hint {
   font-size: 12px;
   color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.board__subtabs { flex: 0 0 auto; }
+.board__subtabs button { min-width: 64px; padding-inline: 14px; }
 .board__canvas {
   position: relative;
   flex: 1;
@@ -1770,9 +1790,11 @@ textarea {
 }
 .board-links { position: absolute; inset: 0; width: 6000px; height: 4000px; overflow: visible; pointer-events: none; }
 .board-links line { stroke: rgba(164, 183, 199, .72); stroke-width: 2; stroke-dasharray: 5 5; }
-.board-link-note { display: flex; align-items: center; gap: 3px; width: 176px; pointer-events: auto; padding: 2px; border: 1px solid rgba(132,154,172,.48); border-radius: 5px; background: rgba(13,19,27,.9); box-shadow: 0 3px 12px rgba(0,0,0,.3); }
-.board-link-note input { min-width: 0; flex: 1; height: 20px; border: 0; outline: none; background: transparent; color: #dbe4eb; font-size: 11px; padding: 0 4px; }
-.board-link-note button { width: 19px; height: 19px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: #8595a3; cursor: pointer; }
+.board-link-note { display: flex; align-items: center; gap: 3px; width: 210px; pointer-events: auto; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.board-link-note input { min-width: 0; flex: 1; height: 22px; border: 0; outline: none; background: transparent; color: #dbe4eb; font-size: 12px; font-style: italic; padding: 0; text-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.board-link-note input::placeholder { color: rgba(184,201,214,.72); }
+.board-link-note button { width: 19px; height: 19px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: #8595a3; cursor: pointer; opacity: 0; transition: opacity .15s ease, background .15s ease; }
+.board-link-note:hover button, .board-link-note input:focus + button { opacity: 1; }
 .board-link-note button:hover { background: var(--danger-soft); color: var(--danger); }
 .bcard {
   position: absolute;
@@ -1830,6 +1852,7 @@ textarea {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  width: 100%;
 }
 .bcard__title,
 .bcard__synopsis {
@@ -1842,6 +1865,7 @@ textarea {
   opacity: 0.5;
 }
 .bcard__head {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -1849,6 +1873,7 @@ textarea {
   margin-bottom: 6px;
 }
 .bcard__actions { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.bcard__head .bcard__actions { position: absolute; top: -8px; right: -8px; margin-left: 0; }
 .bcard__connect { width: 19px; height: 19px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; }
 .bcard__connect:hover, .bcard__connect.is-active { color: #dce7ed; background: rgba(88,166,255,.18); box-shadow: inset 0 0 0 1px rgba(88,166,255,.35); }
 .board__link-state { color: #b9d9f6; }
@@ -1954,6 +1979,7 @@ textarea {
   justify-content: space-between;
   gap: 6px;
   margin-top: 8px;
+  width: 100%;
 }
 .bcard__dots {
   display: flex;
@@ -1975,7 +2001,8 @@ textarea {
 }
 .bcard__link {
   font-size: 11px;
-  max-width: 96px;
+  width: 100%;
+  max-width: none;
   border: 0.5px solid var(--border);
   border-radius: 5px;
   background: rgba(0, 0, 0, 0.25);
@@ -2442,7 +2469,7 @@ textarea {
 .editor > .write-progress .write-progress__scene { filter: saturate(.5) brightness(.88); }
 .editor > .write-progress .write-progress__goal { min-width: max-content; padding-left: 12px; gap: 4px; }
 .editor > .write-progress .write-progress__goal input { width: 58px; min-width: 58px; height: 28px; padding: 0 8px; color: #f0dfcd; border-color: rgba(221,205,186,.22); background: #202327; text-align: center; }
-.editor > .write-progress { grid-template-areas: 'label road tools' '. scenes tools'; }
+.editor > .write-progress { grid-template-areas: 'label road tools' 'label scenes tools'; }
 .editor > .write-progress .write-progress__label { align-self: stretch; min-width: 94px; padding-right: 0; justify-content: center; }
 .editor > .write-progress .write-progress__value { justify-content: center; gap: 0; }
 .editor > .write-progress .write-progress__divider { margin-inline: 1px; }
@@ -2488,11 +2515,13 @@ textarea {
 .bcard--scene { box-shadow: inset 3px 0 0 var(--scene-color), var(--card-glow); }
 .bcard__head { margin-bottom: 3px; }
 .bcard__foot { justify-content: flex-end; margin-top: 5px; }
-.bcard__link { max-width: 132px; }
+.bcard__link { max-width: none; }
 .board__color-bar { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid rgba(88,166,255,.18); border-radius: 7px; background: rgba(7,12,18,.35); }
 .board__color-bar span { color: var(--muted); font-size: 11px; }
 .board__color-bar button { width: 14px; height: 14px; padding: 0; border: 1px solid rgba(255,255,255,.35); border-radius: 50%; cursor: pointer; transition: transform .14s ease; }
 .board__color-bar button:hover { transform: scale(1.18); }
+.board__color-bar button:disabled { opacity: .62; cursor: not-allowed; filter: saturate(.45); }
+.board__color-bar button:disabled:hover { transform: none; }
 
 /* 日间模式为本机偏好：采用低反光纸面和深灰文字，不影响剧本或导出。 */
 .app-shell[data-theme='day'] { --bg: #edf2f5; --panel: #f7f9fa; --panel-2: #e7edf1; --border: #cbd5dc; --border-strong: #aebcc6; --text: #26333c; --muted: #65727c; --accent: #2f78b7; --accent-soft: rgba(47,120,183,.12); --accent-glow: rgba(47,120,183,.16); --glass-bg: rgba(255,255,255,.70); --glass-border: rgba(69,91,107,.20); --card-glow: 0 10px 26px rgba(52,70,82,.12); --neon-yellow: #273640; --neon-yellow-soft: #82909a; --neon-yellow-glow: none; }
@@ -2511,6 +2540,7 @@ textarea {
 .app-shell[data-theme='day'] .sc-el--editable { color: #273640; text-shadow: none; }
 .app-shell[data-theme='day'] .editor > .write-progress { background: linear-gradient(180deg,#f4f1ec,#e9e5de); border-color: rgba(57,49,42,.12); }
 .app-shell[data-theme='day'] .editor > .write-progress .write-progress__label, .app-shell[data-theme='day'] .editor > .write-progress .write-progress__goal { color: #62584e; }
+.app-shell[data-theme='day'] .editor > .write-progress .write-progress__value { color: #62584e; }
 .app-shell[data-theme='day'] .editor > .write-progress .write-progress__scenes { background: #d8ddd8; border-color: rgba(73,61,50,.22); }
 .app-shell[data-theme='day'] .editor > .write-progress .write-progress__scene { color: #26333c; }
 .app-shell[data-theme='day'] .editor > .write-progress .write-progress__road { background: repeating-linear-gradient(90deg, transparent 0 31px, rgba(70,59,49,.11) 31px 32px), linear-gradient(180deg,#dad5cd 0 18%,#eeeae4 18% 79%,#ccc5bb 79%); border-color: rgba(73,61,50,.22); }
@@ -2524,7 +2554,13 @@ textarea {
 .app-shell[data-theme='day'] .bcard__synopsis { color: #65727c; }
 .app-shell[data-theme='day'] .bcard__edit, .app-shell[data-theme='day'] .bcard__media { background: rgba(225,233,238,.70); }
 .app-shell[data-theme='day'] .board__color-bar { background: rgba(255,255,255,.72); border-color: rgba(47,120,183,.20); }
-.app-shell[data-theme='day'] .board-link-note { border-color: rgba(81,111,132,.30); background: rgba(250,252,253,.96); box-shadow: 0 3px 12px rgba(58,79,94,.18); }
+.app-shell[data-theme='day'] .board__bar { background: rgba(247,249,250,.92); border-color: #cbd5dc; }
+.app-shell[data-theme='day'] .board__bar .hint { color: #65727c; }
+.app-shell[data-theme='day'] .board__bar .segmented button { color: #65727c; }
+.app-shell[data-theme='day'] .board__bar .segmented button.is-active { color: #2f78b7; background: rgba(47,120,183,.12); box-shadow: none; }
+.app-shell[data-theme='day'] .board__bar .btn { color: #40505b; border-color: #b9c7d0; background: #f7f9fa; }
+.app-shell[data-theme='day'] .board__bar .btn--primary { color: #fff; border-color: #2f78b7; background: #2f78b7; }
+.app-shell[data-theme='day'] .board-link-note { border-color: transparent; background: transparent; box-shadow: none; }
 .app-shell[data-theme='day'] .board-link-note input { color: #273640; }
 .app-shell[data-theme='day'] .board-link-note input::placeholder { color: #80909b; }
 .app-shell[data-theme='day'] .board-link-note button { color: #6d7e8a; }

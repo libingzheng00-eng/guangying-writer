@@ -39,3 +39,16 @@
 ## 最终结果
 
 final result: passed
+
+## alpha.13 进度条与板块视觉核对
+
+- 参考截图：
+  - `/var/folders/ln/9kx_scj10zd4zmbznrs9jmj40000gn/T/codex-clipboard-4444c70c-193a-4fd5-a60a-d18499259cd7.png`
+  - `/var/folders/ln/9kx_scj10zd4zmbznrs9jmj40000gn/T/codex-clipboard-93d6e974-da3d-4ff9-8c6c-6ec71218be71.png`
+  - `/var/folders/ln/9kx_scj10zd4zmbznrs9jmj40000gn/T/codex-clipboard-20726e9d-c0dc-434e-b22c-0ddc117a2ea1.png`
+- 本地 Chrome 实机截图：
+  - `/private/tmp/mochang-alpha13-writing-day.png`
+  - `/private/tmp/mochang-alpha13-board-day-v2.png`
+- 已核对：当前页仅显示 `1/100`，手写风格数字跨进度轨道两行居中；自由板顶部三分区和颜色工具区已进入 DOM 并使用日间对比度；卡片关联选择区和关系备注样式已按标注图调整；故事板卡片尺寸规则已放大。
+- 代码级验证：typecheck、build、render、writing、zhsp 兼容、history 全部通过。
+- 备注：Chrome 隔离页中的空白样本没有关系线和灵感卡，因此关系备注与卡片浮动按钮的最终像素位置仍需在含真实自由板卡片的工程中复核；不会读取用户剧本来做此注入。
