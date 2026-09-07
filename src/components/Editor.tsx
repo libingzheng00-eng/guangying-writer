@@ -378,8 +378,8 @@ export function Editor() {
   const writingImages = project.beats.filter((b) => (b.kind || 'beat') === 'wimg');
   const addWritingMaterial = (kind: 'sound' | 'wimg') => {
     const count = kind === 'sound' ? writingSounds.length : writingImages.length;
-    const x = Math.max(36, (scrollRef.current?.clientWidth || 980) - 292);
-    const y = 92 + count * 30 + (kind === 'wimg' ? 132 : 0);
+    const x = Math.max(24, (scrollRef.current?.clientWidth || 980) - 274);
+    const y = 84 + count * 24 + (kind === 'wimg' ? 120 : 0);
     const id = addBeat(x, y, '', kind);
     if (kind === 'wimg') {
       const input = document.createElement('input');

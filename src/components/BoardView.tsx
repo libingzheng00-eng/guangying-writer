@@ -572,7 +572,7 @@ function SceneCard({ scene, pos, linking, onLink, onResizeStart, selected }: Sce
       data-id={scene.elementId}
       data-kind="scene"
       className={`bcard bcard--scene ${scene.omit ? 'is-omit' : ''} ${selected ? 'is-selected' : ''}`}
-      style={{ left: pos.x, top: pos.y, borderTopColor: scene.color, width: scene.w, height: scene.h }}
+      style={{ left: pos.x, top: pos.y, '--scene-color': scene.color, width: scene.w, height: scene.h } as React.CSSProperties}
     >
       <div className="bcard__head">
         <span className="bcard__no">{scene.number}</span>

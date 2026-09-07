@@ -181,11 +181,6 @@ export function ProgressBar({ children }: { children?: React.ReactNode }) {
             aria-hidden
           />
         ) : null}
-        {target > 0 ? (
-          <span className="write-progress__hint">{`已写 ${writtenPages} / ${target} 页 · ${completionPct}%`}</span>
-        ) : (
-          <span className="write-progress__hint">设定目标页数后显示进度</span>
-        )}
       </div>
 
       <div
@@ -224,20 +219,22 @@ export function ProgressBar({ children }: { children?: React.ReactNode }) {
         ) : null}
       </div>
 
-      <label className="write-progress__goal" title="目标页数（0 = 关闭目标，隐藏进度条）">
-        目标
-        <input
-          type="number"
-          min={0}
-          max={9999}
-          value={target}
-          placeholder="100"
-          aria-label="目标页数"
-          onChange={(e) => useStore.getState().setTargetPages(Number(e.target.value))}
-        />
-        页
+      <div className="write-progress__tools">
+        <label className="write-progress__goal" title="目标页数（0 = 关闭目标，隐藏进度条）">
+          目标
+          <input
+            type="number"
+            min={0}
+            max={9999}
+            value={target}
+            placeholder="100"
+            aria-label="目标页数"
+            onChange={(e) => useStore.getState().setTargetPages(Number(e.target.value))}
+          />
+          页
+        </label>
         {children}
-      </label>
+      </div>
     </div>
   );
 }
