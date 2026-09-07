@@ -106,13 +106,14 @@ export function BoardView() {
     if (cardEl) {
       const mode = (cardEl.getAttribute('data-drag') as 'card' | 'beat') || 'card';
       const id = cardEl.getAttribute('data-id') || '';
+      const selectionId = mode === 'card' ? `scene:${id}` : `beat:${id}`;
       const x = parseFloat(cardEl.style.left) || 0;
       const y = parseFloat(cardEl.style.top) || 0;
 
       // modifier：Cmd/Ctrl → 切换选中；Shift → 范围选择；普通 → 单选（后续 onUp 落位）
       if (e.metaKey || e.ctrlKey) {
-        toggleSelection(id);
-        lastAnchorRef.current = id;
+        toggleSelection(selectionId);
+        lastAnchorRef.current = selectionId;
         drag.current = null;
         return;
       }
@@ -122,18 +123,15 @@ export function BoardView() {
           ...scenes.map((s) => `scene:${s.elementId}`),
           ...project.beats.map((b) => `beat:${b.id}`),
         ];
-        const key = mode === 'card' ? `scene:${id}` : `beat:${id}`;
         const anchor = lastAnchorRef.current;
-        selectRange(ordered, anchor, key);
-        lastAnchorRef.current = key;
+        selectRange(ordered, anchor, selectionId);
+        lastAnchorRef.current = selectionId;
         // Shift 范围选不启动 drag
         drag.current = null;
         return;
       }
 
-      // 普通按下：若当前未选过任何东西（selectedIds 为空），scene 卡仍走 v1.2.9 同款
-      // 「点击跳转写作视图」，但仅在没有 modifier 且 selectedIds 为空时命中。
-      // 否则按 click 后续落位：单击即 toggleSel（已在 onUp 处理）。
+      // 普通单击在 mouseup 时选中卡片；双击场景卡仍可跳回写作页。
       drag.current = { mode, id, sx: e.clientX, sy: e.clientY, ox: x, oy: y, ow: 0, oh: 0, moved: false };
     } else {
       // 空白：启动 marquee
@@ -192,19 +190,11 @@ export function BoardView() {
     };
     const onUp = (e: MouseEvent) => {
       const d = drag.current;
-      if (d && d.mode === 'card' && d.id && !d.moved) {
-        // 单击落位：场景卡 + selectedIds 为空 → 跳转写作视图（v1.2.9 行为保持）
-        if (selectedIds.length === 0) {
-          const sc = scenes.find((s) => s.elementId === d.id || s.id === d.id);
-          if (sc) {
-            requestFocus(sc.elementId, 'start');
-            setView('write');
-          }
-        } else {
-          // 已有选区，单击：toggle 该 id（取消选中时清空 anchor）
-          toggleSelection(d.id!);
-          lastAnchorRef.current = d.id!;
-        }
+      if (d && (d.mode === 'card' || d.mode === 'beat') && d.id && !d.moved) {
+        // 单击是最直观的选中方式：统一存 scene:/beat: 前缀，保证颜色栏、描边和批量操作读取同一状态。
+        const selectionId = d.mode === 'card' ? `scene:${d.id}` : `beat:${d.id}`;
+        setSelectedIds([selectionId]);
+        lastAnchorRef.current = selectionId;
       } else if (d && d.mode === 'resize' && d.id && d.kind) {
         // resize 落位：按 kind 分别用 resizeSceneMeta / resizeBeat
         const w = (d as any).previewW ?? d.ow;
@@ -379,6 +369,11 @@ export function BoardView() {
     selectedIds.forEach((id) => {
       if (id.startsWith('scene:')) updateSceneMeta(id.slice(6), { color });
       if (id.startsWith('beat:')) updateBeat(id.slice(5), { color });
+      // 兼容本轮修复前已存在于内存中的无前缀选中值；选中态本身不写入工程文件。
+      if (!id.includes(':')) {
+        if (scenes.some((scene) => scene.elementId === id)) updateSceneMeta(id, { color });
+        if (project.beats.some((beat) => beat.id === id)) updateBeat(id, { color });
+      }
     });
   };
 
@@ -396,57 +391,58 @@ export function BoardView() {
             灵感板
           </button>
         </div>
-        <span className="hint">拖拽卡片摆放 · 拖空白平移 · 滚轮缩放 · 双击空白加灵感卡</span>
-        <div className="board__color-bar" role="group" aria-label="所选卡片颜色">
-            <span>颜色</span>
-            {CARD_COLORS.map((color) => <button key={color} type="button" style={{ background: color }} disabled={!selectedIds.length} title={selectedIds.length ? '设为此颜色' : '先选中卡片'} onClick={() => applySelectedColor(color)} />)}
+        <div className="board__center-tools">
+          <div className="board__color-bar" role="group" aria-label="所选卡片颜色">
+              <span>颜色</span>
+              {CARD_COLORS.map((color) => <button key={color} type="button" style={{ background: color }} disabled={!selectedIds.length} title={selectedIds.length ? '设为此颜色' : '先选中卡片'} onClick={() => applySelectedColor(color)} />)}
+          </div>
+          {linkFrom ? <button className="btn btn--ghost board__link-state" onClick={() => setLinkFrom(null)}>选择另一张卡片连接 · 取消</button> : null}
         </div>
-        {linkFrom ? <button className="btn btn--ghost board__link-state" onClick={() => setLinkFrom(null)}>选择另一张卡片连接 · 取消</button> : null}
-        <div className="spacer" />
-        <button className="btn btn--ghost" onClick={addSceneCard}>
-          ＋场景卡
-        </button>
-        <div className="board__add-beat">
-          <button className="btn btn--primary" onClick={() => addBoardBeat('beat')}>
-            ＋灵感卡
+        <div className="board__actions">
+          <button className="btn btn--ghost" onClick={addSceneCard}>
+            ＋场景卡
           </button>
-          <button className="btn btn--ghost" onClick={() => addBoardBeat('sound')}>
-            ＋声音
-          </button>
-          <button className="btn btn--ghost" onClick={() => {
-            const id = addBoardBeat('image');
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*';
-            input.onchange = () => {
-              const f = input.files && input.files[0];
-              if (!f) return;
-              const rd = new FileReader();
-              rd.onload = () => { useStore.getState().updateBeat(id, { img: String(rd.result || '') }); };
-              rd.readAsDataURL(f);
-            };
-            input.click();
-          }}>
-            ＋图片
-          </button>
-          <button className="btn btn--ghost" onClick={() => {
-            const id = addBoardBeat('wimg');
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*';
-            input.onchange = () => {
-              const f = input.files && input.files[0];
-              if (!f) return;
-              const rd = new FileReader();
-              rd.onload = () => { useStore.getState().updateBeat(id, { img: String(rd.result || '') }); };
-              rd.readAsDataURL(f);
-            };
-            input.click();
-          }}>
-            ＋写作图
-          </button>
-        </div>
-        <div className="zoom-ctl">
+          <div className="board__add-beat">
+            <button className="btn btn--primary" onClick={() => addBoardBeat('beat')}>
+              ＋灵感卡
+            </button>
+            <button className="btn btn--ghost" onClick={() => addBoardBeat('sound')}>
+              ＋声音
+            </button>
+            <button className="btn btn--ghost" onClick={() => {
+              const id = addBoardBeat('image');
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = 'image/*';
+              input.onchange = () => {
+                const f = input.files && input.files[0];
+                if (!f) return;
+                const rd = new FileReader();
+                rd.onload = () => { useStore.getState().updateBeat(id, { img: String(rd.result || '') }); };
+                rd.readAsDataURL(f);
+              };
+              input.click();
+            }}>
+              ＋图片
+            </button>
+            <button className="btn btn--ghost" onClick={() => {
+              const id = addBoardBeat('wimg');
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = 'image/*';
+              input.onchange = () => {
+                const f = input.files && input.files[0];
+                if (!f) return;
+                const rd = new FileReader();
+                rd.onload = () => { useStore.getState().updateBeat(id, { img: String(rd.result || '') }); };
+                rd.readAsDataURL(f);
+              };
+              input.click();
+            }}>
+              ＋写作图
+            </button>
+          </div>
+          <div className="zoom-ctl">
           <button className="icon-btn" onClick={() => setZoom((z) => Math.max(0.4, z - 0.1))}>
             －
           </button>
@@ -457,6 +453,7 @@ export function BoardView() {
           <button className="icon-btn" title="重置视图" onClick={resetView}>
             ⤢
           </button>
+          </div>
         </div>
       </div>
 
@@ -483,6 +480,10 @@ export function BoardView() {
                   pos={pos}
                   linking={linkFrom === `scene:${sc.elementId}`}
                   onLink={() => onCardLink(`scene:${sc.elementId}`)}
+                  onOpen={() => {
+                    requestFocus(sc.elementId, 'start');
+                    setView('write');
+                  }}
                   onResizeStart={(e) => {
                     // 场景卡 resize：与节拍卡共用 drag.current 'resize' 模式
                     const node = e.currentTarget.closest('[data-card]') as HTMLElement | null;
@@ -501,7 +502,7 @@ export function BoardView() {
                       node,
                     };
                   }}
-                  selected={selectedIds.includes(`scene:${sc.elementId}`)}
+                  selected={selectedIds.includes(`scene:${sc.elementId}`) || selectedIds.includes(sc.elementId)}
                 />
               );
             })}
@@ -535,7 +536,7 @@ export function BoardView() {
                     node,
                   };
                 }}
-                selected={selectedIds.includes(`beat:${b.id}`)}
+                selected={selectedIds.includes(`beat:${b.id}`) || selectedIds.includes(b.id)}
               />
             ))}
         </div>
@@ -561,7 +562,7 @@ interface SceneCardProps {
   pos: { x: number; y: number };
 }
 
-function SceneCard({ scene, pos, linking, onLink, onResizeStart, selected }: SceneCardProps & { linking: boolean; onLink: () => void; onResizeStart: (e: React.MouseEvent) => void; selected: boolean }) {
+function SceneCard({ scene, pos, linking, onLink, onOpen, onResizeStart, selected }: SceneCardProps & { linking: boolean; onLink: () => void; onOpen: () => void; onResizeStart: (e: React.MouseEvent) => void; selected: boolean }) {
   const lim = sizeLimitFor('scene');
   return (
     <div
@@ -571,6 +572,7 @@ function SceneCard({ scene, pos, linking, onLink, onResizeStart, selected }: Sce
       data-kind="scene"
       className={`bcard bcard--scene ${scene.omit ? 'is-omit' : ''} ${selected ? 'is-selected' : ''}`}
       style={{ left: pos.x, top: pos.y, '--scene-color': scene.color, width: scene.w, height: scene.h } as React.CSSProperties}
+      onDoubleClick={(e) => { e.stopPropagation(); onOpen(); }}
     >
       <div className="bcard__head">
         <span className="bcard__no">{scene.number}</span>

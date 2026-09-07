@@ -1746,26 +1746,23 @@ textarea {
     radial-gradient(ellipse 60% 40% at 90% 10%, rgba(248, 81, 73, 0.015) 0%, transparent 45%);
 }
 .board__bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
+  gap: 8px;
+  min-height: 42px;
+  padding: 5px 10px;
   background: var(--panel);
   border-bottom: 0.5px solid var(--border);
-  flex-wrap: wrap;
   min-width: 0;
   overflow: hidden;
-}
-.board__bar .hint {
-  font-size: 12px;
-  color: var(--muted);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .board__subtabs { flex: 0 0 auto; }
-.board__subtabs button { min-width: 64px; padding-inline: 14px; }
+.board__subtabs button { min-width: 54px; padding-inline: 10px; }
+.board__center-tools { min-width: 0; display: flex; justify-self: center; align-items: center; gap: 8px; }
+.board__actions { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.board__add-beat { display: flex; align-items: center; gap: 3px; }
+.board__actions .btn { padding-inline: 8px; }
 .board__canvas {
   position: relative;
   flex: 1;
@@ -2525,7 +2522,15 @@ textarea {
 
 /* 日间模式为本机偏好：采用低反光纸面和深灰文字，不影响剧本或导出。 */
 .app-shell[data-theme='day'] { --bg: #edf2f5; --panel: #f7f9fa; --panel-2: #e7edf1; --border: #cbd5dc; --border-strong: #aebcc6; --text: #26333c; --muted: #65727c; --accent: #2f78b7; --accent-soft: rgba(47,120,183,.12); --accent-glow: rgba(47,120,183,.16); --glass-bg: rgba(255,255,255,.70); --glass-border: rgba(69,91,107,.20); --card-glow: 0 10px 26px rgba(52,70,82,.12); --neon-yellow: #273640; --neon-yellow-soft: #82909a; --neon-yellow-glow: none; }
-.app-shell[data-theme='day'] .toolbar { background: linear-gradient(180deg,#fbfcfd,#eef3f6); box-shadow: 0 1px 8px rgba(56,75,88,.08); }
+.app-shell[data-theme='day'] .toolbar { background: linear-gradient(180deg,#fbfcfd,#eef3f6); box-shadow: 0 1px 8px rgba(56,75,88,.08); color: #40505b; }
+.app-shell[data-theme='day'] .toolbar .segmented { background: #e9eff3; border-color: #c5d1d9; }
+.app-shell[data-theme='day'] .toolbar .segmented button { color: #65727c; }
+.app-shell[data-theme='day'] .toolbar .segmented button.is-active { color: #2f78b7; background: #fff; box-shadow: 0 1px 4px rgba(54,84,105,.16); }
+.app-shell[data-theme='day'] .toolbar .btn { color: #40505b; background: transparent; border-color: transparent; }
+.app-shell[data-theme='day'] .toolbar .btn:hover, .app-shell[data-theme='day'] .toolbar .btn:focus-visible { color: #2f78b7; background: #e3ebf0; border-color: #c5d1d9; }
+.app-shell[data-theme='day'] .toolbar .btn:active { color: #1f648f; background: #d5e1e8; }
+.app-shell[data-theme='day'] .toolbar .icon-btn { color: #6b7b86; }
+.app-shell[data-theme='day'] .toolbar .icon-btn:hover, .app-shell[data-theme='day'] .toolbar .icon-btn:focus-visible { color: #2f78b7; background: #e3ebf0; box-shadow: none; }
 .app-shell[data-theme='day'] .type-select { color: #273640; border-color: #b9c7d0; background: rgba(255,255,255,.90); }
 .app-shell[data-theme='day'] .sidebar { background: rgba(241,245,247,.90); }
 .app-shell[data-theme='day'] .sidebar__collapse, .app-shell[data-theme='day'] .sidebar__reveal { background: #e6edf1; color: #367ab6; border-color: rgba(47,120,183,.28); }
@@ -2536,6 +2541,12 @@ textarea {
 .app-shell[data-theme='day'] .outline-item__synopsis { color: #56656e; background: rgba(220,228,233,.58); }
 .app-shell[data-theme='day'] .statusbar { background: #e7edf1; border-color: #cbd5dc; color: #5f6e78; }
 .app-shell[data-theme='day'] .doc-title, .app-shell[data-theme='day'] .cards__label, .app-shell[data-theme='day'] .reports__label, .app-shell[data-theme='day'] .preview__label { color: #26333c; }
+.app-shell[data-theme='day'] .stat__value { color: #1d3543; }
+.app-shell[data-theme='day'] .stat__label, .app-shell[data-theme='day'] .report-block__title span { color: #4e6472; }
+.app-shell[data-theme='day'] .report-block h3 { color: #1d3543; font-size: 15px; }
+.app-shell[data-theme='day'] .table td { color: #31434f; }
+.app-shell[data-theme='day'] .table th { color: #48606f; }
+.app-shell[data-theme='day'] .character-name-edit { color: #1d3543; }
 .app-shell[data-theme='day'] .script-flow { background: rgba(255,255,255,.76); border-color: rgba(61,84,100,.16); box-shadow: 0 12px 38px rgba(48,67,80,.14); }
 .app-shell[data-theme='day'] .sc-el--editable { color: #273640; text-shadow: none; }
 .app-shell[data-theme='day'] .editor > .write-progress { background: linear-gradient(180deg,#f4f1ec,#e9e5de); border-color: rgba(57,49,42,.12); }
@@ -2555,9 +2566,9 @@ textarea {
 .app-shell[data-theme='day'] .bcard__edit, .app-shell[data-theme='day'] .bcard__media { background: rgba(225,233,238,.70); }
 .app-shell[data-theme='day'] .board__color-bar { background: rgba(255,255,255,.72); border-color: rgba(47,120,183,.20); }
 .app-shell[data-theme='day'] .board__bar { background: rgba(247,249,250,.92); border-color: #cbd5dc; }
-.app-shell[data-theme='day'] .board__bar .hint { color: #65727c; }
-.app-shell[data-theme='day'] .board__bar .segmented button { color: #65727c; }
-.app-shell[data-theme='day'] .board__bar .segmented button.is-active { color: #2f78b7; background: rgba(47,120,183,.12); box-shadow: none; }
+.app-shell[data-theme='day'] .board__bar .segmented { background: #e6edf1; border-color: #c5d1d9; }
+.app-shell[data-theme='day'] .board__bar .segmented button { color: #4d6270; font-weight: 650; }
+.app-shell[data-theme='day'] .board__bar .segmented button.is-active { color: #1f6fae; background: #fff; box-shadow: 0 1px 4px rgba(54,84,105,.16); }
 .app-shell[data-theme='day'] .board__bar .btn { color: #40505b; border-color: #b9c7d0; background: #f7f9fa; }
 .app-shell[data-theme='day'] .board__bar .btn--primary { color: #fff; border-color: #2f78b7; background: #2f78b7; }
 .app-shell[data-theme='day'] .board-link-note { border-color: transparent; background: transparent; box-shadow: none; }
@@ -2580,7 +2591,8 @@ textarea {
 .app-shell[data-theme='day'] .modal .btn--primary { color: #fff; border-color: #2f78b7; background: #2f78b7; }
 
 /* 写作区的工具条与收起把手需要在两套主题中保持同一几何位置。 */
-.sidebar__collapse, .sidebar__reveal { left: calc(100% - 10px); right: auto; width: 19px; height: 42px; padding: 0 0 2px; border-left: 1px solid rgba(88,166,255,.30); border-radius: 0 7px 7px 0; font-size: 21px; }
+.sidebar__collapse, .sidebar__reveal { position: absolute; left: calc(100% - 10px); right: auto; width: 19px; height: 42px; padding: 0 0 2px; border-left: 1px solid rgba(88,166,255,.30); border-radius: 0 7px 7px 0; font-size: 21px; }
+.sidebar__reveal { left: 0; }
 .sidebar__collapse:hover, .sidebar__reveal:hover { width: 22px; }
 .editor > .write-progress .write-progress__hint { display: none; }
 
