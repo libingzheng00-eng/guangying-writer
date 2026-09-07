@@ -24,18 +24,18 @@ export const CHARS_PER_LINE: Partial<Record<string, number>> = {
 };
 const DEFAULT_CHARS_PER_LINE = 30;
 
-/** 场景条带调色板（v1.2.9 同款 10 色循环） */
+/** 场景条带调色板：统一的雾蓝系，适合深浅两种工作台。 */
 export const SCENE_BAND_PALETTE = [
-  '#78938b',
-  '#6c827d',
-  '#879b94',
-  '#627873',
-  '#92a49e',
-  '#718983',
-  '#82968f',
-  '#5e746f',
-  '#8b9f98',
-  '#69807a',
+  '#76a8be',
+  '#8ab8c8',
+  '#69a0b8',
+  '#9bc4d0',
+  '#7eafc2',
+  '#a7ccd4',
+  '#6398b2',
+  '#91bdcc',
+  '#73a9c1',
+  '#b0d2d8',
 ];
 
 export interface SceneBand {

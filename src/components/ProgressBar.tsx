@@ -132,12 +132,10 @@ export function ProgressBar({ children }: { children?: React.ReactNode }) {
   return (
     <div className="write-progress write-progress--typewriter">
       <div className="write-progress__label">
-        <span className="write-progress__eyebrow">当前页</span>
         <div className="write-progress__value">
           <strong>{current || 0}</strong>
           <span className="write-progress__divider">/</span>
           <span className="write-progress__target">{target > 0 ? target : '—'}</span>
-          <span className="write-progress__unit">页</span>
         </div>
       </div>
 
