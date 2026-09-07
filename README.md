@@ -149,6 +149,7 @@ npm run typecheck
 | --- | --- |
 | 切换元素类型 | `⌘1`~`⌘8`（场次/动作/人物/括号/对白/转场/镜头/幕） |
 | 在元素间 Tab 循环 | `Tab` / `Shift+Tab` |
+| 确认快捷输入候选 | `Enter`（确认并进入下一元素）/ `空格` 或鼠标（只确认当前行） |
 | 新建场景 | `⌘↩` |
 | 双列对白 | `⌘D` |
 | 省略 / 恢复 | 菜单「元素 → 省略/恢复」 |
@@ -157,6 +158,8 @@ npm run typecheck
 | 导出 PDF | `⌘P` |
 
 完整菜单定义在 `electron/main.js` 的 `buildMenu()`。
+
+写作时，进度条的打字机指针会在连续输入期间作低幅度节奏微动；停止输入约 0.56 秒后静止。系统开启“减少动态效果”时，该动效自动关闭。
 
 ---
 
@@ -312,7 +315,7 @@ interface ScriptProject {
 
 | 函数 | 作用 |
 | --- | --- |
-| `nextTypeOnTab(cur, shift)` | `Tab` 在 10 种元素间循环（Final Draft 风格） |
+| `nextTypeOnTab(cur, shift)` | `Tab` 在 9 种常用元素间循环（Final Draft 风格，不自动新建行） |
 | `nextTypeOnEnter(cur, isEmpty)` | 回车后新块的类型（如 人物→对白、对白→人物、动作→动作） |
 | `dualAfterEnter(cur, next)` | 双列对白：左侧对白后自动切到右侧人物，结束再归位 |
 | `guessType(line, prev)` | **纯文本导入**时按正则/上下文猜测元素类型 |
@@ -322,7 +325,7 @@ interface ScriptProject {
 
 | 当前元素 | 回车后（有内容） | 空块回车 |
 | --- | --- | --- |
-| 场次标题 | 动作 | 动作 |
+| 场次标题 | 动作（先描述画面） | 动作 |
 | 动作 | 动作 | 动作 |
 | 人物 | 对白 | 对白(若双列) / 动作 |
 | 括号 | 对白 | 动作 |

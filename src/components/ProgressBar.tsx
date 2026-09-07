@@ -49,7 +49,7 @@ export function fogPList(): { key: 'cigarette' | 'car' | 'key'; label: string; e
   return THEMES.map((t) => ({ key: t.key, label: t.label, end: t.endLabel }));
 }
 
-export function ProgressBar({ children }: { children?: React.ReactNode }) {
+export function ProgressBar({ children, isTyping = false }: { children?: React.ReactNode; isTyping?: boolean }) {
   const project = useStore((s) => s.project);
   const activeId = useStore((s) => s.activeId);
   const pageCount = useStore((s) => s.pageCount);
@@ -164,7 +164,7 @@ export function ProgressBar({ children }: { children?: React.ReactNode }) {
         {target > 0 ? <div className="write-progress__tip" ref={tipRef} /> : null}
         {target > 0 ? (
           <span
-            className="write-progress__marker"
+            className={'write-progress__marker' + (isTyping ? ' is-typing' : '')}
             style={{ left: `calc(${completionPct}% - 28px)` }}
             title={`已写 ${writtenPages} / ${target} 页`}
           >

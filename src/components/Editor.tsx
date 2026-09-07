@@ -3,7 +3,7 @@ import { useStore } from '../store/store';
 import { usePagination } from '../hooks/PaginationProvider';
 import { EditableBlock } from './ScriptBlock';
 import { ProgressBar } from './ProgressBar';
-import { caretOffset, splitHtml, domLength } from '../utils/dom';
+import { caretOffset, splitHtml, domLength, setCaret } from '../utils/dom';
 import { isBlank, plain, stripSceneNumber } from '../utils/text';
 import { nextTypeOnEnter, nextTypeOnTab, groupDual, recognizeType, shouldShowContdSuffix, CONTD_SUFFIX } from '../model/flow';
 import { characterNames, sceneHeadings, deriveScenes } from '../model/project';
@@ -14,7 +14,6 @@ interface SuggestState {
   id: string;
   items: string[];
   active: number;
-  prefix: string;
   top: number;
   left: number;
 }
@@ -46,8 +45,24 @@ export function Editor() {
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
   const [showSoundCards, setShowSoundCards] = useState(true);
   const [showImageCards, setShowImageCards] = useState(true);
+  const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 指针只在作者连续输入的短窗口内轻微律动；停止输入后自动归位，不写入工程数据。
+  const markTyping = useCallback(() => {
+    setIsTyping(true);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      typingTimerRef.current = null;
+      setIsTyping(false);
+    }, 560);
+  }, []);
+
+  useEffect(() => () => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+  }, []);
 
   const revMap = useMemo(() => {
     const m: Record<string, string> = {};
@@ -96,34 +111,45 @@ export function Editor() {
         return;
       }
       const node = refs.current.get(el.id);
-      const container = contentRef.current;
-      if (!node || !container) {
+      if (!node) {
         setSuggest(null);
         return;
       }
       const nb = node.getBoundingClientRect();
-      const cb = container.getBoundingClientRect();
+      // 建议框固定在正在编辑的输入行旁，而非以稿纸左上角为原点。
+      // 旧实现混用了两个坐标系，因此会漂到左侧很远的位置。
+      const menuWidth = 250;
       setSuggest({
         id: el.id,
         items: list,
         active: 0,
-        prefix: lower,
-        top: nb.bottom - cb.top + 2,
-        left: nb.left - cb.left,
+        top: Math.max(8, Math.min(window.innerHeight - 38, nb.top - 2)),
+        left: Math.max(8, Math.min(window.innerWidth - menuWidth - 8, nb.right + 10)),
       });
     },
     [project],
   );
 
-  const acceptSuggest = useCallback(() => {
-    if (!suggest) return;
-    const value = suggest.items[suggest.active];
+  const acceptSuggest = useCallback((advance = false, index?: number) => {
+    const state = suggest;
+    if (!state) return;
+    const value = state.items[index ?? state.active];
     if (!value) return;
-    setText(suggest.id, value);
+    const node = refs.current.get(state.id);
+    // contentEditable 在焦点内不会自动由外部 state 回写；先同步 DOM，鼠标点击也能立即看到结果。
+    if (node) node.innerHTML = value;
     setSuggest(null);
-    const node = refs.current.get(suggest.id);
-    if (node) requestFocus(suggest.id, 'end');
-  }, [suggest, setText, requestFocus]);
+    if (advance) {
+      const current = useStore.getState().project.elements.find((item) => item.id === state.id);
+      if (current) {
+        splitBlock(state.id, value, '', nextTypeOnEnter({ ...current, text: value }, false));
+        return;
+      }
+    }
+    setText(state.id, value);
+    if (node) setCaret(node, 'end');
+    requestFocus(state.id, 'end');
+  }, [suggest, setText, splitBlock, requestFocus]);
 
   const moveFocus = useCallback(
     (dir: -1 | 1, caret: 'start' | 'end') => {
@@ -143,9 +169,16 @@ export function Editor() {
       // 输入法组合中不做任何拦截
       if (e.nativeEvent.isComposing || composingRef.current) return;
 
-      if (suggest && (e.key === 'Enter' || e.key === 'Tab') && suggest.items.length) {
+      if (suggest && e.key === 'Enter' && suggest.items.length) {
         e.preventDefault();
-        acceptSuggest();
+        // 场次 / 人物等自动补全用 Enter 确认后直接进入符合剧本节奏的下一元素。
+        acceptSuggest(true);
+        return;
+      }
+      if (suggest && (e.key === ' ' || e.key === 'Tab') && suggest.items.length) {
+        e.preventDefault();
+        // 空格或 Tab 只确认候选，不生成新行；Tab 绝不会因循环到末尾而自动换行。
+        acceptSuggest(false);
         return;
       }
       if (suggest && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
@@ -325,6 +358,7 @@ export function Editor() {
 
   const handleInput = useCallback(
     (el: ScriptElement, html: string) => {
+      markTyping();
       let value = html;
       if (project.settings.smartQuotes && el.type === 'dialogue') {
         value = value.replace(/"/g, (m, i) => (i % 2 === 0 ? '“' : '”'));
@@ -342,7 +376,7 @@ export function Editor() {
       setText(el.id, value);
       updateSuggest({ ...el, text: value });
     },
-    [project.settings.smartQuotes, setText, setType, updateSuggest],
+    [project.settings.smartQuotes, markTyping, setText, setType, updateSuggest],
   );
 
   const handlePaste = useCallback(
@@ -398,7 +432,7 @@ export function Editor() {
 
   return (
     <div className="editor" ref={scrollRef}>
-      <ProgressBar>
+      <ProgressBar isTyping={isTyping}>
         <MaterialControls
           soundCount={writingSounds.length}
           imageCount={writingImages.length}
@@ -448,21 +482,21 @@ export function Editor() {
         </div>
       </div>
       {suggest ? (
-        <div className="smarttype" style={{ top: suggest.top, left: suggest.left }}>
+        <div className="smarttype" style={{ top: suggest.top, left: suggest.left }} role="listbox" aria-label="快捷输入候选">
           {suggest.items.map((s, i) => (
-            <div
+            <button
+              type="button"
               key={s}
               className={`smarttype__item ${i === suggest.active ? 'is-active' : ''}`}
+              role="option"
+              aria-selected={i === suggest.active}
               onMouseDown={(e) => {
                 e.preventDefault();
-                setSuggest({ ...suggest, active: i });
-                setText(suggest.id, s);
-                setSuggest(null);
-                requestFocus(suggest.id, 'end');
+                acceptSuggest(false, i);
               }}
             >
               {s}
-            </div>
+            </button>
           ))}
         </div>
       ) : null}

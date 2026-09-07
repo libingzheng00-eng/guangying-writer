@@ -128,7 +128,9 @@ process.on('exit', () => {
   ok('上一页没有人物 → （续）', contdLabelFor(dlg, { elements: project.elements, settings }, null) === '（续）');
   ok('对白前没有人物 → （续）', contdLabelFor({ elements: [{ id: 'lone', type: 'dialogue', text: '' }] }, { elements: [{ id: 'lone', type: 'dialogue', text: '' }], settings }, '角色甲') === '（续）');
 
-  console.log('\n== nextTypeOnEnter：空块回车保持动作 ==');
+  console.log('\n== nextTypeOnEnter：符合编剧节奏的回车序列 ==');
+  ok('场次标题有内容 → 动作（先描述画面）', nextTypeOnEnter({ id: 's', type: 'scene_heading', text: '内景 房间 日' }, false) === 'action');
+  ok('动作有内容 → 动作（连续描述不强迫切类型）', nextTypeOnEnter({ id: 'a2', type: 'action', text: '他走向窗边。' }, false) === 'action');
   ok('action 空块回车 → action', nextTypeOnEnter({ id: 'a', type: 'action', text: '' }, true) === 'action');
   ok('character 空块回车 → action（避免空对白）', nextTypeOnEnter({ id: 'c', type: 'character', text: '' }, true) === 'action');
   ok('character 有内容回车 → dialogue', nextTypeOnEnter({ id: 'c', type: 'character', text: 'X' }, false) === 'dialogue');

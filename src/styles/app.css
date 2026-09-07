@@ -851,7 +851,7 @@ textarea {
 }
 
 .smarttype {
-  position: absolute;
+  position: fixed;
   z-index: 30;
   background: rgba(26, 32, 44, 0.92);
   border: 1px solid var(--glass-border);
@@ -860,12 +860,15 @@ textarea {
     0 10px 28px rgba(0, 0, 0, 0.55),
     0 0 1px rgba(88, 166, 255, 0.12),
     var(--glow-cyan);
-  min-width: 220px;
-  max-width: 420px;
+  min-width: 250px;
+  max-width: min(320px, calc(100vw - 16px));
   padding: 4px;
   backdrop-filter: blur(14px) saturate(120%);
 }
 .smarttype__item {
+  display: block;
+  width: 100%;
+  border: 0;
   padding: 6px 9px;
   border-radius: 5px;
   cursor: pointer;
@@ -873,10 +876,19 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   color: #c9d1d9;
+  background: transparent;
+  text-align: left;
+  font: inherit;
 }
 .smarttype__item.is-active {
   background: var(--accent-soft);
   color: var(--accent);
+}
+.smarttype__item:hover,
+.smarttype__item:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+  outline: 0;
 }
 
 /* ------------------------------ ストーリーボード ------------------------------ */
@@ -1417,6 +1429,20 @@ textarea {
   max-height: 15px;
   object-fit: contain;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+  transform-origin: 48% 100%;
+}
+@keyframes typewriter-sew {
+  0%, 100% { transform: translateY(0); }
+  22% { transform: translateY(-2px); }
+  44% { transform: translateY(.35px); }
+  64% { transform: translateY(-1.1px); }
+}
+.write-progress__marker.is-typing img {
+  animation: typewriter-sew 420ms cubic-bezier(.38,.02,.42,1) infinite;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .write-progress__marker.is-typing img { animation: none; }
 }
 .write-progress__end {
   position: absolute;
@@ -2531,7 +2557,13 @@ textarea {
 .app-shell[data-theme='day'] .toolbar .btn:active { color: #1f648f; background: #d5e1e8; }
 .app-shell[data-theme='day'] .toolbar .icon-btn { color: #6b7b86; }
 .app-shell[data-theme='day'] .toolbar .icon-btn:hover, .app-shell[data-theme='day'] .toolbar .icon-btn:focus-visible { color: #2f78b7; background: #e3ebf0; box-shadow: none; }
-.app-shell[data-theme='day'] .type-select { color: #273640; border-color: #b9c7d0; background: rgba(255,255,255,.90); }
+.app-shell[data-theme='day'] .type-select { color-scheme: light; color: #273640; border-color: #b9c7d0; background: #fff; }
+.app-shell[data-theme='day'] .type-select option { color: #273640; background: #fff; }
+.app-shell[data-theme='day'] .smarttype { background: rgba(250,252,253,.98); border-color: #b9c7d0; box-shadow: 0 10px 28px rgba(47,64,76,.20); }
+.app-shell[data-theme='day'] .smarttype__item { color: #26333c; }
+.app-shell[data-theme='day'] .smarttype__item.is-active,
+.app-shell[data-theme='day'] .smarttype__item:hover,
+.app-shell[data-theme='day'] .smarttype__item:focus-visible { color: #1f6fae; background: rgba(47,120,183,.12); }
 .app-shell[data-theme='day'] .sidebar { background: rgba(241,245,247,.90); }
 .app-shell[data-theme='day'] .sidebar__collapse, .app-shell[data-theme='day'] .sidebar__reveal { background: #e6edf1; color: #367ab6; border-color: rgba(47,120,183,.28); }
 .app-shell[data-theme='day'] .sidebar__tabs { background: rgba(235,241,244,.74); border-color: #cbd5dc; }
@@ -2567,7 +2599,8 @@ textarea {
 .app-shell[data-theme='day'] .board__color-bar { background: rgba(255,255,255,.72); border-color: rgba(47,120,183,.20); }
 .app-shell[data-theme='day'] .board__bar { background: rgba(247,249,250,.92); border-color: #cbd5dc; }
 .app-shell[data-theme='day'] .board__bar .segmented { background: #e6edf1; border-color: #c5d1d9; }
-.app-shell[data-theme='day'] .board__bar .segmented button { color: #4d6270; font-weight: 650; }
+.app-shell[data-theme='day'] .board__subtabs { display: inline-flex; align-items: center; padding: 2px; border: 1px solid #c5d1d9; border-radius: 7px; background: #e6edf1; }
+.app-shell[data-theme='day'] .board__bar .segmented button { display: inline-flex; align-items: center; justify-content: center; color: #4d6270; font-weight: 700; text-shadow: none; }
 .app-shell[data-theme='day'] .board__bar .segmented button.is-active { color: #1f6fae; background: #fff; box-shadow: 0 1px 4px rgba(54,84,105,.16); }
 .app-shell[data-theme='day'] .board__bar .btn { color: #40505b; border-color: #b9c7d0; background: #f7f9fa; }
 .app-shell[data-theme='day'] .board__bar .btn--primary { color: #fff; border-color: #2f78b7; background: #2f78b7; }
