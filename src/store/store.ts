@@ -403,7 +403,6 @@ export const useStore = create<StoreState>((set, get) => ({
     const idx = project.elements.findIndex((e) => e.id === id);
     if (idx <= 0) return null;
     const prev = project.elements[idx - 1];
-    const cur = project.elements[idx];
     const offset = plain(prev.text).length;
     get().mutate((p) => {
       const a = p.elements[idx - 1];
@@ -669,7 +668,10 @@ export const useStore = create<StoreState>((set, get) => ({
     const ids = get().selectedIds;
     if (!ids || ids.length === 0) return 0;
     // 仅删除同时是 beat 的项目：用户也可能选中场景卡，场景卡删除要单独走 store.removeElement
-    const beatIds = ids.filter((id) => get().project.beats.some((b) => b.id === id));
+    const existingBeatIds = new Set(get().project.beats.map((b) => b.id));
+    const beatIds = ids
+      .map((id) => id.startsWith('beat:') ? id.slice(5) : id)
+      .filter((id) => existingBeatIds.has(id));
     if (beatIds.length === 0) return 0;
     const removed = new Set(beatIds);
     get().mutate(

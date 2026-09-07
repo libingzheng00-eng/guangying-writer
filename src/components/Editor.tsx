@@ -20,9 +20,7 @@ interface SuggestState {
 
 export function Editor() {
   const project = useStore((s) => s.project);
-  const version = useStore((s) => s.version);
   const activeId = useStore((s) => s.activeId);
-  const focus = useStore((s) => s.focus);
   const zoom = useStore((s) => s.zoom);
   const setActive = useStore((s) => s.setActive);
   const setText = useStore((s) => s.setText);
@@ -45,23 +43,12 @@ export function Editor() {
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
   const [showSoundCards, setShowSoundCards] = useState(true);
   const [showImageCards, setShowImageCards] = useState(true);
-  const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 指针只在作者连续输入的短窗口内轻微律动；停止输入后自动归位，不写入工程数据。
+  // 仅发送轻量 UI 信号；不改变 React state，避免每次按键让整个编辑器重绘。
   const markTyping = useCallback(() => {
-    setIsTyping(true);
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingTimerRef.current = setTimeout(() => {
-      typingTimerRef.current = null;
-      setIsTyping(false);
-    }, 560);
-  }, []);
-
-  useEffect(() => () => {
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    window.dispatchEvent(new Event('mochang:typing'));
   }, []);
 
   const revMap = useMemo(() => {
@@ -210,7 +197,6 @@ export function Editor() {
 
       if (e.key === 'Enter' && !e.shiftKey && !meta) {
         e.preventDefault();
-        const html = node.innerHTML;
         const off = caretOffset(node);
         const at = off < 0 ? domLength(node) : off;
         const { before, after } = splitHtml(node, at);
@@ -361,7 +347,7 @@ export function Editor() {
       markTyping();
       let value = html;
       if (project.settings.smartQuotes && el.type === 'dialogue') {
-        value = value.replace(/"/g, (m, i) => (i % 2 === 0 ? '“' : '”'));
+        value = value.replace(/"/g, (_match, i) => (i % 2 === 0 ? '“' : '”'));
       }
       // Final Draft 风格的智能识别：仅在「之前为空 + 新文本非空 + 识别命中」时改类型，避免误判后续编辑。
       const previous = useStore.getState().project.elements.find((e) => e.id === el.id);
@@ -432,7 +418,7 @@ export function Editor() {
 
   return (
     <div className="editor" ref={scrollRef}>
-      <ProgressBar isTyping={isTyping}>
+      <ProgressBar>
         <MaterialControls
           soundCount={writingSounds.length}
           imageCount={writingImages.length}
@@ -453,9 +439,6 @@ export function Editor() {
             const list = Array.isArray(item) ? item : [item];
             const firstEl = list[0];
             const isBreak = list.some((e) => breakSet.has(project.elements.indexOf(e)));
-            const revColor = settings.revisionMode
-              ? list.map((e) => (e.rev ? revMap[e.rev] : null)).filter(Boolean)[0] || null
-              : null;
             return (
               <React.Fragment key={firstEl.id}>
                 {isBreak && i > 0 ? <div className="page-break-line" /> : null}

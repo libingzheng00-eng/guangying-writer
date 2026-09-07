@@ -183,6 +183,9 @@ process.on('exit', cleanTemporaryBundle);
           beatCards: qa('.bcard--beat').length,
           zoomCtl: !!q('.zoom-ctl'),
           linkSelects: qa('.bcard__link').length,
+          // alpha.16：自由板工具栏必须存在三分区和全部颜色控制；否则背景层级回退时会再次整条消失。
+          subTabs: qa('.board__subtabs [role="tab"]').length,
+          colorControls: qa('.board__color-bar button[aria-label^="卡片颜色"]').length,
           // Item 6a：所有自由板卡片（scene / image / wimg / beat / sound）都应有 resize 手柄
           allBcardsHaveResize: qa('.bcard').length > 0 && qa('.bcard__resize').length >= qa('.bcard').length,
         }
@@ -213,6 +216,8 @@ process.on('exit', cleanTemporaryBundle);
         progressFillBar,
         // Item 6a：所有自由板卡片（scene / image / wimg / beat / sound）都应有 resize 手柄
         allBcardsHaveResize: !!(board && board.allBcardsHaveResize),
+        boardSubTabsVisible: !!(board && board.subTabs === 3),
+        boardColorControlsVisible: !!(board && board.colorControls === 8),
         boardRelationCreated: qa('.board-links line').length >= 1,
         boardRelationNoteEditable: !!relationInput,
       };

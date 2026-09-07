@@ -3,7 +3,7 @@ import { useStore } from '../store/store';
 import { deriveScenes } from '../model/project';
 import { CARD_COLORS } from '../model/elements';
 import { clampSize, sizeLimitFor, sceneEndpoint, beatEndpoint, FALLBACK_CARD_W, FALLBACK_SCENE_H, FALLBACK_BEAT_H } from '../model/board';
-import { toggleSel, cardCenters, marqueeSel } from '../model/selection';
+import { cardCenters, marqueeSel } from '../model/selection';
 import type { Beat, BoardLink, Scene } from '../model/types';
 
 type Filter = 'both' | 'scenes' | 'beats';
@@ -42,7 +42,6 @@ export function BoardView() {
   const toggleSelection = useStore((s) => s.toggleSelection);
   const selectRange = useStore((s) => s.selectRange);
   const clearSelection = useStore((s) => s.clearSelection);
-  const deleteSelectedBeats = useStore((s) => s.deleteSelectedBeats);
 
   const scenes = useMemo(() => deriveScenes(project), [project]);
 
@@ -247,25 +246,8 @@ export function BoardView() {
               });
             });
           }
-          const points = cardCenters(visibleCards).filter(
-            (p) => p.cx >= wx1 && p.cx <= wx2 && p.cy >= wy1 && p.cy <= wy2,
-          );
-          const hitIds = points.map((p) => p.id);
           const additive = !!d.marqueeAdditive;
-          if (additive) {
-            // 追加到 prev（去重）
-            const seen = new Set(selectedIds);
-            const out = selectedIds.slice();
-            hitIds.forEach((id) => {
-              if (!seen.has(id)) {
-                seen.add(id);
-                out.push(id);
-              }
-            });
-            setSelectedIds(out);
-          } else {
-            setSelectedIds(hitIds);
-          }
+          setSelectedIds(marqueeSel([], cardCenters(visibleCards), wx1, wy1, wx2 - wx1, wy2 - wy1, additive, selectedIds));
         }
         setMarquee(null);
       }
@@ -303,7 +285,7 @@ export function BoardView() {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [view, deleteSelectedBeats, notify]);
+  }, [view, notify]);
 
   const onDoubleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -394,7 +376,17 @@ export function BoardView() {
         <div className="board__center-tools">
           <div className="board__color-bar" role="group" aria-label="所选卡片颜色">
               <span>颜色</span>
-              {CARD_COLORS.map((color) => <button key={color} type="button" style={{ background: color }} disabled={!selectedIds.length} title={selectedIds.length ? '设为此颜色' : '先选中卡片'} onClick={() => applySelectedColor(color)} />)}
+              {CARD_COLORS.map((color, index) => (
+                <button
+                  key={color}
+                  type="button"
+                  style={{ backgroundColor: color }}
+                  disabled={!selectedIds.length}
+                  title={selectedIds.length ? `设为颜色 ${index + 1}` : '先选中卡片'}
+                  aria-label={`卡片颜色 ${index + 1}`}
+                  onClick={() => applySelectedColor(color)}
+                />
+              ))}
           </div>
           {linkFrom ? <button className="btn btn--ghost board__link-state" onClick={() => setLinkFrom(null)}>选择另一张卡片连接 · 取消</button> : null}
         </div>

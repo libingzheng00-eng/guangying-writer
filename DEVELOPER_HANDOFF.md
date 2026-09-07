@@ -1,6 +1,6 @@
 # 墨场源码接手摘要
 
-更新时间：2026-09-07（alpha.15 写作辅助与指针动效已完成）
+更新时间：2026-09-07（alpha.16 自由板工具栏修复、全局色系与输入性能优化已完成）
 
 ## 版本边界
 
@@ -22,7 +22,7 @@
 
 - 逐项对照 [MIGRATION.md](MIGRATION.md) 回迁完整 v1.2.8/v1.2.9 行为。
 - 当前真实 PNG 打字机指针位于 `src/assets/typewriter-pointer.png`，由 `ProgressBar.tsx` 使用；不要重新放回 `StatusBar.tsx`。
-- 当前版本为 `1.3.0-alpha.15`；完成全部回归后再改为正式 `1.3.0`。
+- 当前版本为 `1.3.0-alpha.16`；完成全部回归后再改为正式 `1.3.0`。
 - 新建候选安装包，绝不覆盖用户现用 v1.2.9。
 
 ## 隐私红线
@@ -52,7 +52,7 @@ node scripts/history-test.cjs
 - 场次标题回车后必须进入「动作」（画面/环境描述）；动作连续回车保持动作；人物回车进对白；对白回车进人物。
 - `Tab` / `Shift+Tab` 只在当前行切换元素，永远不自动新建行；真正新建行只能由作者按 `Enter`。
 - 快捷输入候选靠近当前输入行右侧：`Enter` 确认后进入符合上述规则的下一元素；空格、Tab 或鼠标只确认当前行。contentEditable 聚焦时必须同时更新 DOM 与 store，否则鼠标点击会“看似无反应”。
-- `Editor.tsx` 的 `isTyping` 仅为短暂 UI 状态：每次输入刷新 560ms 定时器，`ProgressBar` 只据此增加 `.is-typing` CSS 类；严禁把动效状态保存进 `.zhsp` 或 undo 历史。
+- `Editor.tsx` 在输入时仅派发 `mochang:typing` 事件；`ProgressBar.tsx` 自己在指针 DOM 上短暂加 `.is-typing`（260ms）。严禁把动效状态保存进 `.zhsp` 或 undo 历史，也不要把它改回 Editor 的 React state，以免每次输入重绘整个编辑器。
 
 ## 开始工作的推荐顺序
 

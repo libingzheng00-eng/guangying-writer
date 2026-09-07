@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from './store/store';
 import { PaginationProvider } from './hooks/PaginationProvider';
 import { Editor } from './components/Editor';
@@ -26,7 +26,8 @@ export default function App() {
   const toast = useStore((s) => s.toast);
   const fontColor = useStore((s) => s.fontColor);
   const appTheme = useStore((s) => s.appTheme);
-  const project = useStore((s) => s.project);
+  // 只订阅窗口标题真正需要的字段；避免每次打字都让整个 App 树重新渲染。
+  const projectName = useStore((s) => s.project.name);
   const version = useStore((s) => s.version);
   const [dialog, setDialog] = useState<null | 'settings' | 'title'>(null);
   const commands = useCommands();
@@ -66,8 +67,8 @@ export default function App() {
   }, [version]);
 
   useEffect(() => {
-    document.title = `${project.name} · 墨场`;
-  }, [project.name]);
+    document.title = `${projectName} · 墨场`;
+  }, [projectName]);
 
   /* 写作字体颜色 → CSS 变量（soft / glow 由主色派生，保证视觉一致） */
   useEffect(() => {

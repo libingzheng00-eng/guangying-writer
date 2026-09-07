@@ -69,7 +69,8 @@ process.on('exit', () => {
 
   // 删除后撤销应完整恢复卡片与关系线；重做再完整删除。
   reset(p);
-  state().setSelectedIds(['b2']);
+  // BoardView 的真实选中值带 `beat:` 前缀，store 也应能正确识别它。
+  state().setSelectedIds(['beat:b2']);
   const removed = state().deleteSelectedBeats();
   ok('批量删除返回正确数量', removed === 1);
   ok('删除卡片同时清理孤儿关系线', state().project.beats.length === 1 && state().project.boardLinks.length === 0);

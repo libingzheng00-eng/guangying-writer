@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore, type ViewMode } from '../store/store';
 import { ELEMENT_META, ELEMENT_ORDER } from '../model/elements';
 import type { ElementType } from '../model/types';

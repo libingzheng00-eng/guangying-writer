@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { useStore } from '../store/store';
 import { characterStats, computeStats, sceneStats } from '../model/stats';
 import { ELEMENT_META } from '../model/elements';
