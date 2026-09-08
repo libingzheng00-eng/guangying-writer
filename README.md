@@ -14,6 +14,9 @@
 
 本文件面向**日后维护与二次开发**，覆盖：环境搭建、开发与调试、构建、打包发布、整体架构、数据模型、主题系统、扩展方式、测试与已知坑。
 
+> ⚠️ 本环境的特殊坑（无 GUI 会话、文件带 `com.apple.provenance`、git 提交失败等）已集中到
+> [ENVIRONMENT_PITFALLS.md](ENVIRONMENT_PITFALLS.md)，遇到看不懂的报错先读它。
+
 ---
 
 ## 0. 快速导航

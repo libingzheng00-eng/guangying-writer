@@ -61,3 +61,4 @@ node scripts/history-test.cjs
 3. 先提交空白模板、合成测试数据及交接文档。
 4. 小步回迁，每项都做类型检查、构建、渲染测试和最终画面检查。
 5. 发布前扫描剧本文本和工程文件，并验证全新用户目录首次启动为空白稿。
+6. 遇到 `Operation not permitted` / `sandbox initialization failed` / git 提交失败等本环境特有报错，先看 [ENVIRONMENT_PITFALLS.md](ENVIRONMENT_PITFALLS.md)。
