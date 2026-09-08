@@ -2416,7 +2416,9 @@ textarea {
 /* ------------------------------ 写作辅助卡（对齐 v1.2.9） ------------------------------ */
 /* 标尺独立于稿纸：素材默认由右侧的显隐胶囊控制，绝不把正文往下推。 */
 .editor > .write-progress {
-  position: relative;
+  /* 钉在写作面板顶部，长稿滚动时也能看到当前页 / 进度条 / 场景条 / 打字机指针 */
+  position: sticky;
+  top: 0;
   z-index: 12;
   width: 100%;
   min-height: 76px;
@@ -2432,6 +2434,8 @@ textarea {
   border-bottom: 1px solid rgba(255,255,255,.08);
   border-radius: 0;
   background: linear-gradient(180deg, #191b1f, #101216);
+  /* 滚动正文从栏底滑过时，给一道很轻的"悬浮"提示 */
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .35);
 }
 .editor > .write-progress .write-progress__label { padding-right: 12px; }
 .editor > .write-progress .write-progress__road {
