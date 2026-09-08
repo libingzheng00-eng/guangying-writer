@@ -39,7 +39,13 @@ echo ""
 echo "[2/6] 复制 Electron.app 骨架…"
 mkdir -p "$OUT_DIR"
 rm -rf "$APP_DIR"
-cp -R "node_modules/electron/dist/Electron.app" "$APP_DIR"
+mkdir -p "$APP_DIR"
+# 用 rsync 而非 cp -R：node_modules/electron/dist/Electron.app/Contents/Resources/default_app.asar
+# 在部分 macOS 上带 com.apple.provenance（SIP 保护），cp -R 复制该文件会报
+# "Operation not permitted"（xattr -cr 也无效，因为不是隔离属性）。
+# 根本不去碰它即可；我们的 Resources/app 会优先加载，所以 default_app.asar 没用。
+# 详见 ENVIRONMENT_PITFALLS.md §2。
+rsync -a --exclude 'default_app.asar' "node_modules/electron/dist/Electron.app/" "$APP_DIR/"
 echo "      骨架就位 ✓"
 echo ""
 
