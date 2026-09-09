@@ -44,6 +44,11 @@ global.history = w.history;
   if (w[k] !== undefined) global[k] = w[k];
 });
 if (!global.requestAnimationFrame) global.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 16);
+// Electron/Chromium 原生提供该方法；jsdom 未实现。补空实现，避免焦点闭环测试
+// 因测试环境能力缺失而误判生产代码。
+if (!w.HTMLElement.prototype.scrollIntoView) {
+  w.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+}
 // 注意：不要把 global.performance 指向 jsdom 的实现，会造成递归
 
 const errors = [];
@@ -122,7 +127,7 @@ process.on('exit', cleanTemporaryBundle);
   }
   require(bundle);
 
-  setTimeout(() => {
+  setTimeout(async () => {
   const q = (s) => document.querySelector(s);
   const qa = (s) => Array.from(document.querySelectorAll(s));
   const txt = (s) => (q(s) ? q(s).textContent.replace(/\s+/g, ' ').trim().slice(0, 300) : null);
@@ -161,6 +166,21 @@ process.on('exit', cleanTemporaryBundle);
     placeholders: qa('.script-flow .sc-el.is-empty').length,
     progressBar: txt('.write-progress') || '(未渲染)',
   };
+
+  // 写作红线：从场次标题连续按 9 次 Tab，应回到场次标题，且每一步焦点都留在同一正文元素。
+  const tabCycle = [];
+  let tabTarget = q('.script-flow .sc-el[data-id="qa-scene-1"]');
+  if (tabTarget) tabTarget.focus();
+  for (let i = 0; i < 9 && tabTarget; i += 1) {
+    tabTarget.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    tabTarget = q('.script-flow .sc-el[data-id="qa-scene-1"]');
+    tabCycle.push({ type: tabTarget?.dataset.type || null, focused: document.activeElement === tabTarget });
+  }
+  const tabFocusLoopClosed = tabCycle.length === 9
+    && tabCycle.every((step) => step.focused)
+    && tabCycle[8].type === 'scene_heading';
+  report.tabCycle = tabCycle;
 
   // 切换到其他视图，验证不崩溃
   const clickByText = (label) => {
@@ -206,6 +226,7 @@ process.on('exit', cleanTemporaryBundle);
         relationInput.dispatchEvent(new w.Event('input', { bubbles: true }));
       }
       const featureChecks = {
+        tabFocusLoopClosed,
         // 兼容：alpha.1 旧选择器也接受，便于在不同 commit 之间跑回归
         targetPagesVisible,
         typewriterPointerVisible,

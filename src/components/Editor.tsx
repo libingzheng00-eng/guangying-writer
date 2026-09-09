@@ -228,12 +228,19 @@ export function Editor() {
 
       if (e.key === 'Tab') {
         e.preventDefault();
+        const caret = caretOffset(node);
         const next = nextTypeOnTab(el.type, e.shiftKey);
         const keepDual = el.dual && ['character', 'parenthetical', 'dialogue'].includes(next);
         setType(el.id, next);
         if (keepDual) {
           useStore.getState().setDual(el.id, el.dual!);
         }
+        /*
+         * 写作红线：Tab 只能在当前段落循环元素类型，焦点绝不能进入界面按钮链。
+         * scene_heading 会切换场号包装结构并重建 contentEditable 根节点，因此必须在
+         * state 更新后明确恢复同一元素和原光标位置。删除此处会导致第 9 次 Tab 跑到缩放按钮。
+         */
+        requestFocus(el.id, caret < 0 ? 'end' : caret);
         return;
       }
 
