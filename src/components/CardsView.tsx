@@ -16,6 +16,7 @@ export function CardsView() {
   const addAct = useStore((s) => s.addAct);
   const [drag, setDrag] = useState<DragState>(null);
   const [over, setOver] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
 
   const scenes = useMemo(() => deriveScenes(project), [project]);
@@ -55,6 +56,7 @@ export function CardsView() {
     dropSceneInAct(drag.index, beforeIndex, drag.elementId, actId ?? undefined);
     setDrag(null);
     setOver(null);
+    setDropTarget(null);
   };
 
   // 拖到某幕空白区：放到该幕末尾 + 归入该幕
@@ -63,13 +65,19 @@ export function CardsView() {
     dropSceneInAct(drag.index, actInsertIndex(actId), drag.elementId, actId ?? undefined);
     setDrag(null);
     setOver(null);
+    setDropTarget(null);
   };
 
   const renderSection = (actId: string | null, titleNode: React.ReactNode, list: typeof scenes) => (
     <section
-      className={`cards__act${actId ? '' : ' cards__act--ungrouped'}`}
+      className={`cards__act${actId ? '' : ' cards__act--ungrouped'}${dropTarget === (actId || '__ungrouped__') ? ' is-drop-target' : ''}`}
       onDragOver={(e) => {
         e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDropTarget(actId || '__ungrouped__');
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDropTarget(null);
       }}
       onDrop={(e) => {
         e.preventDefault();
@@ -79,9 +87,16 @@ export function CardsView() {
       <header className="cards__act-head">{titleNode}</header>
       <div
         className={`cards__grid${!list.length ? ' is-empty-drop' : ''}`}
-        onDragOver={(e) => e.preventDefault()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          setDropTarget(actId || '__ungrouped__');
+        }}
         onDrop={(e) => {
           e.preventDefault();
+          // 关键：内层网格落点不能再冒泡给 section，否则会用已清空的 drag
+          // 再执行一次归幕，造成场景卡看起来无法拖入目标幕。
+          e.stopPropagation();
           dropInSection(actId);
         }}
       >
@@ -97,6 +112,7 @@ export function CardsView() {
             onDragEnd={() => {
               setDrag(null);
               setOver(null);
+              setDropTarget(null);
             }}
             onDragOver={() => setOver(s.index)}
             onDropBefore={() => dropBefore(actId, s.index)}
@@ -188,6 +204,7 @@ function Card(p: CardProps) {
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', scene.elementId);
         p.onDragStart();
       }}
       onDragEnd={p.onDragEnd}

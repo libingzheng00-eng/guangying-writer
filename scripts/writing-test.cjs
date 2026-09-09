@@ -350,7 +350,7 @@ process.on('exit', () => {
   ok('image minW=180 / minH=140 / maxW=760 / maxH=680',
     RESIZE_LIMITS.image.minW === 180 && RESIZE_LIMITS.image.minH === 140 &&
     RESIZE_LIMITS.image.maxW === 760 && RESIZE_LIMITS.image.maxH === 680);
-  ok('wimg 与 image 同约束', JSON.stringify(RESIZE_LIMITS.wimg) === JSON.stringify(RESIZE_LIMITS.image));
+  ok('图片只保留 image 一种卡片类型', !Object.prototype.hasOwnProperty.call(RESIZE_LIMITS, 'wimg'));
   ok('beat minW=220 / minH=170', RESIZE_LIMITS.beat.minW === 220 && RESIZE_LIMITS.beat.minH === 170);
   ok('sound 与 beat 同约束', JSON.stringify(RESIZE_LIMITS.sound) === JSON.stringify(RESIZE_LIMITS.beat));
   ok('scene minW=180 / minH=110 / maxW=480 / maxH=400（场景卡独立区间）',

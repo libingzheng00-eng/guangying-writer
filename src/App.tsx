@@ -67,7 +67,7 @@ export default function App() {
   }, [version]);
 
   useEffect(() => {
-    document.title = `${projectName} · 墨场`;
+    document.title = `${projectName} · 光影写手`;
   }, [projectName]);
 
   /* 写作字体颜色 → CSS 变量（soft / glow 由主色派生，保证视觉一致） */

@@ -79,6 +79,8 @@ localStorage.setItem('mojiang:autosave', JSON.stringify({
     beats: [
       { id: 'qa-beat-1', text: '测试卡片甲', color: '#FCEBEB', x: 40, y: 40 },
       { id: 'qa-beat-2', text: '测试卡片乙', color: '#E6F1FB', x: 340, y: 240 },
+      { id: 'qa-sound-1', kind: 'sound', title: '雨夜环境声', text: '雨声渐强，远处列车经过。', color: '#E6F1FB', x: 40, y: 160 },
+      { id: 'qa-image-1', kind: 'image', title: '城市远景', text: '楼顶视角，冷色城市边缘。', img: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="80" height="40"%3E%3Crect width="80" height="40" fill="%231e3447"/%3E%3C/svg%3E', color: '#E6F1FB', x: 340, y: 360 },
     ],
     boardLinks: [],
     targetPages: 100,
@@ -146,7 +148,7 @@ process.on('exit', cleanTemporaryBundle);
   const progressEndIcon = !!q('.write-progress__end');
   const progressFillBar = !!q('.write-progress__fill');
 
-  // Item 6a：所有自由板卡片（scene / image / wimg / beat / sound）都应显示 .bcard__resize 手柄。
+  // Item 6a：所有自由板卡片（scene / image / beat / sound）都应显示 .bcard__resize 手柄。
   // 实际检查在「自由板」视图的 board 对象里跑（板视图后才渲染 bcard）；
   // 这里仅占位，featureChecks.allBcardsHaveResize 从 board.allBcardsHaveResize 读取。
   void 0;
@@ -182,14 +184,18 @@ process.on('exit', cleanTemporaryBundle);
     && tabCycle[8].type === 'scene_heading';
   report.tabCycle = tabCycle;
 
-  // 切换到其他视图，验证不崩溃
+  // 切换到其他视图，验证不崩溃；先在预览页检查 PDF 红线的素材附页。
   const clickByText = (label) => {
     const btn = qa('button').find((b) => b.textContent.trim() === label);
     if (btn) btn.click();
     return !!btn;
   };
-  const switches = {};
-  ['故事板', '预览', '统计', '写作', '自由板'].forEach((label) => {
+  const switches = { 预览: clickByText('预览') };
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  const previewMaterialPages = qa('.preview__material-page').length;
+  const previewSoundVisible = qa('.preview__material-page').some((node) => node.textContent.includes('雨夜环境声') && node.textContent.includes('雨声渐强'));
+  const previewImageVisible = qa('.preview__material-page img[alt="城市远景"]').length === 1;
+  ['故事板', '统计', '写作', '自由板'].forEach((label) => {
     switches[label] = clickByText(label);
   });
 
@@ -206,7 +212,7 @@ process.on('exit', cleanTemporaryBundle);
           // alpha.16：自由板工具栏必须存在三分区和全部颜色控制；否则背景层级回退时会再次整条消失。
           subTabs: qa('.board__subtabs [role="tab"]').length,
           colorControls: qa('.board__color-bar button[aria-label^="卡片颜色"]').length,
-          // Item 6a：所有自由板卡片（scene / image / wimg / beat / sound）都应有 resize 手柄
+          // Item 6a：所有自由板卡片（scene / image / beat / sound）都应有 resize 手柄
           allBcardsHaveResize: qa('.bcard').length > 0 && qa('.bcard__resize').length >= qa('.bcard').length,
         }
       : null;
@@ -235,7 +241,11 @@ process.on('exit', cleanTemporaryBundle);
         progressThemeButtonRemoved,
         progressEndIcon,
         progressFillBar,
-        // Item 6a：所有自由板卡片（scene / image / wimg / beat / sound）都应有 resize 手柄
+        // PDF 红线：声音卡、图片卡都必须在打印预览生成确定性素材附页。
+        previewMaterialPages: previewMaterialPages === 2,
+        previewSoundVisible,
+        previewImageVisible,
+        // Item 6a：所有自由板卡片（scene / image / beat / sound）都应有 resize 手柄
         allBcardsHaveResize: !!(board && board.allBcardsHaveResize),
         boardSubTabsVisible: !!(board && board.subTabs === 3),
         boardColorControlsVisible: !!(board && board.colorControls === 8),
@@ -256,6 +266,15 @@ process.on('exit', cleanTemporaryBundle);
           clickByText('写作');
           setTimeout(() => {
             featureChecks.characterRenameSynced = qa('.script-flow .sc-el[data-type="character"]').some((node) => node.textContent.trim() === '角色甲·改');
+            // 写作多选红线：先点正文建立锚点，再 Shift 点击另一段，必须选中中间连续范围。
+            const multi = qa('button').find((node) => node.textContent.trim() === '多选段落');
+            if (multi) multi.click();
+            setTimeout(() => {
+              const blocks = qa('.script-flow .sc-el');
+              blocks[1]?.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+              blocks[4]?.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
+              setTimeout(() => {
+                featureChecks.writingShiftRangeSelect = qa('.writing-select-row input[type="checkbox"]:checked').length === 4;
             console.log('=== 渲染检查 ===');
             console.log(JSON.stringify({ ...report, viewSwitch: switches, board, featureChecks }, null, 2));
             console.log('\n=== 切回写作视图后的元素数 ===');
@@ -264,7 +283,9 @@ process.on('exit', cleanTemporaryBundle);
             console.log(errors.length ? errors.slice(0, 20).join('\n---\n') : '(无错误)');
             const failed = Object.entries(featureChecks).filter(([, ok]) => !ok).map(([name]) => name);
             if (failed.length) console.log(`\n=== 功能回归失败 ===\n${failed.join(', ')}`);
-            process.exit(errors.length || failed.length ? 1 : 0);
+                process.exit(errors.length || failed.length ? 1 : 0);
+              }, 80);
+            }, 80);
           }, 400);
         }, 250);
       }, 250);

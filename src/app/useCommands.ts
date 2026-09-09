@@ -8,6 +8,20 @@ import { createProject, newElement, sceneHeadings } from '../model/project';
 import { PAPER_MM } from '../model/stats';
 import type { ElementType } from '../model/types';
 
+/** 等待预览中的图片解码完成，避免 printToPDF 在图片卡尚未绘制时抢先输出。 */
+async function waitForPrintableAssets() {
+  const images = Array.from(document.images);
+  await Promise.all(images.map(async (image) => {
+    if (!image.complete) {
+      await new Promise<void>((resolve) => {
+        image.addEventListener('load', () => resolve(), { once: true });
+        image.addEventListener('error', () => resolve(), { once: true });
+      });
+    }
+    try { await image.decode(); } catch { /* 损坏图片仍保留素材附页的标题和备注 */ }
+  }));
+}
+
 export function useCommands() {
   const store = useStore;
 
@@ -89,6 +103,8 @@ export function useCommands() {
     const { project, setView, notify } = store.getState();
     setView('preview');
     await new Promise((r) => setTimeout(r, 900));
+    // PDF 导出红线：必须等声音/图片素材附页和图片解码就绪后才能调用 printToPDF。
+    await waitForPrintableAssets();
     const paper = PAPER_MM[project.settings.paper] || PAPER_MM.A4;
     try {
       const file = await bridge.exportPdf({

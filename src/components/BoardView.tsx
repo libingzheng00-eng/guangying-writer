@@ -57,7 +57,7 @@ export function BoardView() {
 
   const canvasRef = useRef<HTMLDivElement>(null);
   // 拖拽状态：{ mode: 'card'|'beat'|'pan'|'resize'|'marquee', id, sx, sy, ox, oy, ow, oh, kind, moved, node?, marqueeRect?, marqueeAdditive? }
-  // kind 仅 resize 用：'scene' 或 'image'/'wimg'/'beat'/'sound'。
+  // kind 仅 resize 用：'scene' 或 'image'/'beat'/'sound'。
   // marqueeRect 仅 marquee 模式用：相对 canvas 世界坐标（除 pan / zoom 后的）。
   // marqueeAdditive 仅 marquee 模式用：Shift 启动时为 true。
   const drag = useRef<{
@@ -69,7 +69,7 @@ export function BoardView() {
     oy: number;
     ow: number;
     oh: number;
-    kind?: 'scene' | 'image' | 'wimg' | 'beat' | 'sound';
+    kind?: 'scene' | 'image' | 'beat' | 'sound';
     moved: boolean;
     node?: HTMLElement | null;
     marqueeRect?: { rx: number; ry: number; rw: number; rh: number } | null;
@@ -175,7 +175,7 @@ export function BoardView() {
         moveBeat(d.id, Math.round(nx), Math.round(ny));
       } else if (d.mode === 'resize' && d.id && d.node && d.kind) {
         // resize 节拍卡 / 场景卡：实时更新 DOM，松手时落位到 store。
-        // kind: 'scene' / 'image' / 'wimg' / 'beat' / 'sound'
+        // kind: 'scene' / 'image' / 'beat' / 'sound'
         const next = clampSize(d.kind, d.ow + dx / zoom, d.oh + dy / zoom);
         d.node.style.width = `${next.w}px`;
         d.node.style.height = `${next.h}px`;
@@ -442,22 +442,6 @@ export function BoardView() {
             }}>
               ＋图片
             </button>
-            <button className="btn btn--ghost" onClick={() => {
-              const id = addBoardBeat('wimg');
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = 'image/*';
-              input.onchange = () => {
-                const f = input.files && input.files[0];
-                if (!f) return;
-                const rd = new FileReader();
-                rd.onload = () => { useStore.getState().updateBeat(id, { img: String(rd.result || '') }); };
-                rd.readAsDataURL(f);
-              };
-              input.click();
-            }}>
-              ＋写作图
-            </button>
           </div>
           <div className="zoom-ctl">
           <button className="icon-btn" onClick={() => setZoom((z) => Math.max(0.4, z - 0.1))}>
@@ -623,7 +607,7 @@ interface BeatCardProps {
   onLink: (sceneId?: string) => void;
   linking: boolean;
   onBoardLink: () => void;
-  /** v1.2.9 同款：右下角 resize handle 接管 mousedown。仅 image / wimg 显示 */
+  /** 所有自由板卡片的右下角 resize handle。 */
   onResizeStart: (e: React.MouseEvent) => void;
   /** 多选视觉高亮（items 6b） */
   selected: boolean;
@@ -631,7 +615,7 @@ interface BeatCardProps {
 
 function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLink, onResizeStart, selected }: BeatCardProps) {
   const kind = beat.kind || 'beat';
-  const isMedia = kind === 'image' || kind === 'wimg';
+  const isMedia = kind === 'image';
   const isSound = kind === 'sound';
   const hasMedia = isMedia && !!beat.img;
   const lim = sizeLimitFor(kind);
@@ -645,13 +629,13 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
       style={{ left: beat.x, top: beat.y, background: beat.color, width: beat.w, height: beat.h }}
     >
       <div className="bcard__head">
-        {(isSound || isMedia) ? <span className={`bcard__tag bcard__tag--${kind}`}>{isSound ? '声音' : kind === 'wimg' ? '写作图' : '图片'}</span> : null}
+        {(isSound || isMedia) ? <span className={`bcard__tag bcard__tag--${kind}`}>{isSound ? '声音' : '图片'}</span> : null}
         <span className="bcard__actions"><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onBoardLink} title="连接到另一张卡片">↗</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除">×</button></span>
       </div>
       <div className="bcard__body">
         {hasMedia ? (
           <div className="bcard__media" onMouseDown={(e) => e.stopPropagation()}>
-            <img className="bcard__media-img" src={beat.img} alt={beat.title || (kind === 'wimg' ? '写作图' : '图片')} />
+            <img className="bcard__media-img" src={beat.img} alt={beat.title || '图片'} />
             {beat.title ? <input className="bcard__media-title" value={beat.title} placeholder="名称" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange({ title: e.target.value })} /> : null}
           </div>
         ) : isSound ? (

@@ -656,7 +656,6 @@ textarea {
   border-radius: 6px;
 }
 .material-panel__item--sound { box-shadow: inset 3px 0 0 rgba(204, 184, 135, 0.7); }
-.material-panel__item--wimg { box-shadow: inset 3px 0 0 rgba(180, 130, 230, 0.7); }
 .material-panel__icon { font-size: 16px; line-height: 1; color: rgba(204, 184, 135, 0.95); }
 .material-panel__thumb {
   width: 30px;
@@ -935,6 +934,12 @@ textarea {
 .cards__act {
   margin-bottom: 18px;
 }
+.cards__act.is-drop-target .cards__grid {
+  outline: 2px dashed var(--accent);
+  outline-offset: 6px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
 .cards__act-head {
   display: flex;
   align-items: center;
@@ -1098,6 +1103,40 @@ textarea {
 /* 预览页内的剧本文字强制深色，避免继承暗色主题导致白底浅字（PDF 空白） */
 .preview__page .sc-el {
   color: inherit;
+}
+.preview__material-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.preview__material-kicker {
+  color: #66717b;
+  font: 600 10pt -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+  letter-spacing: .08em;
+}
+.preview__material-title {
+  margin: 0 0 6px;
+  color: #18232d;
+  font: 700 20pt -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+}
+.preview__material-notes,
+.preview__material-missing {
+  margin: 0;
+  color: #293641;
+  white-space: pre-wrap;
+  font: 13pt/1.7 -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+}
+.preview__material-missing { color: #6d5641; }
+.preview__material-image {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  max-height: 72%;
+  object-fit: contain;
+  object-position: center;
+  border: 1px solid #d3dbe0;
+  border-radius: 6px;
+  background: #f4f6f7;
 }
 .page__num {
   position: absolute;
@@ -1956,7 +1995,6 @@ textarea {
   box-shadow: inset 0 0 0 1px rgba(88, 166, 255, 0.2);
 }
 .bcard--image .bcard__edit,
-.bcard--wimg .bcard__edit,
 .bcard--sound .bcard__edit { display: none; }
 .bcard__media {
   flex: 1 1 auto;
@@ -1997,7 +2035,6 @@ textarea {
 }
 .bcard__tag--sound { background: rgba(204, 184, 135, 0.6); color: #2b2200; }
 .bcard__tag--image { background: rgba(120, 200, 255, 0.6); color: #04253f; }
-.bcard__tag--wimg { background: rgba(180, 130, 230, 0.6); color: #1c0033; }
 .bcard__foot {
   flex: 0 0 auto;
   display: flex;
@@ -2055,7 +2092,7 @@ textarea {
 /* ------------------------------ 自由板卡片缩放手柄 ------------------------------ */
 /*
  * 卡片右下角的小手柄，鼠标 hover 时显示斜线指示可拖动。
- * alpha.6：所有自由板卡片（scene / image / wimg / beat / sound）都显示。
+ * alpha.6：所有自由板卡片（scene / image / beat / sound）都显示。
  * 未来新增 kind 复用同一套：只需在 src/model/board.ts 的 RESIZE_LIMITS 加项。
  */
 .bcard__resize {
@@ -2349,7 +2386,11 @@ textarea {
   .page__body,
   .sc-scene-no,
   .sc-contd,
-  .sc-more {
+  .sc-more,
+  .preview__material-kicker,
+  .preview__material-title,
+  .preview__material-notes,
+  .preview__material-missing {
     color: #000 !important;
   }
   .preview__page {
@@ -2483,14 +2524,11 @@ textarea {
 
 .editor__scroll { position: relative; }
 .writing-material-layer { position: absolute; inset: 0; z-index: 7; pointer-events: none; opacity: 1; visibility: visible; transition: opacity 160ms ease, visibility 160ms ease; }
-.writing-material-layer--image { z-index: 6; }
 .writing-material-layer.is-hidden { opacity: 0; visibility: hidden; }
 .writing-material-card { position: absolute; width: 258px; min-height: 122px; padding: 8px; pointer-events: auto; color: #f2f2f7; border: 1px solid rgba(255,255,255,.18); border-radius: 12px; background: linear-gradient(150deg, rgba(217,180,140,.08), transparent 45%), rgba(28,28,38,.70); box-shadow: 0 14px 32px rgba(0,0,0,.38); cursor: grab; -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5); }
 .writing-material-card:active { cursor: grabbing; }
-.writing-material-card--image { min-height: 0; }
 .writing-material-card__head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
 .writing-material-card__kind { color: #e3c49a; font-size: 12px; font-weight: 700; }
-.writing-material-card--image .writing-material-card__kind { color: #b7d5ec; }
 .writing-material-card__head input { flex: 1; min-width: 0; padding: 2px 4px; border: 1px solid transparent; border-radius: 5px; outline: 0; background: transparent; color: inherit; font: 650 12px -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; }
 .writing-material-card__head input:hover { border-color: rgba(255,255,255,.16); }
 .writing-material-card__head input:focus { border-color: rgba(217,180,140,.5); background: rgba(0,0,0,.25); }
@@ -2498,8 +2536,6 @@ textarea {
 .writing-material-card__head button { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #9b9ba4; cursor: pointer; font-size: 17px; line-height: 1; }
 .writing-material-card__head button:hover { background: var(--danger-soft); color: var(--danger); }
 .writing-material-card textarea { display: block; width: 100%; min-height: 76px; padding: 7px 8px; resize: vertical; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; outline: none; background: rgba(0,0,0,.28); color: #f2f2f7; font: 12px/1.6 -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; }
-.writing-material-card img { display: block; width: 100%; border-radius: 9px; pointer-events: none; }
-.writing-material-card__empty { display: grid; min-height: 92px; place-items: center; border: 1px dashed rgba(143,184,217,.34); border-radius: 9px; color: #9ebbd1; font-size: 12px; }
 
 /* 写作不是排版辅助工具：空元素不显示提示字，分页也不在稿纸中留虚线。 */
 .editor .sc-el--editable:hover { background: transparent; }
@@ -2531,6 +2567,10 @@ textarea {
 .app-shell[data-theme='day'] .toolbar .btn:active { color: #1f648f; background: #d5e1e8; }
 .app-shell[data-theme='day'] .toolbar .icon-btn { color: #6b7b86; }
 .app-shell[data-theme='day'] .toolbar .icon-btn:hover, .app-shell[data-theme='day'] .toolbar .icon-btn:focus-visible { color: #2f78b7; background: #e3ebf0; box-shadow: none; }
+.app-shell[data-theme='day'] .menu { background: rgba(250,252,253,.97); border-color: #b9c7d0; box-shadow: 0 12px 30px rgba(47,64,76,.20); }
+.app-shell[data-theme='day'] .menu__item { color: #2d3c46; }
+.app-shell[data-theme='day'] .menu__item:hover, .app-shell[data-theme='day'] .menu__item:focus-visible { color: #1f6fae; background: rgba(47,120,183,.12); }
+.app-shell[data-theme='day'] .menu__sep { background: #cbd5dc; }
 .app-shell[data-theme='day'] .type-select { color-scheme: light; color: #273640; border-color: #b9c7d0; background: #fff; }
 .app-shell[data-theme='day'] .type-select option { color: #273640; background: #fff; }
 .app-shell[data-theme='day'] .smarttype { background: rgba(250,252,253,.98); border-color: #b9c7d0; box-shadow: 0 10px 28px rgba(47,64,76,.20); }

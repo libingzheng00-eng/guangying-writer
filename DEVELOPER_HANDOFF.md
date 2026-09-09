@@ -1,6 +1,6 @@
-# 墨场源码接手摘要
+# 光影写手源码接手摘要
 
-更新时间：2026-09-09（alpha.17 / R14：自由板场景删除、多选删除与进度条精确跳转修复）
+更新时间：2026-09-09（alpha.18：PDF 素材附页、写作 Shift 多选、故事板归幕修复与正式更名）
 
 ## 版本边界
 
@@ -22,7 +22,7 @@
 
 - 逐项对照 [MIGRATION.md](MIGRATION.md) 回迁完整 v1.2.8/v1.2.9 行为。
 - 当前真实 PNG 打字机指针位于 `src/assets/typewriter-pointer.png`，由 `ProgressBar.tsx` 使用；不要重新放回 `StatusBar.tsx`。
-- 当前版本为 `1.3.0-alpha.17`（R14）；完成全部回归后再改为正式 `1.3.0`。
+- 当前版本为 `1.3.0-alpha.18`；完成全部回归后再改为正式 `1.3.0`。
 - 新建候选安装包，绝不覆盖用户现用 v1.2.9。
 
 ## 隐私红线
@@ -53,6 +53,8 @@ node scripts/history-test.cjs
 - **写作红线——Tab 焦点闭环**：`Tab` / `Shift+Tab` 只在当前行循环九类元素，永远不自动新建行，也绝不能跳到缩放、文件名或其他界面按钮。`scene_heading` 会改变场号包装结构，类型切换后必须通过 `requestFocus` 恢复同一 `contentEditable` 及原光标位置。任何涉及 `Editor.tsx`、`ScriptBlock.tsx` 或场号 DOM 的修改，都必须实测连续按 9 次 Tab 后回到起始类型且焦点仍在原段落。
 - 快捷输入候选靠近当前输入行右侧：`Enter` 确认后进入符合上述规则的下一元素；空格或鼠标只确认当前行。Tab 专用于元素类型循环，不得被自动补全截获。contentEditable 聚焦时必须同时更新 DOM 与 store，否则鼠标点击会“看似无反应”。
 - `Editor.tsx` 在输入时仅派发 `mochang:typing` 事件；`ProgressBar.tsx` 自己在指针 DOM 上短暂加 `.is-typing`（260ms）。严禁把动效状态保存进 `.zhsp` 或 undo 历史，也不要把它改回 Editor 的 React state，以免每次输入重绘整个编辑器。
+- **PDF 红线——素材不能丢失**：`PreviewView.tsx` 的 `MaterialPage` 必须保留声音卡与图片卡的确定性附页；`useCommands.ts` 在 `printToPDF` 前必须等待图片解码。任何“只导出正文”优化都不允许删除此链路。
+- **写作 Shift 多选**：仅在写作多选模式下，Shift 点击正文段落或复选框会按正文顺序扩展连续选区；普通编辑模式不得拦截鼠标、光标或键盘输入。
 
 ## 开始工作的推荐顺序
 

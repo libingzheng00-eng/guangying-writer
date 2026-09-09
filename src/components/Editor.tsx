@@ -42,7 +42,6 @@ export function Editor() {
   const noteMemoryRef = useRef(new Map<string, ElementType>());
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
   const [showSoundCards, setShowSoundCards] = useState(true);
-  const [showImageCards, setShowImageCards] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const selectMode = useStore((s) => s.writingSelectionMode);
@@ -94,6 +93,23 @@ export function Editor() {
     () => new Map(project.elements.map((element, index) => [element.id, index])),
     [project.elements],
   );
+
+  /**
+   * 写作多选：Shift 必须按正文顺序选取连续段落，而不是只对小复选框生效。
+   * 这套选择只在多选模式启用，绝不拦截正常写作、光标或 TAB 类型循环。
+   */
+  const selectWritingElement = useCallback((id: string, range: boolean) => {
+    const index = elementIndex.get(id);
+    const anchor = elementIndex.get(selectionAnchor.current || '');
+    if (index === undefined) return;
+    if (range && anchor !== undefined) {
+      const ids = project.elements.slice(Math.min(anchor, index), Math.max(anchor, index) + 1).map((item) => item.id);
+      setWritingSelectedIds([...writingIds, ...ids]);
+    } else {
+      toggleWritingSelection(id);
+      selectionAnchor.current = id;
+    }
+  }, [elementIndex, project.elements, setWritingSelectedIds, toggleWritingSelection, writingIds]);
 
   const showSceneNumber = (side: 'left' | 'right') =>
     project.settings.sceneNumber === side || project.settings.sceneNumber === 'both';
@@ -426,25 +442,11 @@ export function Editor() {
   };
 
   const writingSounds = project.beats.filter((b) => (b.kind || 'beat') === 'sound');
-  const writingImages = project.beats.filter((b) => (b.kind || 'beat') === 'wimg');
-  const addWritingMaterial = (kind: 'sound' | 'wimg') => {
-    const count = kind === 'sound' ? writingSounds.length : writingImages.length;
+  const addWritingSound = () => {
+    const count = writingSounds.length;
     const x = Math.max(24, (scrollRef.current?.clientWidth || 980) - 274);
-    const y = 84 + count * 24 + (kind === 'wimg' ? 120 : 0);
-    const id = addBeat(x, y, '', kind);
-    if (kind === 'wimg') {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.onchange = () => {
-        const f = input.files && input.files[0];
-        if (!f) return;
-        const rd = new FileReader();
-        rd.onload = () => updateBeat(id, { img: String(rd.result || '') });
-        rd.readAsDataURL(f);
-      };
-      input.click();
-    }
+    const y = 84 + count * 24;
+    addBeat(x, y, '', 'sound');
   };
 
   return (
@@ -459,18 +461,13 @@ export function Editor() {
       <ProgressBar>
         <MaterialControls
           soundCount={writingSounds.length}
-          imageCount={writingImages.length}
           showSound={showSoundCards}
-          showImages={showImageCards}
           onToggleSound={() => setShowSoundCards((v) => !v)}
-          onToggleImages={() => setShowImageCards((v) => !v)}
-          onAddSound={() => addWritingMaterial('sound')}
-          onAddImage={() => addWritingMaterial('wimg')}
+          onAddSound={addWritingSound}
         />
       </ProgressBar>
       <div className="editor__scroll">
-        <WritingMaterialCards cards={writingSounds} kind="sound" visible={showSoundCards} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
-        <WritingMaterialCards cards={writingImages} kind="wimg" visible={showImageCards} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
+        <WritingMaterialCards cards={writingSounds} visible={showSoundCards} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
         {settings.indent && project.titlePage.show ? <TitlePageCard /> : null}
         <div className="script-flow" ref={contentRef} style={columnStyle}>
           {items.map((item, i) => {
@@ -530,15 +527,8 @@ export function Editor() {
     return (
       <div key={el.id} className={selectMode ? 'writing-select-row' : undefined}>
       {selectMode && <input type="checkbox" aria-label={`选择第 ${(elementIndex.get(el.id) ?? 0) + 1} 段`} checked={writingIds.includes(el.id)} onChange={() => {}} onClick={(e) => {
-        const anchor = elementIndex.get(selectionAnchor.current || '') ?? -1;
-        const index = elementIndex.get(el.id) ?? -1;
-        if (e.shiftKey && anchor >= 0) {
-          const range = project.elements.slice(Math.min(anchor, index), Math.max(anchor, index) + 1).map((item) => item.id);
-          setWritingSelectedIds([...writingIds, ...range]);
-        } else {
-          toggleWritingSelection(el.id);
-          selectionAnchor.current = el.id;
-        }
+        e.stopPropagation();
+        selectWritingElement(el.id, e.shiftKey);
       }} />}
       <EditableBlock
         key={el.id}
@@ -567,6 +557,10 @@ export function Editor() {
           setActive(el.id);
           if (suggest && suggest.id !== el.id) setSuggest(null);
         }}
+        onClick={selectMode ? (e) => {
+          e.preventDefault();
+          selectWritingElement(el.id, e.shiftKey);
+        } : undefined}
         onPaste={(e) => handlePaste(el, e)}
         onCompositionStart={() => {
           composingRef.current = true;
@@ -593,10 +587,10 @@ export function Editor() {
 }
 
 function MaterialControls({
-  soundCount, imageCount, showSound, showImages, onToggleSound, onToggleImages, onAddSound, onAddImage,
+  soundCount, showSound, onToggleSound, onAddSound,
 }: {
-  soundCount: number; imageCount: number; showSound: boolean; showImages: boolean;
-  onToggleSound: () => void; onToggleImages: () => void; onAddSound: () => void; onAddImage: () => void;
+  soundCount: number; showSound: boolean;
+  onToggleSound: () => void; onAddSound: () => void;
 }) {
   return (
     <span className="writing-material-controls" aria-label="写作素材">
@@ -604,23 +598,18 @@ function MaterialControls({
         <button type="button" aria-label="显示或隐藏声音卡" aria-pressed={showSound} title={showSound ? '暂时隐藏声音卡' : '显示声音卡'} onClick={onToggleSound}>◌ <b>{soundCount}</b></button>
         <button type="button" aria-label="新建声音卡" title="新建声音卡" onClick={onAddSound}>＋</button>
       </span>
-      <span className="writing-material-controls__group">
-        <button type="button" aria-label="显示或隐藏图片卡" aria-pressed={showImages} title={showImages ? '暂时隐藏图片卡' : '显示图片卡'} onClick={onToggleImages}>▣ <b>{imageCount}</b></button>
-        <button type="button" aria-label="新建图片卡" title="新建图片卡" onClick={onAddImage}>＋</button>
-      </span>
     </span>
   );
 }
 
-function WritingMaterialCards({ cards, kind, visible, onUpdate, onMove, onDelete }: {
+function WritingMaterialCards({ cards, visible, onUpdate, onMove, onDelete }: {
   cards: Array<{ id: string; x: number; y: number; text: string; title?: string; img?: string }>;
-  kind: 'sound' | 'wimg'; visible: boolean;
+  visible: boolean;
   onUpdate: (id: string, patch: { title?: string; text?: string }) => void;
   onMove: (id: string, x: number, y: number) => void;
   onDelete: (id: string) => void;
 }) {
   const dragRef = useRef<{ id: string; x: number; y: number; startX: number; startY: number } | null>(null);
-  const image = kind === 'wimg';
   const onPointerDown = (event: React.PointerEvent<HTMLElement>, card: { id: string; x: number; y: number }) => {
     if ((event.target as HTMLElement).closest('input, textarea, button')) return;
     dragRef.current = { id: card.id, x: card.x, y: card.y, startX: event.clientX, startY: event.clientY };
@@ -633,16 +622,16 @@ function WritingMaterialCards({ cards, kind, visible, onUpdate, onMove, onDelete
   };
   const stopDrag = () => { dragRef.current = null; };
   return (
-    <div className={'writing-material-layer' + (image ? ' writing-material-layer--image' : '') + (visible ? '' : ' is-hidden')} aria-hidden={!visible}>
+    <div className={'writing-material-layer' + (visible ? '' : ' is-hidden')} aria-hidden={!visible}>
       {cards.map((card) => (
-        <article key={card.id} className={'writing-material-card' + (image ? ' writing-material-card--image' : '')} style={{ left: card.x, top: card.y }} onPointerDown={(e) => onPointerDown(e, card)} onPointerMove={onPointerMove} onPointerUp={stopDrag}>
+        <article key={card.id} className="writing-material-card" style={{ left: card.x, top: card.y }} onPointerDown={(e) => onPointerDown(e, card)} onPointerMove={onPointerMove} onPointerUp={stopDrag}>
           <header className="writing-material-card__head">
-            <span className="writing-material-card__kind" aria-hidden>{image ? '▣' : '◌'}</span>
-            <input value={card.title || ''} placeholder={image ? '图片批注' : '声音设计'} aria-label={image ? '图片卡标题' : '声音卡标题'} onChange={(e) => onUpdate(card.id, image ? { title: e.target.value } : { title: e.target.value, text: e.target.value })} />
+            <span className="writing-material-card__kind" aria-hidden>◌</span>
+            <input value={card.title || ''} placeholder="声音设计" aria-label="声音卡标题" onChange={(e) => onUpdate(card.id, { title: e.target.value, text: e.target.value })} />
             <span className="writing-material-card__drag" title="拖动卡片" aria-hidden>⠿</span>
-            <button type="button" title={image ? '删除这张图片卡' : '删除这张声音卡'} aria-label={image ? '删除这张图片卡' : '删除这张声音卡'} onClick={() => onDelete(card.id)}>×</button>
+            <button type="button" title="删除这张声音卡" aria-label="删除这张声音卡" onClick={() => onDelete(card.id)}>×</button>
           </header>
-          {image ? (card.img ? <img src={card.img} alt={card.title || '图片卡'} draggable={false} /> : <div className="writing-material-card__empty">等待导入图片</div>) : <textarea value={card.text} placeholder="声音、环境、节奏或情绪提示…" aria-label="声音卡内容" onChange={(e) => onUpdate(card.id, { text: e.target.value })} />}
+          <textarea value={card.text} placeholder="声音、环境、节奏或情绪提示…" aria-label="声音卡内容" onChange={(e) => onUpdate(card.id, { text: e.target.value })} />
         </article>
       ))}
     </div>

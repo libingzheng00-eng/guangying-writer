@@ -36,7 +36,10 @@ function normalizeBeat(raw: unknown): Beat {
     y,
   };
   if (typeof b.sceneId === 'string' && b.sceneId) beat.sceneId = b.sceneId;
-  if (b.kind === 'beat' || b.kind === 'sound' || b.kind === 'image' || b.kind === 'wimg') beat.kind = b.kind;
+  // `wimg` 是旧版「写作图」的重复类型。读取时归并为 image，保留图片、标题、坐标与尺寸；
+  // 新版不会再生成 wimg，从而只维护一套图片卡和一条 PDF 导出链路。
+  if (b.kind === 'beat' || b.kind === 'sound' || b.kind === 'image') beat.kind = b.kind;
+  else if (b.kind === 'wimg') beat.kind = 'image';
   if (typeof b.title === 'string') beat.title = b.title;
   if (typeof b.img === 'string') beat.img = b.img;
   if (typeof b.w === 'number' && Number.isFinite(b.w)) beat.w = b.w;

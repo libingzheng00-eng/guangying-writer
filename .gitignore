@@ -21,6 +21,7 @@ release-alpha-test-r13/
 *.log
 .vite/
 .tmp-app.*
+assets/icon.iconset/
 
 # Local project documents may contain private writing material
 *.zhsp

@@ -6,6 +6,7 @@ import { fontStackOf } from '../model/elements';
 import { PAPER_MM } from '../model/stats';
 import { deriveScenes } from '../model/project';
 import { stripSceneNumber } from '../utils/text';
+import type { Beat } from '../model/types';
 
 const PX_PER_MM = 96 / 25.4;
 
@@ -46,6 +47,14 @@ export function PreviewView({ onExportPdf }: { onExportPdf: () => void }) {
 
   const settings = project.settings;
   const showTitle = project.titlePage.show && settings.titlePageBreak;
+  /**
+   * PDF 导出红线：声音卡与图片卡是创作内容的一部分，不能只因它们位于写作/自由板
+   * 浮层就从打印预览剥离。这里为每张素材生成确定的附页，printToPDF 会原样带出。
+   */
+  const materials = useMemo(
+    () => project.beats.filter((beat) => beat.kind === 'sound' || beat.kind === 'image'),
+    [project.beats],
+  );
 
   const renderPlaced = (p: Placed) => {
     const el0 = p.elements[0];
@@ -107,7 +116,7 @@ export function PreviewView({ onExportPdf }: { onExportPdf: () => void }) {
   return (
     <div className="preview">
       <div className="preview__bar">
-        <span className="preview__label">分页预览 · 共 {pages.length} 页</span>
+        <span className="preview__label">分页预览 · 剧本 {pages.length} 页{materials.length ? ` · 素材附页 ${materials.length} 张` : ''}</span>
         <div className="spacer" />
         <button className="btn btn--ghost" onClick={() => setZoom(zoom - 0.1)}>
           －
@@ -134,7 +143,45 @@ export function PreviewView({ onExportPdf }: { onExportPdf: () => void }) {
             {showTitle && i === 0 ? null : page.items.map(renderPlaced)}
           </PageCard>
         ))}
+        {materials.map((beat, index) => (
+          <MaterialPage key={beat.id} beat={beat} index={index} geo={geo} />
+        ))}
       </div>
+    </div>
+  );
+}
+
+/** PDF 专用素材附页；不要把它改回仅编辑器浮层，否则导出会再次丢失卡片内容。 */
+function MaterialPage({ beat, index, geo }: {
+  beat: Beat;
+  index: number;
+  geo: { w: number; h: number; pt: number; pb: number; pl: number; pr: number };
+}) {
+  const sound = beat.kind === 'sound';
+  const title = beat.title || (sound ? '声音设计' : '图片素材');
+  return (
+    <div
+      className="preview__page preview__material-page"
+      style={{
+        width: geo.w,
+        height: Math.max(120, geo.h - 0.3 * PX_PER_MM),
+        paddingTop: geo.pt,
+        paddingBottom: geo.pb,
+        paddingLeft: geo.pl,
+        paddingRight: geo.pr,
+        background: '#fff',
+      }}
+    >
+      <div className="preview__material-kicker">创作素材附页 · {sound ? '声音卡' : '图片卡'} {index + 1}</div>
+      <h1 className="preview__material-title">{title}</h1>
+      {sound ? (
+        <p className="preview__material-notes">{beat.text || '（未填写声音、环境或节奏提示）'}</p>
+      ) : (
+        <>
+          {beat.img ? <img className="preview__material-image" src={beat.img} alt={title} /> : <p className="preview__material-missing">（图片文件缺失，但卡片标题与备注仍已保留）</p>}
+          {beat.text ? <p className="preview__material-notes">{beat.text}</p> : null}
+        </>
+      )}
     </div>
   );
 }

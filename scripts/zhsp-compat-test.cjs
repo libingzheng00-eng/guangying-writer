@@ -131,7 +131,7 @@ function wrap(oldA, extras = {}) {
   ok('image kind 保留', newReparsed.beats[1].kind === 'image');
   ok('image dataURL 保留', newReparsed.beats[1].img === 'data:image/png;base64,iVBORw0KGgo=');
   ok('image w/h 保留', newReparsed.beats[1].w === 240 && newReparsed.beats[1].h === 180);
-  ok('wimg kind 保留', newReparsed.beats[2].kind === 'wimg');
+  ok('旧 wimg 归并为唯一图片卡类型', newReparsed.beats[2].kind === 'image');
   ok('beat kind 保留', newReparsed.beats[3].kind === 'beat');
 
   console.log('\n== 场景 5：残缺 Beat 解析不抛异常、可用字段不丢 ==');
