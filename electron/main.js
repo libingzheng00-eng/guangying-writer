@@ -6,11 +6,11 @@ const fs = require('node:fs');
 /* 任何未捕获的同步异常 / 未处理的 Promise 拒绝，默认会让 Electron 直接退出且无提示。
    这里收拢成日志（必要时弹窗），让应用不至于「悄无声息地死掉」。 */
 function logFatal(where, err) {
-  const msg = `[墨场] 主进程异常 (${where})：${err && err.stack ? err.stack : err}`;
+  const msg = `[光影写手] 主进程异常 (${where})：${err && err.stack ? err.stack : err}`;
   console.error(msg);
   try {
     if (win && !win.isDestroyed()) {
-      dialog.showErrorBox('墨场遇到问题', `${where}：\n${err && err.message ? err.message : String(err)}`);
+      dialog.showErrorBox('光影写手遇到问题', `${where}：\n${err && err.message ? err.message : String(err)}`);
     }
   } catch {
     /* ignore */
@@ -54,7 +54,7 @@ function createWindow() {
     height: 960,
     minWidth: 1024,
     minHeight: 680,
-    title: '墨场 · 中文编剧',
+    title: '光影写手',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 20 },
     backgroundColor: '#f6f7f9',
@@ -180,7 +180,7 @@ ipcMain.handle('dialog:open', async () => {
     properties: ['openFile'],
     filters: [
       { name: '剧本文件', extensions: ['zhsp', 'fdx', 'txt', 'md'] },
-      { name: '墨场工程', extensions: ['zhsp'] },
+      { name: '光影写手工程', extensions: ['zhsp'] },
       { name: 'Final Draft', extensions: ['fdx'] },
       { name: '文本', extensions: ['txt', 'md'] },
       { name: '所有文件', extensions: ['*'] },
@@ -203,7 +203,7 @@ ipcMain.handle('dialog:save', async (_e, { content, path: target, name }) => {
   if (!file) {
     const res = await dialog.showSaveDialog(win, {
       defaultPath: name || '未命名剧本.zhsp',
-      filters: [{ name: '墨场工程', extensions: ['zhsp'] }],
+      filters: [{ name: '光影写手工程', extensions: ['zhsp'] }],
     });
     if (res.canceled || !res.filePath) return null;
     file = res.filePath;

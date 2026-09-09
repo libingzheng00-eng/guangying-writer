@@ -2,7 +2,7 @@
  * 自由板卡片尺寸约束（v1.2.9 同款）。
  *
  * 历史一致性：
- *   - 图片 / 写作图（image / wimg）：min 180×140, max 760×680, default 176×140
+ *   - 图片（image）：min 180×140, max 760×680, default 176×140
  *   - 灵感 / 声音（beat / sound）：min 220×170, max 720×640, default 220×170
  *   - 声音卡虽然不显示 resize 按钮，但保留数值以便 layout 计算与将来扩展
  *
@@ -29,9 +29,8 @@ export interface SizeLimit {
 export const RESIZE_LIMITS: Record<ResizableKind, SizeLimit> = {
   // 场景卡：比节拍卡略宽一点用于容纳 synopsis；上限留足可自定义空间
   scene: { minW: 180, minH: 110, maxW: 480, maxH: 400, defaultW: 220, defaultH: 110 },
-  // 图片 / 写作图
+  // 图片
   image: { minW: 180, minH: 140, maxW: 760, maxH: 680, defaultW: 176, defaultH: 140 },
-  wimg: { minW: 180, minH: 140, maxW: 760, maxH: 680, defaultW: 176, defaultH: 140 },
   // 灵感 / 声音
   beat: { minW: 220, minH: 170, maxW: 720, maxH: 640, defaultW: 220, defaultH: 170 },
   sound: { minW: 220, minH: 170, maxW: 720, maxH: 640, defaultW: 220, defaultH: 170 },
@@ -40,14 +39,14 @@ export const RESIZE_LIMITS: Record<ResizableKind, SizeLimit> = {
 /**
   * 取指定类型的尺寸约束。
   *
-  * 支持 `'scene' | 'image' | 'wimg' | 'beat' | 'sound'` 与 undefined。
+  * 支持 `'scene' | 'image' | 'beat' | 'sound'` 与 undefined。
   * 未来新增 kind 时：先在 RESIZE_LIMITS 里加项，再让 BoardView 在 canResize 里 include。
   */
-export type ResizableKind = 'scene' | 'image' | 'wimg' | 'beat' | 'sound';
+export type ResizableKind = 'scene' | 'image' | 'beat' | 'sound';
 
 export function sizeLimitFor(kind: ResizableKind | Beat['kind'] | undefined): SizeLimit {
   if (
-    kind === 'scene' || kind === 'image' || kind === 'wimg' ||
+    kind === 'scene' || kind === 'image' ||
     kind === 'beat' || kind === 'sound'
   ) {
     return RESIZE_LIMITS[kind];
@@ -113,7 +112,7 @@ export function beatEndpoint(beat: { x: number; y: number; w?: number; h?: numbe
 /**
  * 把 width / height 强制收敛到合法区间。
  *
- * @param kind  卡片类型（image / wimg / beat / sound）
+ * @param kind  卡片类型（image / beat / sound）
  * @param w     用户传入的宽度（可能是拖动中增量、resize 实时值、或持久化值）
  * @param h     用户传入的高度
  * @returns     { w, h }：被 clamp 后的整数（Math.round），永远 ∈ [min, max]

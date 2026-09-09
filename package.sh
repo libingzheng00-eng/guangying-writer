@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  墨场 · 中文编剧 — 打包脚本 v2（手动组装，避免 electron-packager 在本机 macOS 的 file-token 报错）
+#  光影写手 — 打包脚本 v2（手动组装，避免 electron-packager 在本机 macOS 的 file-token 报错）
 #  作用：把项目打包成独立可分发的 macOS 应用（.app + .zip）
 #  运行：bash package.sh
 #  前置：已执行过 npm install 且能正常 vite build
@@ -10,9 +10,9 @@ set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 
-APP_NAME="${APP_NAME:-Mochang}"                 # 磁盘上的 .app 文件名（用 ASCII，避免中文路径坑）
-DISPLAY_NAME="${DISPLAY_NAME:-墨场 · 中文编剧}"  # Finder / Launchpad 中显示的名称（支持中文）
-BUNDLE_ID="${BUNDLE_ID:-com.workbuddy.mochang}"
+APP_NAME="${APP_NAME:-GuangyingWriter}"         # 磁盘上的 .app 文件名（用 ASCII，避免中文路径坑）
+DISPLAY_NAME="${DISPLAY_NAME:-光影写手}"          # Finder / Launchpad 中显示的名称（支持中文）
+BUNDLE_ID="${BUNDLE_ID:-com.workbuddy.guangyingwriter}"
 ARCH="${ARCH:-arm64}"                           # M1/M2 用 arm64；Intel 改 x64
 VERSION="$(node -p "require('./package.json').version")"
 OUT_DIR="${OUT_DIR:-release}"
@@ -20,7 +20,7 @@ APP_DIR="$OUT_DIR/${APP_NAME}.app"
 ZIP_NAME="${APP_NAME}-macOS-${ARCH}.zip"
 
 echo "============================================"
-echo "  墨场 · 中文编剧 — 打包 (${ARCH})"
+echo "  光影写手 — 打包 (${ARCH})"
 echo "============================================"
 echo ""
 
@@ -39,7 +39,13 @@ echo ""
 echo "[2/6] 复制 Electron.app 骨架…"
 mkdir -p "$OUT_DIR"
 rm -rf "$APP_DIR"
-cp -R "node_modules/electron/dist/Electron.app" "$APP_DIR"
+mkdir -p "$APP_DIR"
+# 用 rsync 而非 cp -R：node_modules/electron/dist/Electron.app/Contents/Resources/default_app.asar
+# 在部分 macOS 上带 com.apple.provenance（SIP 保护），cp -R 复制该文件会报
+# "Operation not permitted"（xattr -cr 也无效，因为不是隔离属性）。
+# 根本不去碰它即可；我们的 Resources/app 会优先加载，所以 default_app.asar 没用。
+# 详见 ENVIRONMENT_PITFALLS.md §2。
+rsync -a --exclude 'default_app.asar' "node_modules/electron/dist/Electron.app/" "$APP_DIR/"
 echo "      骨架就位 ✓"
 echo ""
 
@@ -69,6 +75,12 @@ set_or_add ":CFBundleExecutable"      "$APP_NAME"
 set_or_add ":CFBundleIdentifier"      "$BUNDLE_ID"
 set_or_add ":CFBundleVersion"         "$VERSION"
 set_or_add ":CFBundleShortVersionString" "$VERSION"
+set_or_add ":CFBundleIconFile"        "app-icon"
+if [ ! -f "$DIR/assets/app-icon.icns" ]; then
+  echo "  ❌ 缺少应用图标：assets/app-icon.icns"
+  exit 1
+fi
+cp "$DIR/assets/app-icon.icns" "$APP_DIR/Contents/Resources/app-icon.icns"
 echo "      名称=$DISPLAY_NAME / 标识符=$BUNDLE_ID / 版本=$VERSION ✓"
 echo ""
 

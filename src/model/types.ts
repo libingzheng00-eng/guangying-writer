@@ -69,9 +69,9 @@ export interface SceneMeta {
  * - 'beat'：默认文字灵感卡
  * - 'sound'：声音卡（仅出现在目标页数区域）
  * - 'image'：自由板图片卡
- * - 'wimg'：写作页内图片卡
  *
- * 历史兼容：所有新增字段都是可选的；旧 `.zhsp` 不含这些字段也能正常打开、保存和再次打开。
+ * 历史兼容：旧工程中的废弃 kind='wimg' 会在读取时归并为 'image'，
+ * 所有图片和批注仍会保留；新数据不再写入重复的「写作图」类型。
  */
 export interface Beat {
   id: string;
@@ -83,10 +83,10 @@ export interface Beat {
   /** 关联的场景卡 id（SceneMeta.id），可选 */
   sceneId?: string;
   /** 卡片种类；旧数据缺省时按 'beat' 处理 */
-  kind?: 'beat' | 'sound' | 'image' | 'wimg';
+  kind?: 'beat' | 'sound' | 'image';
   /** 卡片标题（声音/图片卡的语义化名称） */
   title?: string;
-  /** 图片 dataURL（仅 sound/image/wimg 用得到；声音卡可空） */
+  /** 图片 dataURL（image 用得到；声音卡可空） */
   img?: string;
   /** 自定义宽度（像素），缺省时按卡片默认宽度渲染 */
   w?: number;

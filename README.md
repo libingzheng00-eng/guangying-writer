@@ -1,4 +1,4 @@
-# 墨场 · 中文编剧 — 开发者说明文档
+# 光影写手 — 开发者说明文档
 
 > 开源许可证：[MIT](LICENSE)。稳定版本会发布在 GitHub 的 **Releases** 页面；请从 Releases 下载最新版 DMG 或 ZIP，不要从源码页面下载自动生成的源码压缩包。
 
@@ -10,9 +10,12 @@
 
 未购买 Apple Developer ID 的版本仍是 ad-hoc 签名，首次在另一台 Mac 上打开可能需要用户在“隐私与安全性”中手动确认；它不是已公证的正式签名应用。
 
-> 一款对标 Final Draft 的**中文剧本创作软件**。Electron 31 + React 18 + Zustand + Vite + TypeScript（arm64 / Apple Silicon 原生），纯本地存储，无后端、无账号体系。
+> 一款对标 Final Draft 的**中文剧本创作软件**。Electron 31 + React 18 + Zustand + Vite + TypeScript（arm64 / Apple Silicon 原生），纯本地存储，无后端、无账号体系。项目正式名称为「光影写手」；内部 npm 名与 `.zhsp` 格式保持不变，确保已有本地草稿兼容。
 
 本文件面向**日后维护与二次开发**，覆盖：环境搭建、开发与调试、构建、打包发布、整体架构、数据模型、主题系统、扩展方式、测试与已知坑。
+
+> ⚠️ 本环境的特殊坑（无 GUI 会话、文件带 `com.apple.provenance`、git 提交失败等）已集中到
+> [ENVIRONMENT_PITFALLS.md](ENVIRONMENT_PITFALLS.md)，遇到看不懂的报错先读它。
 
 ---
 
@@ -109,7 +112,7 @@ zh-screenwriter/
 │   └── integration-test.cjs # ★ 真实 Electron 集成测试（见 §15）：PDF 有内容 / 预览深色字 / 自由板可拖 / 故事板拖入幕 / 幕标题中文数字 / 拖后一步撤销 / 字体颜色设置 / 防回归静态检查（共 17 项断言）
 │
 ├── dist-renderer/         # 【构建产物】Vite 输出（被 .gitignore 忽略，勿手改）
-└── release/               # 【打包产物】Mochang.app + .zip（被 .gitignore 忽略）
+└── release/               # 【打包产物】GuangyingWriter.app + .zip（被 .gitignore 忽略）
 ```
 
 ★ = 改动最频繁、最需要理解的核心文件。
@@ -190,13 +193,13 @@ bash package.sh
 ```
 
 产物位于 `release/`：
-- `release/Mochang.app` —— 独立应用（自带 Electron 运行时，约 228MB，**无需** Node/npm 即可运行）；
-- `release/Mochang-macOS-arm64.zip` —— 可分发的压缩包。
+- `release/GuangyingWriter.app` —— 独立应用（自带 Electron 运行时，约 228MB，**无需** Node/npm 即可运行）；
+- `release/GuangyingWriter-macOS-arm64.zip` —— 可分发的压缩包。
 
 `package.sh` 的 6 个步骤（与代码一一对应，便于排错）：
 1. `vite build` → 生成 `dist-renderer`；
-2. `cp -R node_modules/electron/dist/Electron.app release/Mochang.app` —— 复制 Electron 骨架；
-3. 重命名可执行文件 `Electron → Mochang`，并清理默认欢迎页 `default_app.asar`；
+2. `cp -R node_modules/electron/dist/Electron.app release/GuangyingWriter.app` —— 复制 Electron 骨架；
+3. 重命名可执行文件 `Electron → GuangyingWriter`，并清理默认欢迎页 `default_app.asar`；
 4. 用 `PlistBuddy` 写入 `Info.plist`（`CFBundleName` / `CFBundleDisplayName` / `CFBundleExecutable` / `CFBundleIdentifier` / 版本）；
 5. 把 `electron/` + `dist-renderer/` + `package.json` 拷入 `Contents/Resources/app`；
 6. 进行 ad-hoc 自签名 `codesign --force --deep --sign -` 并压缩成 zip；该签名不是 Apple 公证。
@@ -205,9 +208,9 @@ bash package.sh
 
 | 想改什么 | 改 `package.sh` 哪里 |
 | --- | --- |
-| 磁盘文件名（.app 名） | `APP_NAME="Mochang"`（保持 ASCII，避免中文路径坑） |
-| 在 Finder/Launchpad 显示的中文名 | `DISPLAY_NAME="墨场 · 中文编剧"`（写入 `CFBundleDisplayName`） |
-| Bundle 标识符 | `BUNDLE_ID="com.workbuddy.mochang"` |
+| 磁盘文件名（.app 名） | `APP_NAME="GuangyingWriter"`（保持 ASCII，避免中文路径坑） |
+| 在 Finder/Launchpad 显示的中文名 | `DISPLAY_NAME="光影写手"`（写入 `CFBundleDisplayName`） |
+| Bundle 标识符 | `BUNDLE_ID="com.workbuddy.guangyingwriter"` |
 | 架构（Intel Mac） | `ARCH="x64"`（需先 `npm install` 对应的 electron x64 二进制） |
 | 应用图标 | 准备 `.icns`，在 Step 4 加 `set_or_add ":CFBundleIconFile" "icon"` 并 `cp icon.icns` 到 `Contents/Resources/` |
 
@@ -587,7 +590,7 @@ A：逻辑层（model/io/store）跨平台，只需替换 `package.sh` 的组装
 ## 18. 维护速查清单
 
 - **日常改功能**：编辑 `src/` → 跑 `npm run typecheck` → 用 `ZS_DEV=1 npx electron .` 看效果。
-- **出可安装包**：`bash package.sh` → 得到 `release/Mochang.app` + `.zip`。
+- **出可安装包**：`bash package.sh` → 得到 `release/GuangyingWriter.app` + `.zip`。
 - **M1 启动被拦**：`bash 修复并启动.sh`。
 - **加元素类型**：`types.ts` → `elements.ts` → `flow.ts` → `Editor/ScriptBlock`。
 - **加导入导出**：`io/` → `useCommands.ts` → `main.js` 菜单。

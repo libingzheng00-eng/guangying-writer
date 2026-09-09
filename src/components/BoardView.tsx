@@ -42,6 +42,7 @@ export function BoardView() {
   const toggleSelection = useStore((s) => s.toggleSelection);
   const selectRange = useStore((s) => s.selectRange);
   const clearSelection = useStore((s) => s.clearSelection);
+  const deleteSelectedBoardCards = useStore((s) => s.deleteSelectedBoardCards);
 
   const scenes = useMemo(() => deriveScenes(project), [project]);
 
@@ -56,7 +57,7 @@ export function BoardView() {
 
   const canvasRef = useRef<HTMLDivElement>(null);
   // 拖拽状态：{ mode: 'card'|'beat'|'pan'|'resize'|'marquee', id, sx, sy, ox, oy, ow, oh, kind, moved, node?, marqueeRect?, marqueeAdditive? }
-  // kind 仅 resize 用：'scene' 或 'image'/'wimg'/'beat'/'sound'。
+  // kind 仅 resize 用：'scene' 或 'image'/'beat'/'sound'。
   // marqueeRect 仅 marquee 模式用：相对 canvas 世界坐标（除 pan / zoom 后的）。
   // marqueeAdditive 仅 marquee 模式用：Shift 启动时为 true。
   const drag = useRef<{
@@ -68,7 +69,7 @@ export function BoardView() {
     oy: number;
     ow: number;
     oh: number;
-    kind?: 'scene' | 'image' | 'wimg' | 'beat' | 'sound';
+    kind?: 'scene' | 'image' | 'beat' | 'sound';
     moved: boolean;
     node?: HTMLElement | null;
     marqueeRect?: { rx: number; ry: number; rw: number; rh: number } | null;
@@ -174,7 +175,7 @@ export function BoardView() {
         moveBeat(d.id, Math.round(nx), Math.round(ny));
       } else if (d.mode === 'resize' && d.id && d.node && d.kind) {
         // resize 节拍卡 / 场景卡：实时更新 DOM，松手时落位到 store。
-        // kind: 'scene' / 'image' / 'wimg' / 'beat' / 'sound'
+        // kind: 'scene' / 'image' / 'beat' / 'sound'
         const next = clampSize(d.kind, d.ow + dx / zoom, d.oh + dy / zoom);
         d.node.style.width = `${next.w}px`;
         d.node.style.height = `${next.h}px`;
@@ -261,7 +262,7 @@ export function BoardView() {
     };
   }, [zoom, scenes, requestFocus, setView, setScenePos, moveBeat, resizeBeat, resizeSceneMeta, project.beats, selectedIds, toggleSelection, setSelectedIds, showScenes, showBeats]);
 
-  /* ⌫ / Delete → 批量删除选中 beats（保留未选卡片 + 保留未选关系线） */
+  /* ⌫ / Delete → 批量删除选中的场景与卡片；正文场景删除可由撤销恢复。 */
   useEffect(() => {
     if (view !== 'board') return;
     const onKey = (e: KeyboardEvent) => {
@@ -274,18 +275,32 @@ export function BoardView() {
       if (e.key !== 'Backspace' && e.key !== 'Delete') return;
       const ids = useStore.getState().selectedIds;
       if (!ids || ids.length === 0) return;
-      // 只清 beats；场景卡（scene:*）多选删除走另一条路径（后续若需要再补）
-      const hasBeat = ids.some((id) => id.startsWith('beat:'));
-      if (!hasBeat) return;
       e.preventDefault();
-      const removed = useStore.getState().deleteSelectedBeats();
-      if (removed > 0) notify(`已删除 ${removed} 张卡片`, 'ok');
+      const removed = useStore.getState().deleteSelectedBoardCards();
+      if (removed.scenes || removed.beats) {
+        const parts = [removed.scenes ? `${removed.scenes} 场` : '', removed.beats ? `${removed.beats} 张卡片` : ''].filter(Boolean);
+        notify(`已删除 ${parts.join('、')}`, 'ok');
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
     };
   }, [view, notify]);
+
+  const deleteSelected = () => {
+    const removed = deleteSelectedBoardCards();
+    if (removed.scenes || removed.beats) {
+      const parts = [removed.scenes ? `${removed.scenes} 场` : '', removed.beats ? `${removed.beats} 张卡片` : ''].filter(Boolean);
+      notify(`已删除 ${parts.join('、')}`, 'ok');
+    }
+  };
+
+  const deleteSceneCard = (elementId: string) => {
+    setSelectedIds([`scene:${elementId}`]);
+    const removed = useStore.getState().deleteSelectedBoardCards();
+    if (removed.scenes) notify(`已删除 ${removed.scenes} 场`, 'ok');
+  };
 
   const onDoubleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -389,8 +404,18 @@ export function BoardView() {
               ))}
           </div>
           {linkFrom ? <button className="btn btn--ghost board__link-state" onClick={() => setLinkFrom(null)}>选择另一张卡片连接 · 取消</button> : null}
+          {selectedIds.length ? (
+            <span className="board__selection-status" aria-live="polite">
+              已选 {selectedIds.length}
+            </span>
+          ) : null}
         </div>
         <div className="board__actions">
+          {selectedIds.length ? (
+            <button className="btn btn--danger" onClick={deleteSelected} title="删除选中的场景或卡片（可用撤销恢复）">
+              删除所选
+            </button>
+          ) : null}
           <button className="btn btn--ghost" onClick={addSceneCard}>
             ＋场景卡
           </button>
@@ -416,22 +441,6 @@ export function BoardView() {
               input.click();
             }}>
               ＋图片
-            </button>
-            <button className="btn btn--ghost" onClick={() => {
-              const id = addBoardBeat('wimg');
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = 'image/*';
-              input.onchange = () => {
-                const f = input.files && input.files[0];
-                if (!f) return;
-                const rd = new FileReader();
-                rd.onload = () => { useStore.getState().updateBeat(id, { img: String(rd.result || '') }); };
-                rd.readAsDataURL(f);
-              };
-              input.click();
-            }}>
-              ＋写作图
             </button>
           </div>
           <div className="zoom-ctl">
@@ -473,9 +482,10 @@ export function BoardView() {
                   linking={linkFrom === `scene:${sc.elementId}`}
                   onLink={() => onCardLink(`scene:${sc.elementId}`)}
                   onOpen={() => {
-                    requestFocus(sc.elementId, 'start');
+                    requestFocus(sc.elementId, 'start', 'start');
                     setView('write');
                   }}
+                  onDelete={() => deleteSceneCard(sc.elementId)}
                   onResizeStart={(e) => {
                     // 场景卡 resize：与节拍卡共用 drag.current 'resize' 模式
                     const node = e.currentTarget.closest('[data-card]') as HTMLElement | null;
@@ -554,7 +564,7 @@ interface SceneCardProps {
   pos: { x: number; y: number };
 }
 
-function SceneCard({ scene, pos, linking, onLink, onOpen, onResizeStart, selected }: SceneCardProps & { linking: boolean; onLink: () => void; onOpen: () => void; onResizeStart: (e: React.MouseEvent) => void; selected: boolean }) {
+function SceneCard({ scene, pos, linking, onLink, onOpen, onDelete, onResizeStart, selected }: SceneCardProps & { linking: boolean; onLink: () => void; onOpen: () => void; onDelete: () => void; onResizeStart: (e: React.MouseEvent) => void; selected: boolean }) {
   const lim = sizeLimitFor('scene');
   return (
     <div
@@ -568,7 +578,7 @@ function SceneCard({ scene, pos, linking, onLink, onOpen, onResizeStart, selecte
     >
       <div className="bcard__head">
         <span className="bcard__no">{scene.number}</span>
-        <span className="bcard__actions"><span className="bcard__tag">场</span><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onLink} title="连接到另一张卡片">↗</button></span>
+        <span className="bcard__actions"><span className="bcard__tag">场</span><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onLink} title="连接到另一张卡片">↗</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除整场（可撤销）" aria-label="删除整场">×</button></span>
       </div>
       <div className="bcard__title">{scene.title || scene.heading || '（未命名场景）'}</div>
       <div className="bcard__synopsis">{scene.synopsis || scene.heading}</div>
@@ -597,7 +607,7 @@ interface BeatCardProps {
   onLink: (sceneId?: string) => void;
   linking: boolean;
   onBoardLink: () => void;
-  /** v1.2.9 同款：右下角 resize handle 接管 mousedown。仅 image / wimg 显示 */
+  /** 所有自由板卡片的右下角 resize handle。 */
   onResizeStart: (e: React.MouseEvent) => void;
   /** 多选视觉高亮（items 6b） */
   selected: boolean;
@@ -605,7 +615,7 @@ interface BeatCardProps {
 
 function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLink, onResizeStart, selected }: BeatCardProps) {
   const kind = beat.kind || 'beat';
-  const isMedia = kind === 'image' || kind === 'wimg';
+  const isMedia = kind === 'image';
   const isSound = kind === 'sound';
   const hasMedia = isMedia && !!beat.img;
   const lim = sizeLimitFor(kind);
@@ -619,13 +629,13 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
       style={{ left: beat.x, top: beat.y, background: beat.color, width: beat.w, height: beat.h }}
     >
       <div className="bcard__head">
-        {(isSound || isMedia) ? <span className={`bcard__tag bcard__tag--${kind}`}>{isSound ? '声音' : kind === 'wimg' ? '写作图' : '图片'}</span> : null}
+        {(isSound || isMedia) ? <span className={`bcard__tag bcard__tag--${kind}`}>{isSound ? '声音' : '图片'}</span> : null}
         <span className="bcard__actions"><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onBoardLink} title="连接到另一张卡片">↗</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除">×</button></span>
       </div>
       <div className="bcard__body">
         {hasMedia ? (
           <div className="bcard__media" onMouseDown={(e) => e.stopPropagation()}>
-            <img className="bcard__media-img" src={beat.img} alt={beat.title || (kind === 'wimg' ? '写作图' : '图片')} />
+            <img className="bcard__media-img" src={beat.img} alt={beat.title || '图片'} />
             {beat.title ? <input className="bcard__media-title" value={beat.title} placeholder="名称" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => onChange({ title: e.target.value })} /> : null}
           </div>
         ) : isSound ? (

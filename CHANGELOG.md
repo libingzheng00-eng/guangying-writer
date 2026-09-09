@@ -2,6 +2,22 @@
 
 ## 未发布
 
+## v1.3.0-alpha.18
+
+- 正式更名为「光影写手」，新增墨水笔尖与胶片光束应用图标；保留内部项目标识和本地工程格式，已有 `.zhsp` 与本地草稿不需迁移。
+- 写作多选支持直接 Shift 点击正文段落连续选择；普通编辑、光标与 Tab 九类循环不受影响。
+- 修复故事板卡片拖入归幕框时的重复 drop 冒泡，场景现在可稳定归入目标幕。
+- 移除重复的「写作图」卡体系；旧工程 `wimg` 自动归并为自由板唯一的图片卡，不丢图片、标题、备注、位置或尺寸。
+- PDF 预览与导出新增声音卡、图片卡素材附页；导出前等待图片解码，避免卡片内容丢失。
+- 补齐日间模式文件菜单配色，并清理自由板 resize 的重复 DOM 写入。
+
+## v1.3.0-alpha.17（R14）
+
+- 修复自由板删除回归：恢复“删除整场”按钮；场景卡删除会移除该场的正文区间、场景元数据和孤儿关系线，关联到该场的灵感卡保留但解除场景关联，全部操作可撤销。
+- 修复自由板多选删除：⌘/Ctrl 多选、Shift 范围选和框选现在可同时删除场景与灵感卡，工具栏显示选中数量并提供“删除所选”。
+- 修复进度条场景条跳转：点击场景色条会将对应场景标题精确滚动到固定进度栏下方，并保持平滑定位。
+- 修正仓库版本元数据：`package.json`、`package-lock.json` 与 R14 版本号一致。
+
 ## v1.3.0-alpha.16
 
 - 修复自由板工具栏被工作区背景层遮住的问题：总览 / 场景板 / 灵感板，以及颜色切换条现在始终可见；颜色按钮补全了键盘焦点与无障碍名称。
@@ -47,7 +63,7 @@
   - `cardCenters(cards)`（卡片坐标 → 中心点）
 - store 新增 `selectedIds` 状态（**不写入 .zhsp**，load/newProject 时清空）+ actions：
   - `setSelectedIds` / `toggleSelection` / `selectRange` / `clearSelection`
-  - `deleteSelectedBeats()`：只删 selectedIds 里的 beat，`boardLinks` 用 `filterBoardLinksToKeep` 严格清理，**绝不误删未选卡片关联的关系线**
+  - `deleteSelectedBeats()`：历史兼容接口；R14 已由 `deleteSelectedBoardCards()` 统一处理场景与 beat，`boardLinks` 用 `filterBoardLinksToKeep` 严格清理，**绝不误删未选卡片关联的关系线**
 - BoardView 交互：
   - ⌘/Ctrl + 点击 → toggle 选中；Shift + 点击 → 范围选
   - 空白处按下拖动 → 框选（Shift 追加）；虚线 `.board__marquee` 预览

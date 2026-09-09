@@ -60,6 +60,7 @@ process.on('exit', () => {
     marqueeSel,
     filterBoardLinksToKeep,
     cardCenters,
+    splitBoardSelection,
   } = require(bundle);
 
   const failures = [];
@@ -349,7 +350,7 @@ process.on('exit', () => {
   ok('image minW=180 / minH=140 / maxW=760 / maxH=680',
     RESIZE_LIMITS.image.minW === 180 && RESIZE_LIMITS.image.minH === 140 &&
     RESIZE_LIMITS.image.maxW === 760 && RESIZE_LIMITS.image.maxH === 680);
-  ok('wimg 与 image 同约束', JSON.stringify(RESIZE_LIMITS.wimg) === JSON.stringify(RESIZE_LIMITS.image));
+  ok('图片只保留 image 一种卡片类型', !Object.prototype.hasOwnProperty.call(RESIZE_LIMITS, 'wimg'));
   ok('beat minW=220 / minH=170', RESIZE_LIMITS.beat.minW === 220 && RESIZE_LIMITS.beat.minH === 170);
   ok('sound 与 beat 同约束', JSON.stringify(RESIZE_LIMITS.sound) === JSON.stringify(RESIZE_LIMITS.beat));
   ok('scene minW=180 / minH=110 / maxW=480 / maxH=400（场景卡独立区间）',
@@ -511,6 +512,10 @@ process.on('exit', () => {
   const centers = cardCenters(cardList);
   ok('卡片 1 中心 = (50, 40)', centers[0].cx === 50 && centers[0].cy === 40);
   ok('卡片 2 中心 = (100+220/2, 100+100/2) = (210, 150)', centers[1].cx === 210 && centers[1].cy === 150);
+
+  console.log('\n== splitBoardSelection：场景 / 卡片选区拆分 ==');
+  const split = splitBoardSelection(['scene:s1', 'beat:b1', 's2', 'b2', 'unknown'], new Set(['s1', 's2']), new Set(['b1', 'b2']));
+  ok('带前缀与旧无前缀选中值均能拆分', JSON.stringify(split) === JSON.stringify({ sceneIds: ['s1', 's2'], beatIds: ['b1', 'b2'] }));
 
   if (failures.length) {
     console.log(`\n=== FAIL: ${failures.length} test(s) failed ===`);

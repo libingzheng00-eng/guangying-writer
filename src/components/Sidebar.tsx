@@ -76,7 +76,7 @@ function NavigatorPanel() {
             <button
               className="nav-item__main"
               onClick={() => {
-                requestFocus(s.elementId, 'start');
+                requestFocus(s.elementId, 'start', 'start');
                 setView('write');
               }}
             >
@@ -139,7 +139,7 @@ function OutlinePanel() {
                 placeholder={s.heading || '场景标题'}
                 onChange={(e) => updateSceneMeta(s.elementId, { title: e.target.value })}
                 onClick={() => {
-                  requestFocus(s.elementId, 'start');
+                  requestFocus(s.elementId, 'start', 'start');
                   setView('write');
                 }}
               />
@@ -167,6 +167,7 @@ function InspectorPanel() {
   const setDual = useStore((s) => s.setDual);
   const moveElement = useStore((s) => s.moveElement);
   const removeElement = useStore((s) => s.removeElement);
+  const deleteScene = useStore((s) => s.deleteScene);
   const updateSceneMeta = useStore((s) => s.updateSceneMeta);
   const scenes = useSceneList();
 
@@ -195,9 +196,15 @@ function InspectorPanel() {
             <button className="btn btn--ghost" onClick={() => moveElement(el.id, 1)}>
               下移
             </button>
-            <button className="btn btn--danger" onClick={() => removeElement(el.id)}>
-              删除
-            </button>
+            {scene ? (
+              <button className="btn btn--danger" title="删除这场戏的标题及全部正文（可用撤销恢复）" onClick={() => deleteScene(scene.elementId)}>
+                删除整场
+              </button>
+            ) : (
+              <button className="btn btn--danger" onClick={() => removeElement(el.id)}>
+                删除
+              </button>
+            )}
           </div>
           <div className="field">
             <label>
