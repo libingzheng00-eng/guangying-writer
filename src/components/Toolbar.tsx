@@ -170,7 +170,8 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
               <div className="menu__sep" />
               <Item label="导入文本 / FDX…" onClick={() => { commands.importAny(); setMenu(null); }} />
               <div className="menu__sep" />
-              <Item label="导出 PDF…" onClick={() => { commands.exportPdf(); setMenu(null); }} />
+              <Item label="导出创作版 PDF（原位卡片）…" onClick={() => { commands.exportPdf('creative'); setMenu(null); }} />
+              <Item label="导出 A4 纯文本 PDF…" onClick={() => { commands.exportPdf('print'); setMenu(null); }} />
               <Item label="导出 Final Draft (FDX)…" onClick={() => { commands.exportAs('fdx'); setMenu(null); }} />
               <Item label="导出纯文本…" onClick={() => { commands.exportAs('txt'); setMenu(null); }} />
               <Item label="导出 Markdown…" onClick={() => { commands.exportAs('md'); setMenu(null); }} />

@@ -20,6 +20,8 @@ fs.copyFileSync(path.join(root, 'src/assets/typewriter-pointer.png'), photo);
 fs.copyFileSync(photo, second);
 fs.writeFileSync(broken, 'invalid image fixture');
 let saved = null;
+let exported = null;
+ipcMain.handle('pdf:export', (_event, opts) => { exported = opts; return null; });
 ipcMain.handle('app:recent', () => []);
 ipcMain.handle('app:info', () => ({ version: 'image-drop-test', platform: process.platform }));
 ipcMain.handle('dialog:save', (_event, payload) => {
@@ -65,6 +67,23 @@ app.whenReady().then(async () => {
     await win.loadFile(renderer);
     await until('!!document.querySelector(".script-flow [contenteditable]")');
     win.webContents.debugger.attach('1.3');
+    check('独立用户目录首次启动为空白正文', await run(`!document.querySelector('.script-flow [contenteditable]').textContent.trim()`));
+    await run(`document.querySelector('.script-flow [contenteditable]').focus()`);
+    const originalId = await run(`document.activeElement.closest('[data-id]').dataset.id`);
+    const cycle = ['action','character','parenthetical','dialogue','transition','shot','scene_heading','general','note'];
+    const startIndex = cycle.indexOf(await run(`document.activeElement.closest('[data-type]').dataset.type`));
+    assert.ok(startIndex >= 0);
+    const tab = async (shift, index) => {
+      const modifiers = shift ? ['shift'] : [];
+      win.webContents.sendInputEvent({type:'keyDown',keyCode:'Tab',modifiers});
+      win.webContents.sendInputEvent({type:'keyUp',keyCode:'Tab',modifiers});
+      await pause(45);
+      const focus = await run(`(() => {const e=document.activeElement;return {editable:e.isContentEditable,id:e.closest('[data-id]')?.dataset.id,type:e.closest('[data-type]')?.dataset.type};})()`);
+      assert.deepEqual(focus,{editable:true,id:originalId,type:cycle[index]},'真实Tab不能跳出原段落');
+    };
+    for(let i=1;i<=11;i++) await tab(false,(startIndex+i)%9);
+    for(let i=1;i<=11;i++) await tab(true,(startIndex+11-i)%9);
+    check('真实 Electron 连按11次Tab再反向11次，焦点始终留在原正文', true);
     const bodyBefore = await run('document.querySelector(".script-flow").innerHTML');
     const target = await run(`(() => { const b = document.querySelector('.script-flow [contenteditable]').getBoundingClientRect(); return {x: b.x + 80, y: b.y + b.height / 2}; })()`);
     await drop([photo], target.x, target.y);
@@ -112,9 +131,12 @@ app.whenReady().then(async () => {
     await pause(200);
     await screenshot('image-drop-day.png');
     check('重启后自动保存仍恢复五张图片', await count() === 5);
+    win.webContents.send('menu:action', 'file:exportPdf');
+    for (let i=0; !exported && i<160; i++) await pause(50);
+    check('创作版按原位保留五张图片（包括无 MIME 图片）', !!exported && (exported.html.match(/<img /g) || []).length === 5 && (exported.html.match(/src="data:/g) || []).length === 5);
     await run(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='预览').click()`);
-    await until('document.querySelectorAll(".preview__material-image").length === 5 && [...document.querySelectorAll(".preview__material-image")].every(i=>i.naturalWidth>0)');
-    check('五张图片进入 PDF 预览素材附页', await run('document.querySelectorAll(".preview__material-image").length') === 5);
+    await until('!!document.querySelector(".preview[data-ready=true]")');
+    check('A4 纯文本预览不混入图片附页', await run('document.querySelectorAll(".preview__material-page").length') === 0);
     await screenshot('image-drop-preview.png');
     fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify({checks, renderer}, null, 2));
     console.log(`RESULT ${out}`);

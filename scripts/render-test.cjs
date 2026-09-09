@@ -86,7 +86,8 @@ localStorage.setItem('guangying:autosave', JSON.stringify({
     targetPages: 100,
     acts: [{ id: 'act-1', title: '第一幕', color: '#cfe4ff' }],
     revisions: [],
-    settings: {},
+    // 写作使用 Letter，也必须能生成独立的 A4 纯文本打印预览。
+    settings: { paper: 'letter' },
   },
   filePath: null,
 }));
@@ -184,17 +185,21 @@ process.on('exit', cleanTemporaryBundle);
     && tabCycle[8].type === 'scene_heading';
   report.tabCycle = tabCycle;
 
-  // 切换到其他视图，验证不崩溃；先在预览页检查 PDF 红线的素材附页。
+  // 打印预览只含 A4 正文；创作版另走写作布局导出，卡片不得移到文末。
   const clickByText = (label) => {
     const btn = qa('button').find((b) => b.textContent.trim() === label);
     if (btn) btn.click();
     return !!btn;
   };
   const switches = { 预览: clickByText('预览') };
-  await new Promise((resolve) => setTimeout(resolve, 180));
-  const previewMaterialPages = qa('.preview__material-page').length;
-  const previewSoundVisible = qa('.preview__material-page').some((node) => node.textContent.includes('雨夜环境声') && node.textContent.includes('雨声渐强'));
-  const previewImageVisible = qa('.preview__material-page img[alt="城市远景"]').length === 1;
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const previewReady = q('.preview')?.dataset.ready === 'true';
+  const previewA4Width = Math.abs(parseFloat(q('.preview__page')?.style.width || '0') - 210 * 96 / 25.4) < 0.1;
+  const previewNoMaterialAppendix = qa('.preview__material-page').length === 0
+    && !q('.preview img[alt="城市远景"]');
+  const previewBodyPreserved = q('.preview')?.textContent.includes('第二句测试对白。');
+  const previewExportModes = ['导出 A4 纯文本', '导出创作版（含卡片）']
+    .every((label) => qa('.preview__bar button').some((button) => button.textContent.trim() === label));
   ['故事板', '统计', '写作', '自由板'].forEach((label) => {
     switches[label] = clickByText(label);
   });
@@ -214,6 +219,8 @@ process.on('exit', cleanTemporaryBundle);
           colorControls: qa('.board__color-bar button[aria-label^="卡片颜色"]').length,
           // Item 6a：所有自由板卡片（scene / image / beat / sound）都应有 resize 手柄
           allBcardsHaveResize: qa('.bcard').length > 0 && qa('.bcard__resize').length >= qa('.bcard').length,
+          imagePreserved: !!q('.bcard[data-id="qa-image-1"] img[alt="城市远景"]'),
+          soundPreserved: q('.bcard[data-id="qa-sound-1"] input')?.value === '雨夜环境声',
         }
       : null;
 
@@ -241,10 +248,12 @@ process.on('exit', cleanTemporaryBundle);
         progressThemeButtonRemoved,
         progressEndIcon,
         progressFillBar,
-        // PDF 红线：声音卡、图片卡都必须在打印预览生成确定性素材附页。
-        previewMaterialPages: previewMaterialPages === 2,
-        previewSoundVisible,
-        previewImageVisible,
+        previewReady,
+        previewA4Width,
+        previewNoMaterialAppendix,
+        previewBodyPreserved,
+        previewExportModes,
+        previewPreservesProjectMaterials: !!(board?.imagePreserved && board?.soundPreserved),
         // Item 6a：所有自由板卡片（scene / image / beat / sound）都应有 resize 手柄
         allBcardsHaveResize: !!(board && board.allBcardsHaveResize),
         boardSubTabsVisible: !!(board && board.subTabs === 3),

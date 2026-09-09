@@ -35,7 +35,9 @@ export function Editor() {
   const moveBeat = useStore((s) => s.moveBeat);
   const deleteBeat = useStore((s) => s.deleteBeat);
   const notify = useStore((s) => s.notify);
-  const { breaks, lineHeightPx, contentWidthPx } = usePagination();
+  const pdfExportMode = useStore((s) => s.pdfExportMode);
+  const version = useStore((s) => s.version);
+  const { breaks, lineHeightPx, contentWidthPx, readyKey } = usePagination();
 
   const refs = useRef(new Map<string, HTMLDivElement>());
   const composingRef = useRef(false);
@@ -448,7 +450,7 @@ export function Editor() {
   // 这里不能恢复第二套 wimg/“写作图”数据类型，否则旧工程兼容和 PDF 素材页会再次分叉。
   const writingImages = project.beats.filter((b) => b.kind === 'image');
   // 声音开关只控制声音，不能把已拖入的图片一起隐藏。
-  const writingMaterials = [...(showSoundCards ? writingSounds : []), ...writingImages];
+  const writingMaterials = [...(showSoundCards || pdfExportMode === 'creative' ? writingSounds : []), ...writingImages];
   const addWritingSound = () => {
     const count = writingSounds.length;
     const x = Math.max(24, (scrollRef.current?.clientWidth || 980) - 274);
@@ -522,6 +524,7 @@ export function Editor() {
       </ProgressBar>
       <div
         className={`editor__scroll${isImageDropTarget ? ' is-image-drop-target' : ''}`}
+        data-ready={readyKey === `${version}:${project.settings.paper}` ? 'true' : 'false'}
         onDragOverCapture={(event) => {
           if (Array.from(event.dataTransfer.types).includes('Files')) {
             event.preventDefault();

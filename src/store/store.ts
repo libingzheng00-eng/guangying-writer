@@ -68,6 +68,8 @@ interface StoreState {
   fontColor: string;
   /** 应用外观（app 级设置，不写入 .zhsp） */
   appTheme: AppTheme;
+  /** 导出期间的临时显示状态，不写入工程、自动保存或撤销栈。 */
+  pdfExportMode: 'creative' | 'print' | null;
   past: ScriptProject[];
   future: ScriptProject[];
 
@@ -78,6 +80,7 @@ interface StoreState {
   writingSelectedIds: string[];
 
   setView: (v: ViewMode) => void;
+  setPdfExportMode: (mode: 'creative' | 'print' | null) => void;
   setSidebar: (s: SidebarMode) => void;
   toggleSidebar: () => void;
   notify: (text: string, kind?: Toast['kind']) => void;
@@ -209,6 +212,7 @@ export const useStore = create<StoreState>((set, get) => ({
   zoom: 1,
   fontColor: loadFontColor(),
   appTheme: loadAppTheme(),
+  pdfExportMode: null,
   past: [],
   future: [],
   selectedIds: [],
@@ -216,6 +220,7 @@ export const useStore = create<StoreState>((set, get) => ({
   writingSelectedIds: [],
 
   setView: (v) => set({ view: v }),
+  setPdfExportMode: (pdfExportMode) => set({ pdfExportMode }),
   setSidebar: (s) => set({ sidebar: s, sidebarOpen: true }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   notify: (text, kind = 'info') => set({ toast: { text, kind, ts: Date.now() } }),

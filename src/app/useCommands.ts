@@ -7,8 +7,9 @@ import { fromPlainText, toHtml, toMarkdown, toPlainText } from '../io/textscript
 import { createProject, newElement, sceneHeadings } from '../model/project';
 import { PAPER_MM } from '../model/stats';
 import type { ElementType } from '../model/types';
+import { buildCreativePdf } from '../io/creativePdf';
 
-/** 等待预览中的图片解码完成，避免 printToPDF 在图片卡尚未绘制时抢先输出。 */
+/** 等待图片解码完成，避免 printToPDF 在图片卡尚未绘制时抢先输出。 */
 async function waitForPrintableAssets() {
   const images = Array.from(document.images);
   await Promise.all(images.map(async (image) => {
@@ -18,7 +19,7 @@ async function waitForPrintableAssets() {
         image.addEventListener('error', () => resolve(), { once: true });
       });
     }
-    try { await image.decode(); } catch { /* 损坏图片仍保留素材附页的标题和备注 */ }
+    try { await image.decode(); } catch { /* 损坏图片仍保留原位卡片的标题和备注 */ }
   }));
 }
 
@@ -99,23 +100,43 @@ export function useCommands() {
     }
   }, [store]);
 
-  const exportPdf = useCallback(async () => {
-    const { project, setView, notify } = store.getState();
-    setView('preview');
-    await new Promise((r) => setTimeout(r, 900));
-    // PDF 导出红线：必须等声音/图片素材附页和图片解码就绪后才能调用 printToPDF。
-    await waitForPrintableAssets();
-    const paper = PAPER_MM[project.settings.paper] || PAPER_MM.A4;
+  const exportPdf = useCallback(async (mode: 'creative' | 'print' = 'creative') => {
+    const { project, setView, notify, view, pdfExportMode, setPdfExportMode } = store.getState();
+    if (pdfExportMode) return;
+    const scrollTop = document.querySelector('.editor')?.scrollTop || 0;
+    setPdfExportMode(mode);
+    setView(mode === 'creative' ? 'write' : 'preview');
     try {
-      const file = await bridge.exportPdf({
-        pageSize: { width: Math.round(paper.w * 1000), height: Math.round(paper.h * 1000) },
-      });
+      const selector = mode === 'creative' ? '.editor__scroll[data-ready="true"]' : '.preview[data-ready="true"]';
+      let ready: HTMLElement | null = null;
+      for (let i = 0; i < 160; i++) {
+        ready = document.querySelector<HTMLElement>(selector);
+        if (ready) break;
+        await new Promise(r => setTimeout(r, 50));
+      }
+      if (!ready) throw new Error('排版尚未就绪，请稍后重试。');
+      await document.fonts?.ready;
+      await waitForPrintableAssets();
+      if (store.getState().project.id !== project.id) throw new Error('工程已切换，请重新导出。');
+      const opts = mode === 'creative' ? buildCreativePdf(ready) : {
+        mode: 'print' as const,
+        pageSize: { width: PAPER_MM.A4.w * 1000, height: PAPER_MM.A4.h * 1000 },
+      };
+      const file = await bridge.exportPdf({ ...opts, name: `${project.name}-${mode === 'creative' ? '创作版' : 'A4纯文本'}.pdf` });
       if (file) {
         notify(`已导出 PDF：${file}`, 'ok');
         bridge.showInFolder(file);
       }
     } catch (err) {
       notify(`导出失败：${(err as Error).message}`, 'error');
+    } finally {
+      setPdfExportMode(null);
+      // 取消/完成均回到原视图与滚动位置，导出不会改工程或撤销栈。
+      setView(view);
+      if (view === 'write') requestAnimationFrame(() => {
+        const editor = document.querySelector('.editor');
+        if (editor) editor.scrollTop = scrollTop;
+      });
     }
   }, [store]);
 

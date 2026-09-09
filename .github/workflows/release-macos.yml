@@ -26,17 +26,24 @@ jobs:
           npm ci
           npm run typecheck
           npm run build
-          npm run test:render
+          node scripts/core-guard.cjs
+          node scripts/render-test.cjs
+          node scripts/writing-test.cjs
+          node scripts/zhsp-compat-test.cjs
+          node scripts/history-test.cjs
+          node scripts/pagination-safety-test.cjs
 
       - name: 打包 arm64 应用
         run: bash package.sh
 
       - name: 创建 DMG
         run: |
+          mkdir release/dmg-content
+          ditto "release/GuangyingWriter.app" "release/dmg-content/光影写手.app"
+          ln -s /Applications release/dmg-content/Applications
           hdiutil create \
             -volname "光影写手" \
-            -srcfolder "release/GuangyingWriter.app" \
-            -ov \
+            -srcfolder "release/dmg-content" \
             -format UDZO \
             "release/GuangyingWriter-macOS-arm64-${GITHUB_REF_NAME}.dmg"
 

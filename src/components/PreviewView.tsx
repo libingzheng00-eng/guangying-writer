@@ -6,18 +6,19 @@ import { fontStackOf } from '../model/elements';
 import { PAPER_MM } from '../model/stats';
 import { deriveScenes } from '../model/project';
 import { stripSceneNumber } from '../utils/text';
-import type { Beat } from '../model/types';
 
 const PX_PER_MM = 96 / 25.4;
 
-export function PreviewView({ onExportPdf }: { onExportPdf: () => void }) {
+export function PreviewView({ onExportPdf }: { onExportPdf: (mode?: 'creative' | 'print') => void }) {
   const project = useStore((s) => s.project);
+  const version = useStore((s) => s.version);
   const zoom = useStore((s) => s.zoom);
   const setZoom = useStore((s) => s.setZoom);
-  const { pages, lineHeightPx, contentWidthPx } = usePagination();
+  const { pages, lineHeightPx, contentWidthPx, readyKey } = usePagination();
+  const ready = readyKey === `${version}:A4`;
 
   const geo = useMemo(() => {
-    const paper = PAPER_MM[project.settings.paper] || PAPER_MM.A4;
+    const paper = PAPER_MM.A4;
     const s = project.settings;
     return {
       w: paper.w * PX_PER_MM,
@@ -47,14 +48,8 @@ export function PreviewView({ onExportPdf }: { onExportPdf: () => void }) {
 
   const settings = project.settings;
   const showTitle = project.titlePage.show && settings.titlePageBreak;
-  /**
-   * PDF 导出红线：声音卡与图片卡是创作内容的一部分，不能只因它们位于写作/自由板
-   * 浮层就从打印预览剥离。这里为每张素材生成确定的附页，printToPDF 会原样带出。
-   */
-  const materials = useMemo(
-    () => project.beats.filter((beat) => beat.kind === 'sound' || beat.kind === 'image'),
-    [project.beats],
-  );
+  // 核心红线：这里仅为 A4 纯文本打印。含卡片的创作版由写作布局导出，
+  // 保留图片与正文的原位置关系，禁止把卡片统一搬到文末附页。
 
   const renderPlaced = (p: Placed) => {
     const el0 = p.elements[0];
@@ -80,7 +75,7 @@ export function PreviewView({ onExportPdf }: { onExportPdf: () => void }) {
       <StaticBlock
         el={el}
         settings={settings}
-        spaceBefore={p.skipLines ? 0 : p.spaceBefore}
+        spaceBefore={0}
         revColor={revColor}
         sceneNumber={
           el.type === 'scene_heading' && settings.autoNumberScenes
@@ -94,29 +89,28 @@ export function PreviewView({ onExportPdf }: { onExportPdf: () => void }) {
       />
     );
 
-    if (p.lines === undefined) return <React.Fragment key={p.key}>{block}</React.Fragment>;
-
     const skip = p.skipLines || 0;
-    const inner = (
-      <div style={{ marginTop: skip ? -skip * lineHeightPx : undefined }}>
-        {p.contd ? <div className="sc-contd">{p.contd}</div> : null}
-        {block}
-      </div>
-    );
+    // 打印红线：段前留白不能进入正文的行数裁剪窗，否则场次标题和末行会被截掉。
+    // 续页偏移只移动正文；续说/更多提示各占独立一行，不随正文向上移走。
     return (
-      <div key={p.key}>
-        <div style={{ height: (p.lines + (p.contd ? 1 : 0) + (p.more ? 1 : 0)) * lineHeightPx, overflow: 'hidden' }}>
-          {inner}
-          {p.more ? <div className="sc-more">{settings.moreText}</div> : null}
-        </div>
+      <div key={p.key} className="preview__placed" style={{ paddingTop: skip ? 0 : p.spaceBefore * lineHeightPx }}>
+        {p.contd ? <div className="sc-contd" style={{ height: lineHeightPx, lineHeight: `${lineHeightPx}px` }}>{p.contd}</div> : null}
+        {p.lines === undefined ? block : (
+          <div className="preview__line-window" style={{ height: p.lines * lineHeightPx, overflow: 'hidden' }}>
+            <div style={{ transform: skip ? `translateY(${-skip * lineHeightPx}px)` : undefined }}>
+              {block}
+            </div>
+          </div>
+        )}
+        {p.more ? <div className="sc-more" style={{ height: lineHeightPx, lineHeight: `${lineHeightPx}px` }}>{settings.moreText}</div> : null}
       </div>
     );
   };
 
   return (
-    <div className="preview">
+    <div className="preview" data-ready={ready ? 'true' : 'false'} data-pagination-key={readyKey || ''}>
       <div className="preview__bar">
-        <span className="preview__label">分页预览 · 剧本 {pages.length} 页{materials.length ? ` · 素材附页 ${materials.length} 张` : ''}</span>
+        <span className="preview__label">A4 纯文本打印预览 · 剧本 {pages.length} 页</span>
         <div className="spacer" />
         <button className="btn btn--ghost" onClick={() => setZoom(zoom - 0.1)}>
           －
@@ -125,8 +119,11 @@ export function PreviewView({ onExportPdf }: { onExportPdf: () => void }) {
         <button className="btn btn--ghost" onClick={() => setZoom(zoom + 0.1)}>
           ＋
         </button>
-        <button className="btn btn--primary" onClick={onExportPdf}>
-          导出 PDF
+        <button className="btn btn--ghost" onClick={() => onExportPdf('creative')}>
+          导出创作版（含卡片）
+        </button>
+        <button className="btn btn--primary" disabled={!ready} onClick={() => onExportPdf('print')}>
+          导出 A4 纯文本
         </button>
       </div>
       <div className="preview__scroll" style={{ ['--zoom' as string]: zoom }}>
@@ -143,45 +140,7 @@ export function PreviewView({ onExportPdf }: { onExportPdf: () => void }) {
             {showTitle && i === 0 ? null : page.items.map(renderPlaced)}
           </PageCard>
         ))}
-        {materials.map((beat, index) => (
-          <MaterialPage key={beat.id} beat={beat} index={index} geo={geo} />
-        ))}
       </div>
-    </div>
-  );
-}
-
-/** PDF 专用素材附页；不要把它改回仅编辑器浮层，否则导出会再次丢失卡片内容。 */
-function MaterialPage({ beat, index, geo }: {
-  beat: Beat;
-  index: number;
-  geo: { w: number; h: number; pt: number; pb: number; pl: number; pr: number };
-}) {
-  const sound = beat.kind === 'sound';
-  const title = beat.title || (sound ? '声音设计' : '图片素材');
-  return (
-    <div
-      className="preview__page preview__material-page"
-      style={{
-        width: geo.w,
-        height: Math.max(120, geo.h - 0.3 * PX_PER_MM),
-        paddingTop: geo.pt,
-        paddingBottom: geo.pb,
-        paddingLeft: geo.pl,
-        paddingRight: geo.pr,
-        background: '#fff',
-      }}
-    >
-      <div className="preview__material-kicker">创作素材附页 · {sound ? '声音卡' : '图片卡'} {index + 1}</div>
-      <h1 className="preview__material-title">{title}</h1>
-      {sound ? (
-        <p className="preview__material-notes">{beat.text || '（未填写声音、环境或节奏提示）'}</p>
-      ) : (
-        <>
-          {beat.img ? <img className="preview__material-image" src={beat.img} alt={title} /> : <p className="preview__material-missing">（图片文件缺失，但卡片标题与备注仍已保留）</p>}
-          {beat.text ? <p className="preview__material-notes">{beat.text}</p> : null}
-        </>
-      )}
     </div>
   );
 }

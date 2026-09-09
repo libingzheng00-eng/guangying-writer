@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const { renderPdf } = require('./pdf');
 
 /* ---------------------------- 主进程崩溃兜底 ---------------------------- */
 /* 任何未捕获的同步异常 / 未处理的 Promise 拒绝，默认会让 Electron 直接退出且无提示。
@@ -98,7 +99,8 @@ function buildMenu() {
         { label: '导入文本剧本…', click: () => send('file:importText') },
         { label: '导入 Final Draft (FDX)…', click: () => send('file:importFdx') },
         { type: 'separator' },
-        { label: '导出 PDF…', accelerator: 'CmdOrCtrl+P', click: () => send('file:exportPdf') },
+        { label: '导出创作版 PDF（原位卡片）…', click: () => send('file:exportPdf') },
+        { label: '导出 A4 纯文本 PDF…', accelerator: 'CmdOrCtrl+P', click: () => send('file:exportPrintPdf') },
         { label: '导出 FDX…', click: () => send('file:exportFdx') },
         { label: '导出纯文本…', click: () => send('file:exportText') },
         { label: '导出 Markdown…', click: () => send('file:exportMd') },
@@ -235,18 +237,12 @@ ipcMain.handle('dialog:saveAs', async (_e, { content, name, ext }) => {
 
 ipcMain.handle('pdf:export', async (_e, opts) => {
   const res = await dialog.showSaveDialog(win, {
-    defaultPath: '剧本.pdf',
+    defaultPath: opts?.name || '剧本.pdf',
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   if (res.canceled || !res.filePath) return null;
   try {
-    const data = await win.webContents.printToPDF({
-      pageSize: opts && opts.pageSize ? opts.pageSize : 'A4',
-      printBackground: true,
-      margins: { marginType: 'none' },
-      landscape: false,
-      preferCSSPageSize: true,
-    });
+    const data = await renderPdf(win, opts);
     fs.writeFileSync(res.filePath, data);
     return res.filePath;
   } catch (err) {

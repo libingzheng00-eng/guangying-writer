@@ -108,6 +108,9 @@ export default function App() {
         case 'file:exportPdf':
           commands.exportPdf();
           break;
+        case 'file:exportPrintPdf':
+          commands.exportPdf('print');
+          break;
         case 'file:exportFdx':
           commands.exportAs('fdx');
           break;
@@ -164,7 +167,7 @@ export default function App() {
           s: 'file:save',
           o: 'file:open',
           n: 'file:new',
-          p: 'file:exportPdf',
+          p: 'file:exportPrintPdf',
           f: 'edit:find',
           d: 'element:dual',
           z: e.shiftKey ? 'edit:redo' : 'edit:undo',
