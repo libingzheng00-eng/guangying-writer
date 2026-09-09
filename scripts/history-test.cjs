@@ -35,6 +35,9 @@ process.on('exit', () => {
     future: [],
     dirty: false,
     selectedIds: [],
+    writingSelectionMode: false,
+    writingSelectedIds: [],
+    activeId: project.elements[0]?.id || null,
     version: 0,
   });
   const state = () => useStore.getState();
@@ -50,6 +53,7 @@ process.on('exit', () => {
   const originalWriting = JSON.stringify(state().project);
   state().deleteWritingElements(['w2', 'w3']);
   ok('正文跨段批量删除仅删除所选段', state().project.elements.length === 1 && state().project.elements[0].text === '<b>保留格式</b>');
+  ok('删除其他段落不打断当前编辑位置', state().activeId === 'w1');
   state().undo();
   ok('正文批量删除一次撤销完整恢复', JSON.stringify(state().project) === originalWriting);
   state().redo();

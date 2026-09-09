@@ -60,6 +60,10 @@ export function Editor() {
     setWritingSelectionMode(false);
     clearWritingSelection();
   }, [project.id, setWritingSelectionMode, clearWritingSelection]);
+  // 退出多选后必须丢弃范围锚点；否则下次 Shift 点击会意外跨到上一次的段落。
+  useEffect(() => {
+    if (!selectMode) selectionAnchor.current = null;
+  }, [selectMode]);
 
   // 仅发送轻量 UI 信号；不改变 React state，避免每次按键让整个编辑器重绘。
   const markTyping = useCallback(() => {
@@ -85,6 +89,11 @@ export function Editor() {
   const breakSet = useMemo(() => new Set(breaks), [breaks]);
 
   const items = useMemo(() => groupDual(project.elements), [project.elements]);
+  // 多选模式下每个段落都会读取序号；预先建索引，避免长剧本渲染退化为 O(n²)。
+  const elementIndex = useMemo(
+    () => new Map(project.elements.map((element, index) => [element.id, index])),
+    [project.elements],
+  );
 
   const showSceneNumber = (side: 'left' | 'right') =>
     project.settings.sceneNumber === side || project.settings.sceneNumber === 'both';
@@ -520,9 +529,9 @@ export function Editor() {
     const contdSuffix = el.type === 'character' && shouldShowContdSuffix(project, el) ? CONTD_SUFFIX : undefined;
     return (
       <div key={el.id} className={selectMode ? 'writing-select-row' : undefined}>
-      {selectMode && <input type="checkbox" aria-label={`选择第 ${project.elements.findIndex((item) => item.id === el.id) + 1} 段`} checked={writingIds.includes(el.id)} onChange={() => {}} onClick={(e) => {
-        const anchor = project.elements.findIndex((item) => item.id === selectionAnchor.current);
-        const index = project.elements.findIndex((item) => item.id === el.id);
+      {selectMode && <input type="checkbox" aria-label={`选择第 ${(elementIndex.get(el.id) ?? 0) + 1} 段`} checked={writingIds.includes(el.id)} onChange={() => {}} onClick={(e) => {
+        const anchor = elementIndex.get(selectionAnchor.current || '') ?? -1;
+        const index = elementIndex.get(el.id) ?? -1;
         if (e.shiftKey && anchor >= 0) {
           const range = project.elements.slice(Math.min(anchor, index), Math.max(anchor, index) + 1).map((item) => item.id);
           setWritingSelectedIds([...writingIds, ...range]);

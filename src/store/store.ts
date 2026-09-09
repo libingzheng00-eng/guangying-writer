@@ -696,8 +696,17 @@ export const useStore = create<StoreState>((set, get) => ({
   clearWritingSelection: () => set({ writingSelectedIds: [] }),
 
   deleteWritingElements: (ids) => {
-    const removed = new Set(ids.filter((id) => get().project.elements.some((el) => el.id === id)));
+    const before = get();
+    const previousElements = before.project.elements;
+    const removed = new Set(ids.filter((id) => previousElements.some((el) => el.id === id)));
     if (!removed.size) return;
+    // 如果当前编辑段落仍在，删除其他段落不能把作者突然带回文稿开头。
+    // 当前段落被删时，优先落到其后的幸存段；没有则落到前一段。
+    const activeIndex = previousElements.findIndex((el) => el.id === before.activeId);
+    const survivors = previousElements.filter((el) => !removed.has(el.id));
+    const nextActiveId = before.activeId && !removed.has(before.activeId)
+      ? before.activeId
+      : survivors[Math.min(Math.max(activeIndex, 0), survivors.length - 1)]?.id ?? null;
     get().mutate((p) => {
       p.elements = p.elements.filter((el) => !removed.has(el.id));
       if (!p.elements.length) p.elements = [newElement('action', '')];
@@ -705,7 +714,7 @@ export const useStore = create<StoreState>((set, get) => ({
       p.beats.forEach((beat) => { if (beat.sceneId && removed.has(beat.sceneId)) delete beat.sceneId; });
       p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removed);
     });
-    set({ activeId: get().project.elements[0]?.id || null, focus: null, writingSelectedIds: [] });
+    set({ activeId: nextActiveId || get().project.elements[0]?.id || null, focus: null, writingSelectedIds: [] });
   },
 
   deleteSelectedBoardCards: () => {
