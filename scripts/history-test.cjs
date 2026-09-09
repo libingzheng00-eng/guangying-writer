@@ -40,6 +40,22 @@ process.on('exit', () => {
   const state = () => useStore.getState();
 
   console.log('\n== Item 6c：撤销 / 重做安全 ==');
+  const writing = createProject('正文多选测试');
+  writing.elements = [
+    { id: 'w1', type: 'action', text: '<b>保留格式</b>' },
+    { id: 'w2', type: 'character', text: '测试人物' },
+    { id: 'w3', type: 'dialogue', text: '测试对白' },
+  ];
+  reset(writing);
+  const originalWriting = JSON.stringify(state().project);
+  state().deleteWritingElements(['w2', 'w3']);
+  ok('正文跨段批量删除仅删除所选段', state().project.elements.length === 1 && state().project.elements[0].text === '<b>保留格式</b>');
+  state().undo();
+  ok('正文批量删除一次撤销完整恢复', JSON.stringify(state().project) === originalWriting);
+  state().redo();
+  ok('正文批量删除支持重做', state().project.elements.length === 1);
+  state().deleteWritingElements(['w1']);
+  ok('正文全部删除后保留可编辑空段', state().project.elements.length === 1 && state().project.elements[0].text === '');
 
   const p = createProject('撤销测试');
   p.beats = [

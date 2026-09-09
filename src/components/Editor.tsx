@@ -45,6 +45,21 @@ export function Editor() {
   const [showImageCards, setShowImageCards] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const selectMode = useStore((s) => s.writingSelectionMode);
+  const writingIds = useStore((s) => s.writingSelectedIds);
+  const setWritingSelectionMode = useStore((s) => s.setWritingSelectionMode);
+  const setWritingSelectedIds = useStore((s) => s.setWritingSelectedIds);
+  const toggleWritingSelection = useStore((s) => s.toggleWritingSelection);
+  const clearWritingSelection = useStore((s) => s.clearWritingSelection);
+  const deleteWritingElements = useStore((s) => s.deleteWritingElements);
+  const selectionAnchor = useRef<string | null>(null);
+  const deleteWritingSelection = () => {
+    deleteWritingElements(writingIds);
+  };
+  useEffect(() => {
+    setWritingSelectionMode(false);
+    clearWritingSelection();
+  }, [project.id, setWritingSelectionMode, clearWritingSelection]);
 
   // 仅发送轻量 UI 信号；不改变 React state，避免每次按键让整个编辑器重绘。
   const markTyping = useCallback(() => {
@@ -417,7 +432,14 @@ export function Editor() {
   };
 
   return (
-    <div className="editor" ref={scrollRef}>
+    <div className="editor" ref={scrollRef} onKeyDownCapture={(e) => {
+      if (!selectMode || (e.target as HTMLElement).closest('input:not([type="checkbox"]), textarea')) return;
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault(); e.stopPropagation(); deleteWritingSelection();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault(); e.stopPropagation(); setWritingSelectedIds(project.elements.map((el) => el.id));
+      } else if (e.key === 'Escape') { setWritingSelectionMode(false); }
+    }}>
       <ProgressBar>
         <MaterialControls
           soundCount={writingSounds.length}
@@ -490,12 +512,25 @@ export function Editor() {
     const isScene = el.type === 'scene_heading';
     const contdSuffix = el.type === 'character' && shouldShowContdSuffix(project, el) ? CONTD_SUFFIX : undefined;
     return (
+      <div key={el.id} className={selectMode ? 'writing-select-row' : undefined}>
+      {selectMode && <input type="checkbox" aria-label={`选择第 ${project.elements.findIndex((item) => item.id === el.id) + 1} 段`} checked={writingIds.includes(el.id)} onChange={() => {}} onClick={(e) => {
+        const anchor = project.elements.findIndex((item) => item.id === selectionAnchor.current);
+        const index = project.elements.findIndex((item) => item.id === el.id);
+        if (e.shiftKey && anchor >= 0) {
+          const range = project.elements.slice(Math.min(anchor, index), Math.max(anchor, index) + 1).map((item) => item.id);
+          setWritingSelectedIds([...writingIds, ...range]);
+        } else {
+          toggleWritingSelection(el.id);
+          selectionAnchor.current = el.id;
+        }
+      }} />}
       <EditableBlock
         key={el.id}
+        readOnly={selectMode}
         el={el}
         settings={settings}
         half={half}
-        selected={activeId === el.id}
+        selected={selectMode ? writingIds.includes(el.id) : activeId === el.id}
         revColor={settings.revisionMode && el.rev ? revMap[el.rev] : undefined}
         sceneNumber={
           isScene && project.settings.autoNumberScenes
@@ -536,6 +571,7 @@ export function Editor() {
           }
         }}
       />
+      </div>
     );
   }
 }

@@ -91,6 +91,7 @@ export interface EditableBlockProps extends BlockProps {
   selected?: boolean;
   onInput?: (html: string) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  readOnly?: boolean;
   onFocus?: () => void;
   onClick?: (e: React.MouseEvent) => void;
   onPaste?: (e: React.ClipboardEvent<HTMLDivElement>) => void;
@@ -166,7 +167,7 @@ export function EditableBlock(props: EditableBlockProps) {
       data-type={el.type}
       data-contd={contdSuffix || undefined}
       style={blockStyle({ settings, half, revColor }, el)}
-      contentEditable
+      contentEditable={!props.readOnly}
       suppressContentEditableWarning
       spellCheck={false}
       data-placeholder={empty ? ELEMENT_META[el.type].placeholder : undefined}

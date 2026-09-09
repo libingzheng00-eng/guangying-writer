@@ -2611,3 +2611,11 @@ textarea {
   .writing-material-controls { gap: 3px; margin-left: 3px; }
   .writing-material-controls button { padding-inline: 5px; }
 }
+.writing-select-toolbar { margin-left: 8px; padding-left: 10px; border-left: 1px solid rgba(111, 168, 211, .18); }
+.writing-select-toolbar button { height: 28px; padding: 0 9px; border: 1px solid transparent; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; white-space: nowrap; }
+.writing-select-toolbar button:hover, .writing-select-toolbar button.is-active { color: var(--accent); border-color: rgba(111, 168, 211, .38); background: var(--accent-soft); }
+.writing-select-toolbar button:disabled { opacity: .38; cursor: default; }
+.writing-select-toolbar span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.writing-select-row { position: relative; }
+.writing-select-row > input { position: absolute; left: -28px; top: 8px; width: 18px; height: 18px; cursor: pointer; }
+.doc-title { -webkit-app-region: no-drag; cursor: pointer; }

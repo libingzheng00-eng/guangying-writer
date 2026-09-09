@@ -73,6 +73,9 @@ interface StoreState {
 
   /** 自由板多选集合（不写入 .zhsp；load 时清空、save 时忽略） */
   selectedIds: string[];
+  /** 写作正文多选状态；纯界面状态，不写入 .zhsp。 */
+  writingSelectionMode: boolean;
+  writingSelectedIds: string[];
 
   setView: (v: ViewMode) => void;
   setSidebar: (s: SidebarMode) => void;
@@ -101,6 +104,7 @@ interface StoreState {
   setType: (id: string, type: ElementType) => void;
   setText: (id: string, text: string) => void;
   removeElement: (id: string) => void;
+  deleteWritingElements: (ids: string[]) => void;
   moveElement: (id: string, dir: -1 | 1) => void;
   mergeIntoPrevious: (id: string) => { id: string; offset: number } | null;
   toggleOmit: (id: string) => void;
@@ -142,6 +146,10 @@ interface StoreState {
   toggleSelection: (id: string) => void;
   selectRange: (sortedIds: string[], anchor: string | null | undefined, target: string) => void;
   clearSelection: () => void;
+  setWritingSelectionMode: (enabled: boolean) => void;
+  setWritingSelectedIds: (ids: string[]) => void;
+  toggleWritingSelection: (id: string) => void;
+  clearWritingSelection: () => void;
   /** 批量删除自由板中选中的场景与卡片；场景删除包含正文整场内容。 */
   deleteSelectedBoardCards: () => { scenes: number; beats: number };
   /** 兼容旧调用方：只删除选中的 beats。 */
@@ -199,6 +207,8 @@ export const useStore = create<StoreState>((set, get) => ({
   past: [],
   future: [],
   selectedIds: [],
+  writingSelectionMode: false,
+  writingSelectedIds: [],
 
   setView: (v) => set({ view: v }),
   setSidebar: (s) => set({ sidebar: s, sidebarOpen: true }),
@@ -238,6 +248,8 @@ export const useStore = create<StoreState>((set, get) => ({
       version: s.version + 1,
       pageCount: 0,
       selectedIds: [],
+      writingSelectionMode: false,
+      writingSelectedIds: [],
     }));
   },
 
@@ -255,6 +267,8 @@ export const useStore = create<StoreState>((set, get) => ({
       version: s.version + 1,
       pageCount: 0,
       selectedIds: [],
+      writingSelectionMode: false,
+      writingSelectedIds: [],
     }));
   },
 
@@ -672,6 +686,27 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   clearSelection: () => set({ selectedIds: clearSel() }),
+
+  setWritingSelectionMode: (enabled) => set({ writingSelectionMode: enabled, writingSelectedIds: enabled ? get().writingSelectedIds : [] }),
+  setWritingSelectedIds: (ids) => {
+    const valid = new Set(get().project.elements.map((el) => el.id));
+    set({ writingSelectedIds: [...new Set(ids)].filter((id) => valid.has(id)) });
+  },
+  toggleWritingSelection: (id) => set((s) => ({ writingSelectedIds: toggleSel(s.writingSelectedIds, id) })),
+  clearWritingSelection: () => set({ writingSelectedIds: [] }),
+
+  deleteWritingElements: (ids) => {
+    const removed = new Set(ids.filter((id) => get().project.elements.some((el) => el.id === id)));
+    if (!removed.size) return;
+    get().mutate((p) => {
+      p.elements = p.elements.filter((el) => !removed.has(el.id));
+      if (!p.elements.length) p.elements = [newElement('action', '')];
+      p.sceneMeta = p.sceneMeta.filter((meta) => !removed.has(meta.elementId));
+      p.beats.forEach((beat) => { if (beat.sceneId && removed.has(beat.sceneId)) delete beat.sceneId; });
+      p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removed);
+    });
+    set({ activeId: get().project.elements[0]?.id || null, focus: null, writingSelectedIds: [] });
+  },
 
   deleteSelectedBoardCards: () => {
     const ids = get().selectedIds;

@@ -23,6 +23,12 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
   const undo = useStore((s) => s.undo);
   const redo = useStore((s) => s.redo);
   const dirty = useStore((s) => s.dirty);
+  const filePath = useStore((s) => s.filePath);
+  const writingSelectionMode = useStore((s) => s.writingSelectionMode);
+  const writingSelectedIds = useStore((s) => s.writingSelectedIds);
+  const setWritingSelectionMode = useStore((s) => s.setWritingSelectionMode);
+  const setWritingSelectedIds = useStore((s) => s.setWritingSelectedIds);
+  const deleteWritingElements = useStore((s) => s.deleteWritingElements);
   const [menu, setMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -48,10 +54,10 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
   return (
     <div className="toolbar" ref={menuRef}>
       <div className="toolbar__group">
-        <span className="doc-title">
-          {project.name}
-          {dirty ? <i className="dot-dirty">●</i> : null}
-        </span>
+        <button className="doc-title" onClick={onOpenTitle} title={`${filePath || '尚未保存为文件'} · 点击编辑剧本信息`}>
+          {filePath?.split(/[\\/]/).pop() || project.name}
+          {dirty ? <i className="dot-dirty" title="有未保存的修改">●</i> : null}
+        </button>
       </div>
 
       <div className="toolbar__group segmented">
@@ -116,6 +122,27 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
               {r.label}
             </button>
           ))}
+        </div>
+      ) : null}
+
+      {view === 'write' ? (
+        <div className="toolbar__group writing-select-toolbar">
+          <button
+            className={writingSelectionMode ? 'is-active' : ''}
+            aria-pressed={writingSelectionMode}
+            title="选择多个正文段落后统一删除"
+            onClick={() => setWritingSelectionMode(!writingSelectionMode)}
+          >
+            {writingSelectionMode ? '完成多选' : '多选段落'}
+          </button>
+          {writingSelectionMode ? (
+            <>
+              <span>已选 {writingSelectedIds.length} 段</span>
+              <button title="选择全部正文段落" onClick={() => setWritingSelectedIds(project.elements.map((el) => el.id))}>全选</button>
+              <button disabled={!writingSelectedIds.length} title="删除选中的正文段落" onClick={() => deleteWritingElements(writingSelectedIds)}>删除所选</button>
+              <button title="撤销最近一次修改" onClick={undo}>撤销</button>
+            </>
+          ) : null}
         </div>
       ) : null}
 
