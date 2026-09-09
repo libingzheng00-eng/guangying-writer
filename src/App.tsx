@@ -19,7 +19,9 @@ import { hexToRgba } from './utils/color';
 import { isHexColor } from './utils/color';
 import { DEFAULT_FONT_COLOR } from './store/store';
 
-const LS_KEY = 'mojiang:autosave';
+// 新名称使用独立键；读取旧键一次，确保升级后不会丢失已有自动保存。
+const LS_KEY = 'guangying:autosave';
+const LEGACY_LS_KEY = 'mojiang:autosave';
 
 export default function App() {
   const view = useStore((s) => s.view);
@@ -39,12 +41,14 @@ export default function App() {
 
   /* 启动：读取自动保存或示例剧本 */
   useEffect(() => {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(LS_KEY) || localStorage.getItem(LEGACY_LS_KEY);
     if (raw) {
       try {
         const saved = JSON.parse(raw);
         if (saved && saved.project) {
           useStore.getState().loadProject(parseProject(JSON.stringify(saved.project)), saved.filePath || null);
+          // 将旧自动保存平滑迁移到光影写手命名空间；旧键不删除，便于回退旧版本。
+          if (!localStorage.getItem(LS_KEY)) localStorage.setItem(LS_KEY, raw);
           return;
         }
       } catch {

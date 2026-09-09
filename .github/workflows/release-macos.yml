@@ -34,18 +34,20 @@ jobs:
       - name: 创建 DMG
         run: |
           hdiutil create \
-            -volname "墨场" \
-            -srcfolder "release/Mochang.app" \
+            -volname "光影写手" \
+            -srcfolder "release/GuangyingWriter.app" \
             -ov \
             -format UDZO \
-            "release/Mochang-macOS-arm64-${GITHUB_REF_NAME}.dmg"
+            "release/GuangyingWriter-macOS-arm64-${GITHUB_REF_NAME}.dmg"
 
       - name: 发布到 GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "墨场 $GITHUB_REF_NAME" \
-            --generate-notes \
-            "release/Mochang-macOS-arm64.zip" \
-            "release/Mochang-macOS-arm64-${GITHUB_REF_NAME}.dmg"
+          # 网页先创建的预发布也能接收 CI 产物；避免因 release 已存在而整条流水线失败。
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --title "光影写手 $GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" \
+            "release/GuangyingWriter-macOS-arm64.zip" \
+            "release/GuangyingWriter-macOS-arm64-${GITHUB_REF_NAME}.dmg" \
+            --clobber

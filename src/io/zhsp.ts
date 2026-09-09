@@ -4,7 +4,7 @@ import { DEFAULT_INDENT, DEFAULT_REVISIONS } from '../model/elements';
 import { normalizeTargetPages } from '../model/progress';
 
 export interface ZhspFile {
-  app: 'zh-screenwriter';
+  app: 'guangying-writer';
   fileVersion: number;
   savedAt: number;
   project: ScriptProject;
@@ -48,7 +48,7 @@ function normalizeBeat(raw: unknown): Beat {
 }
 
 export function serializeProject(p: ScriptProject): string {
-  const file: ZhspFile = { app: 'zh-screenwriter', fileVersion: FILE_VERSION, savedAt: Date.now(), project: p };
+  const file: ZhspFile = { app: 'guangying-writer', fileVersion: FILE_VERSION, savedAt: Date.now(), project: p };
   return JSON.stringify(file, null, 2);
 }
 

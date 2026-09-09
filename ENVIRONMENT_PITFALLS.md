@@ -110,18 +110,18 @@ export GIT_AUTHOR_NAME="$(git log -1 --format='%an')" GIT_AUTHOR_EMAIL="$(git lo
 export GIT_COMMITTER_NAME="$(git log -1 --format='%cn')" GIT_COMMITTER_EMAIL="$(git log -1 --format='%ce')"
 
 # 1) 索引重定向到 /tmp（干净目录，rename 不受 provenance 影响）
-GIT_INDEX_FILE=/tmp/mochang.idx git add -A
+GIT_INDEX_FILE=/tmp/guangying.idx git add -A
 
 # 2) 直接生成 tree 与 commit 对象（走 loose object 写，新建不覆盖，能过）
-TREE=$(GIT_INDEX_FILE=/tmp/mochang.idx git write-tree)
-COMMIT=$(printf '提交说明\n' | GIT_INDEX_FILE=/tmp/mochang.idx git commit-tree "$TREE" -p "$PARENT")
+TREE=$(GIT_INDEX_FILE=/tmp/guangying.idx git write-tree)
+COMMIT=$(printf '提交说明\n' | GIT_INDEX_FILE=/tmp/guangying.idx git commit-tree "$TREE" -p "$PARENT")
 
 # 3) 用 shell 更新分支引用（先删 provenance 旧文件，再写新的）
 rm -f .git/refs/heads/main
 printf '%s\n' "$COMMIT" > .git/refs/heads/main
 
 # 4) 恢复 .git/index（从 /tmp 干净索引拷回）
-cp /tmp/mochang.idx .git/index
+cp /tmp/guangying.idx .git/index
 
 git log --oneline -1   # 验证
 ```

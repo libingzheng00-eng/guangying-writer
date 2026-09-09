@@ -19,17 +19,17 @@ ipcMain.handle('app:info', () => ({ version: 'test', platform: process.platform 
 
 // 使用独立的 userData，避免影响真实应用数据
 try {
-  app.setPath('userData', '/tmp/mochang-test-ud');
+  app.setPath('userData', '/tmp/guangying-test-ud');
 } catch (e) {
   /* ignore */
 }
 
 const ROOT = path.join(__dirname, '..');
 const RENDERER = path.join(ROOT, 'dist-renderer', 'index.html');
-const OUT_PDF = '/tmp/mochang-test.pdf';
+const OUT_PDF = '/tmp/guangying-test.pdf';
 
 const results = [];
-const LOG = '/tmp/mochang-test-log.txt';
+const LOG = '/tmp/guangying-test-log.txt';
 try { fs.writeFileSync(LOG, ''); } catch (e) {}
 function log(line) {
   try { fs.appendFileSync(LOG, line + '\n'); } catch (e) {}
@@ -312,7 +312,7 @@ async function main() {
   log(`通过 ${results.length - failed.length}/${results.length}`);
   if (failed.length) log('失败项：' + failed.map((f) => f.name).join('; '));
   try {
-    fs.writeFileSync('/tmp/mochang-test-result.json', JSON.stringify({ pass: results.length - failed.length, total: results.length, failed: failed.map((f) => f.name) }, null, 2));
+    fs.writeFileSync('/tmp/guangying-test-result.json', JSON.stringify({ pass: results.length - failed.length, total: results.length, failed: failed.map((f) => f.name) }, null, 2));
   } catch (e) {}
 
   win.close();

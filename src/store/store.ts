@@ -170,13 +170,15 @@ interface StoreState {
 const HISTORY_LIMIT = 120;
 
 /* --------- 写作字体颜色：app 级外观设置，只存 localStorage，不写入 project --------- */
-const LS_FONT_COLOR = 'mojiang:fontColor';
-const LS_APP_THEME = 'mojiang:appTheme';
+const LS_FONT_COLOR = 'guangying:fontColor';
+const LS_APP_THEME = 'guangying:appTheme';
+const LEGACY_LS_FONT_COLOR = 'mojiang:fontColor';
+const LEGACY_LS_APP_THEME = 'mojiang:appTheme';
 export const DEFAULT_FONT_COLOR = '#e9ff3a';
 
 function loadFontColor(): string {
   try {
-    const v = localStorage.getItem(LS_FONT_COLOR);
+    const v = localStorage.getItem(LS_FONT_COLOR) || localStorage.getItem(LEGACY_LS_FONT_COLOR);
     // 校验合法性：localStorage 可能被手动改坏，脏值会污染 CSS 变量导致界面异常
     return v && isHexColor(v) ? v : DEFAULT_FONT_COLOR;
   } catch {
@@ -184,7 +186,10 @@ function loadFontColor(): string {
   }
 }
 function loadAppTheme(): AppTheme {
-  try { return localStorage.getItem(LS_APP_THEME) === 'day' ? 'day' : 'night'; } catch { return 'night'; }
+  try {
+    const value = localStorage.getItem(LS_APP_THEME) || localStorage.getItem(LEGACY_LS_APP_THEME);
+    return value === 'day' ? 'day' : 'night';
+  } catch { return 'night'; }
 }
 let lastCoalesce: { key: string; ts: number } | null = null;
 

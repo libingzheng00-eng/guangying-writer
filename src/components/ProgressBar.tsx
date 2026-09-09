@@ -57,9 +57,9 @@ export function ProgressBar({ children }: { children?: React.ReactNode }) {
         typingTimerRef.current = null;
       }, 260);
     };
-    window.addEventListener('mochang:typing', onTyping);
+    window.addEventListener('guangying:typing', onTyping);
     return () => {
-      window.removeEventListener('mochang:typing', onTyping);
+      window.removeEventListener('guangying:typing', onTyping);
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     };
   }, []);

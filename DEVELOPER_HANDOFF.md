@@ -5,8 +5,7 @@
 ## 版本边界
 
 - 本仓库是 `v1.3.0-alpha` 源码回迁工程，不是当前完整稳定版。
-- 用户本机当前可用成品是 `/Applications/墨场 1.2.9.app`；绝不修改或覆盖它。
-- 完整成品补丁及视觉验证在本机 `../release/Mochang-macOS-arm64-v1.2.9/开发补丁/`；GitHub 克隆中不会包含该成品目录。
+- 旧版本成品及其本机补丁目录不属于本仓库；不得修改、覆盖或提交它们。
 
 ## 已回迁的源码能力
 
@@ -52,7 +51,7 @@ node scripts/history-test.cjs
 - 场次标题回车后必须进入「动作」（画面/环境描述）；动作连续回车保持动作；人物回车进对白；对白回车进人物。
 - **写作红线——Tab 焦点闭环**：`Tab` / `Shift+Tab` 只在当前行循环九类元素，永远不自动新建行，也绝不能跳到缩放、文件名或其他界面按钮。`scene_heading` 会改变场号包装结构，类型切换后必须通过 `requestFocus` 恢复同一 `contentEditable` 及原光标位置。任何涉及 `Editor.tsx`、`ScriptBlock.tsx` 或场号 DOM 的修改，都必须实测连续按 9 次 Tab 后回到起始类型且焦点仍在原段落。
 - 快捷输入候选靠近当前输入行右侧：`Enter` 确认后进入符合上述规则的下一元素；空格或鼠标只确认当前行。Tab 专用于元素类型循环，不得被自动补全截获。contentEditable 聚焦时必须同时更新 DOM 与 store，否则鼠标点击会“看似无反应”。
-- `Editor.tsx` 在输入时仅派发 `mochang:typing` 事件；`ProgressBar.tsx` 自己在指针 DOM 上短暂加 `.is-typing`（260ms）。严禁把动效状态保存进 `.zhsp` 或 undo 历史，也不要把它改回 Editor 的 React state，以免每次输入重绘整个编辑器。
+- `Editor.tsx` 在输入时仅派发 `guangying:typing` 事件；`ProgressBar.tsx` 自己在指针 DOM 上短暂加 `.is-typing`（260ms）。严禁把动效状态保存进 `.zhsp` 或 undo 历史，也不要把它改回 Editor 的 React state，以免每次输入重绘整个编辑器。
 - **PDF 红线——素材不能丢失**：`PreviewView.tsx` 的 `MaterialPage` 必须保留声音卡与图片卡的确定性附页；`useCommands.ts` 在 `printToPDF` 前必须等待图片解码。任何“只导出正文”优化都不允许删除此链路。
 - **写作 Shift 多选**：仅在写作多选模式下，Shift 点击正文段落或复选框会按正文顺序扩展连续选区；普通编辑模式不得拦截鼠标、光标或键盘输入。
 

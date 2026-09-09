@@ -60,7 +60,7 @@ console.error = (...args) => {
 w.addEventListener('error', (e) => errors.push(`window.error: ${e.message}`));
 
 // Tests use synthetic, non-user content. The shipped first-run project stays blank.
-localStorage.setItem('mojiang:autosave', JSON.stringify({
+localStorage.setItem('guangying:autosave', JSON.stringify({
   project: {
     id: 'qa-project',
     name: '功能测试稿',
