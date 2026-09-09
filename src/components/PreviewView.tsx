@@ -54,9 +54,11 @@ export function PreviewView({ onExportPdf }: { onExportPdf: (mode?: 'creative' |
   const renderPlaced = (p: Placed) => {
     const el0 = p.elements[0];
     const revColor = settings.revisionMode && el0.rev ? revMap[el0.rev] : undefined;
-    if (p.kind === 'dual') {
-      return (
-        <div className="sc-dual-row" key={p.key}>
+    const el = p.elements[0];
+    // 双列的实测高度已经包含列内各段的 margin；保留其内部排版，
+    // 但必须与单列一样服从分页的行窗口及续页偏移，不能每页重画完整双列。
+    const block = p.kind === 'dual' ? (
+        <div className="sc-dual-row">
           <div className="sc-dual-col">
             {p.elements.filter((e) => (e.dual || 'left') === 'left').map((e) => (
               <StaticBlock key={e.id} el={e} settings={settings} half />
@@ -68,10 +70,7 @@ export function PreviewView({ onExportPdf }: { onExportPdf: (mode?: 'creative' |
             ))}
           </div>
         </div>
-      );
-    }
-    const el = p.elements[0];
-    const block = (
+      ) : (
       <StaticBlock
         el={el}
         settings={settings}
@@ -93,7 +92,7 @@ export function PreviewView({ onExportPdf }: { onExportPdf: (mode?: 'creative' |
     // 打印红线：段前留白不能进入正文的行数裁剪窗，否则场次标题和末行会被截掉。
     // 续页偏移只移动正文；续说/更多提示各占独立一行，不随正文向上移走。
     return (
-      <div key={p.key} className="preview__placed" style={{ paddingTop: skip ? 0 : p.spaceBefore * lineHeightPx }}>
+      <div key={p.key} className="preview__placed" style={{ paddingTop: skip || p.kind === 'dual' ? 0 : p.spaceBefore * lineHeightPx }}>
         {p.contd ? <div className="sc-contd" style={{ height: lineHeightPx, lineHeight: `${lineHeightPx}px` }}>{p.contd}</div> : null}
         {p.lines === undefined ? block : (
           <div className="preview__line-window" style={{ height: p.lines * lineHeightPx, overflow: 'hidden' }}>

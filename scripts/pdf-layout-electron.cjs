@@ -26,7 +26,7 @@ ipcMain.handle('pdf:export', async (_event, opts) => {
   lastOptions = opts;
   try {
     const data = await renderPdf(win, opts);
-    const file = path.join(out, opts.mode === 'creative' ? 'creative.pdf' : outputs.length < 2 ? 'print-a4.pdf' : 'long-a4.pdf');
+    const file = path.join(out, opts.mode === 'creative' ? 'creative.pdf' : outputs.length < 2 ? 'print-a4.pdf' : outputs.length < 3 ? 'long-a4.pdf' : 'dual-a4.pdf');
     fs.writeFileSync(file, data);
     outputs.push(file);
     return file;
@@ -113,6 +113,21 @@ app.whenReady().then(async () => {
     assert.equal(outputs.length,3,errors.join('\n') || '长对白A4导出失败');
     fs.writeFileSync(path.join(out,'expected-lines.json'),JSON.stringify([...markers,...actionMarkers]));
     console.log('PASS 长对白/长动作实际PDF已生成，需提取逐行标记核对250行完整性');
+    const leftMarkers=Array.from({length:80},(_,i)=>`LEFT_${String(i+1).padStart(3,'0')}`);
+    const rightMarkers=Array.from({length:90},(_,i)=>`RIGHT_${String(i+1).padStart(3,'0')}`);
+    project.elements=[
+      {id:'scene-5',type:'scene_heading',text:'内景 双列合成测试 日'},
+      {id:'left-character',type:'character',text:'左侧角色',dual:'left',dualGroup:'qa-dual'},
+      {id:'left-dialogue',type:'dialogue',text:leftMarkers.join('<br>'),dual:'left',dualGroup:'qa-dual'},
+      {id:'right-character',type:'character',text:'右侧角色',dual:'right',dualGroup:'qa-dual'},
+      {id:'right-dialogue',type:'dialogue',text:rightMarkers.join('<br>'),dual:'right',dualGroup:'qa-dual'},
+    ];
+    await loadProject();
+    win.webContents.send('menu:action','file:exportPrintPdf');
+    for(let i=0;i<400 && outputs.length<4 && !errors.length;i++) await pause(50);
+    assert.equal(outputs.length,4,errors.join('\n') || '双列A4导出失败');
+    fs.writeFileSync(path.join(out,'expected-dual-lines.json'),JSON.stringify([...leftMarkers,...rightMarkers]));
+    console.log('PASS 长双列实际PDF已生成，需提取逐行标记核对170行完整性');
     console.log(`RESULT ${out}`);
     proof.destroy();app.exit(0);
   } catch(e) {
