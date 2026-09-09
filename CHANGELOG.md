@@ -2,6 +2,13 @@
 
 ## 未发布
 
+## v1.3.0-alpha.17（R14）
+
+- 修复自由板删除回归：恢复“删除整场”按钮；场景卡删除会移除该场的正文区间、场景元数据和孤儿关系线，关联到该场的灵感卡保留但解除场景关联，全部操作可撤销。
+- 修复自由板多选删除：⌘/Ctrl 多选、Shift 范围选和框选现在可同时删除场景与灵感卡，工具栏显示选中数量并提供“删除所选”。
+- 修复进度条场景条跳转：点击场景色条会将对应场景标题精确滚动到固定进度栏下方，并保持平滑定位。
+- 修正仓库版本元数据：`package.json`、`package-lock.json` 与 R14 版本号一致。
+
 ## v1.3.0-alpha.16
 
 - 修复自由板工具栏被工作区背景层遮住的问题：总览 / 场景板 / 灵感板，以及颜色切换条现在始终可见；颜色按钮补全了键盘焦点与无障碍名称。
@@ -47,7 +54,7 @@
   - `cardCenters(cards)`（卡片坐标 → 中心点）
 - store 新增 `selectedIds` 状态（**不写入 .zhsp**，load/newProject 时清空）+ actions：
   - `setSelectedIds` / `toggleSelection` / `selectRange` / `clearSelection`
-  - `deleteSelectedBeats()`：只删 selectedIds 里的 beat，`boardLinks` 用 `filterBoardLinksToKeep` 严格清理，**绝不误删未选卡片关联的关系线**
+  - `deleteSelectedBeats()`：历史兼容接口；R14 已由 `deleteSelectedBoardCards()` 统一处理场景与 beat，`boardLinks` 用 `filterBoardLinksToKeep` 严格清理，**绝不误删未选卡片关联的关系线**
 - BoardView 交互：
   - ⌘/Ctrl + 点击 → toggle 选中；Shift + 点击 → 范围选
   - 空白处按下拖动 → 框选（Shift 追加）；虚线 `.board__marquee` 预览

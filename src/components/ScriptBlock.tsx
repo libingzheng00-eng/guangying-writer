@@ -137,7 +137,7 @@ export function EditableBlock(props: EditableBlockProps) {
     if (!node) return;
     node.focus({ preventScroll: true });
     setCaret(node, focus.caret);
-    node.scrollIntoView({ block: 'nearest' });
+    node.scrollIntoView({ block: focus.scroll || 'nearest', behavior: focus.scroll === 'start' ? 'smooth' : 'auto' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 

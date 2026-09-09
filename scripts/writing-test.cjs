@@ -60,6 +60,7 @@ process.on('exit', () => {
     marqueeSel,
     filterBoardLinksToKeep,
     cardCenters,
+    splitBoardSelection,
   } = require(bundle);
 
   const failures = [];
@@ -511,6 +512,10 @@ process.on('exit', () => {
   const centers = cardCenters(cardList);
   ok('卡片 1 中心 = (50, 40)', centers[0].cx === 50 && centers[0].cy === 40);
   ok('卡片 2 中心 = (100+220/2, 100+100/2) = (210, 150)', centers[1].cx === 210 && centers[1].cy === 150);
+
+  console.log('\n== splitBoardSelection：场景 / 卡片选区拆分 ==');
+  const split = splitBoardSelection(['scene:s1', 'beat:b1', 's2', 'b2', 'unknown'], new Set(['s1', 's2']), new Set(['b1', 'b2']));
+  ok('带前缀与旧无前缀选中值均能拆分', JSON.stringify(split) === JSON.stringify({ sceneIds: ['s1', 's2'], beatIds: ['b1', 'b2'] }));
 
   if (failures.length) {
     console.log(`\n=== FAIL: ${failures.length} test(s) failed ===`);

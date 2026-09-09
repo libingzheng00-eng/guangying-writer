@@ -11,7 +11,7 @@ import type {
   ScriptSettings,
   TitlePage,
 } from '../model/types';
-import { cloneProject, createProject, defaultActs, newElement } from '../model/project';
+import { cloneProject, createProject, defaultActs, newElement, deriveScenes } from '../model/project';
 import { dualAfterEnter } from '../model/flow';
 import { plain, cnNum } from '../utils/text';
 import { uid } from '../utils/id';
@@ -23,6 +23,7 @@ import {
   selRange,
   clearSel,
   filterBoardLinksToKeep,
+  splitBoardSelection,
 } from '../model/selection';
 
 export type ViewMode = 'write' | 'cards' | 'board' | 'preview' | 'reports';
@@ -32,6 +33,8 @@ export type AppTheme = 'night' | 'day';
 export interface FocusRequest {
   id: string;
   caret: 'start' | 'end' | number;
+  /** 滚动定位策略；普通编辑保持 nearest，场景条跳转使用 start。 */
+  scroll: 'nearest' | 'start' | 'center' | 'end';
   ts: number;
 }
 
@@ -89,7 +92,7 @@ interface StoreState {
   redo: () => void;
 
   setActive: (id: string | null) => void;
-  requestFocus: (id: string, caret?: FocusRequest['caret']) => void;
+  requestFocus: (id: string, caret?: FocusRequest['caret'], scroll?: FocusRequest['scroll']) => void;
 
   /* 元素操作 */
   insertAfter: (id: string | null, type?: ElementType, text?: string) => string;
@@ -113,6 +116,8 @@ interface StoreState {
   /** 故事板拖拽落位：移动场景并归入目标幕，一次操作只产生一条撤销记录 */
   dropSceneInAct: (from: number, to: number, elementId: string, actId?: string) => void;
   addSceneAfter: (elementId: string) => void;
+  /** 删除场景标题及其后续正文，连同场景卡元数据；可由 undo 恢复。 */
+  deleteScene: (elementId: string) => boolean;
   updateAct: (id: string, patch: Partial<Act>) => void;
   addAct: () => void;
   removeAct: (id: string) => void;
@@ -137,7 +142,9 @@ interface StoreState {
   toggleSelection: (id: string) => void;
   selectRange: (sortedIds: string[], anchor: string | null | undefined, target: string) => void;
   clearSelection: () => void;
-  /** 批量删除：只清掉 selectedIds 里的 beats + 与任一端相关的关系线；不波及未选卡片 */
+  /** 批量删除自由板中选中的场景与卡片；场景删除包含正文整场内容。 */
+  deleteSelectedBoardCards: () => { scenes: number; beats: number };
+  /** 兼容旧调用方：只删除选中的 beats。 */
   deleteSelectedBeats: () => number;
 
   /* 人物 / 篇幅 */
@@ -322,7 +329,7 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   setActive: (id) => set({ activeId: id }),
-  requestFocus: (id, caret = 'end') => set({ focus: { id, caret, ts: Date.now() }, activeId: id }),
+  requestFocus: (id, caret = 'end', scroll = 'nearest') => set({ focus: { id, caret, scroll, ts: Date.now() }, activeId: id }),
 
   insertAfter: (id, type = 'action', text = '') => {
     const el = newElement(type, text);
@@ -516,6 +523,13 @@ export const useStore = create<StoreState>((set, get) => ({
     insertAfter(id, 'action');
   },
 
+  deleteScene: (elementId) => {
+    const exists = get().project.elements.some((el) => el.id === elementId && el.type === 'scene_heading');
+    if (!exists) return false;
+    set({ selectedIds: [`scene:${elementId}`] });
+    return get().deleteSelectedBoardCards().scenes > 0;
+  },
+
   updateAct: (id, patch) => {
     get().mutate((p) => {
       const a = p.acts.find((x) => x.id === id);
@@ -659,31 +673,58 @@ export const useStore = create<StoreState>((set, get) => ({
 
   clearSelection: () => set({ selectedIds: clearSel() }),
 
+  deleteSelectedBoardCards: () => {
+    const ids = get().selectedIds;
+    if (!ids || ids.length === 0) return { scenes: 0, beats: 0 };
+    const project = get().project;
+    const scenes = deriveScenes(project);
+    const sceneIdSet = new Set(scenes.map((scene) => scene.elementId));
+    const beatIdSet = new Set(project.beats.map((beat) => beat.id));
+    const selected = splitBoardSelection(ids, sceneIdSet, beatIdSet);
+    if (selected.sceneIds.length === 0 && selected.beatIds.length === 0) return { scenes: 0, beats: 0 };
+
+    const selectedScenes = new Set(selected.sceneIds);
+    const selectedBeats = new Set(selected.beatIds);
+    const removedElementIds = new Set<string>();
+    scenes.forEach((scene) => {
+      if (!selectedScenes.has(scene.elementId)) return;
+      for (let i = scene.start; i < scene.end; i += 1) {
+        const el = project.elements[i];
+        if (el) removedElementIds.add(el.id);
+      }
+    });
+
+    get().mutate((p) => {
+      p.elements = p.elements.filter((el) => !removedElementIds.has(el.id));
+      p.sceneMeta = p.sceneMeta.filter((meta) => !selectedScenes.has(meta.elementId));
+      p.beats = p.beats
+        .filter((beat) => !selectedBeats.has(beat.id))
+        .map((beat) => {
+          if (beat.sceneId && selectedScenes.has(beat.sceneId)) {
+            const next = { ...beat };
+            delete next.sceneId;
+            return next;
+          }
+          return beat;
+        });
+      const removedEndpoints = new Set([...removedElementIds, ...selected.sceneIds, ...selected.beatIds]);
+      p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removedEndpoints);
+    }, { history: true, coalesce: 'board-bulk-delete' });
+    const remaining = get().project.elements;
+    const currentActive = get().activeId;
+    set({
+      selectedIds: [],
+      activeId: currentActive && remaining.some((el) => el.id === currentActive) ? currentActive : (remaining[0]?.id ?? null),
+      focus: null,
+    });
+    return { scenes: selected.sceneIds.length, beats: selected.beatIds.length };
+  },
+
   /**
-   * 批量删除选中 beats 与对应 boardLinks（一端在被删集中就清掉）。
-   * 不影响未选中 beats / scenes，也不影响未选中的纯关系线（保留两端都不在被删集中的）。
-   * 返回被删除的 beat 数量（便于 toast 提示）。
+   * 旧接口保留给历史调用方；新 UI 统一使用 deleteSelectedBoardCards。
    */
   deleteSelectedBeats: () => {
-    const ids = get().selectedIds;
-    if (!ids || ids.length === 0) return 0;
-    // 仅删除同时是 beat 的项目：用户也可能选中场景卡，场景卡删除要单独走 store.removeElement
-    const existingBeatIds = new Set(get().project.beats.map((b) => b.id));
-    const beatIds = ids
-      .map((id) => id.startsWith('beat:') ? id.slice(5) : id)
-      .filter((id) => existingBeatIds.has(id));
-    if (beatIds.length === 0) return 0;
-    const removed = new Set(beatIds);
-    get().mutate(
-      (p) => {
-        p.beats = p.beats.filter((b) => !removed.has(b.id));
-        p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removed);
-      },
-      { history: true, coalesce: 'beat-bulk-delete' },
-    );
-    // 清空 selectedIds；调用方重新同步选区（典型场景：删后不再保留任何选中）
-    set({ selectedIds: [] });
-    return beatIds.length;
+    return get().deleteSelectedBoardCards().beats;
   },
 
   renameCharacter: (from, to) => {

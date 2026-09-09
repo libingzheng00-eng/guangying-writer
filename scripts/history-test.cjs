@@ -80,6 +80,37 @@ process.on('exit', () => {
   state().redo();
   ok('重做删除再次清理卡片与关系线', state().project.beats.length === 1 && state().project.boardLinks.length === 0);
 
+  // 场景卡删除必须删除正文整场、清理场景元数据与关系线，但保留其他场景。
+  const sceneProject = createProject('场景删除测试');
+  sceneProject.elements = [
+    { id: 's1', type: 'scene_heading', text: '内景 场景一 日' },
+    { id: 'a1', type: 'action', text: '第一场动作' },
+    { id: 's2', type: 'scene_heading', text: '外景 场景二 夜' },
+    { id: 'a2', type: 'action', text: '第二场动作' },
+  ];
+  sceneProject.sceneMeta = [
+    { id: 'm1', elementId: 's1', title: '一', synopsis: '', color: '#fff' },
+    { id: 'm2', elementId: 's2', title: '二', synopsis: '', color: '#fff' },
+  ];
+  sceneProject.beats = [
+    { id: 'sb1', text: '属于场景一', color: '#fff', x: 0, y: 0, sceneId: 's1' },
+    { id: 'sb2', text: '属于场景二', color: '#fff', x: 0, y: 0, sceneId: 's2' },
+  ];
+  sceneProject.boardLinks = [
+    { id: 'sl1', from: 'scene:s1', to: 'beat:sb2' },
+    { id: 'sl2', from: 'scene:s2', to: 'beat:sb2' },
+  ];
+  reset(sceneProject);
+  state().setSelectedIds(['scene:s1']);
+  const sceneRemoved = state().deleteSelectedBoardCards();
+  ok('删除整场返回正确数量', sceneRemoved.scenes === 1 && sceneRemoved.beats === 0);
+  ok('删除整场移除场景正文但保留下一场', !state().project.elements.some((e) => e.id === 's1' || e.id === 'a1') && state().project.elements.some((e) => e.id === 's2'));
+  ok('删除整场清理场景元数据与孤儿关系线', state().project.sceneMeta.length === 1 && state().project.boardLinks.length === 1 && state().project.boardLinks[0].id === 'sl2');
+  state().undo();
+  ok('撤销整场删除恢复正文、元数据与关系线', state().project.elements.length === 4 && state().project.sceneMeta.length === 2 && state().project.boardLinks.length === 2);
+  state().redo();
+  ok('重做整场删除仍保留其他场景', state().project.elements.some((e) => e.id === 's2') && !state().project.elements.some((e) => e.id === 's1'));
+
   // 撤销后产生新编辑必须清空重做栈，避免回到错误分支。
   reset(p);
   state().setText(p.elements[0].id, '第一次修改');

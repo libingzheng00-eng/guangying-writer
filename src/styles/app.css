@@ -719,6 +719,8 @@ textarea {
 
 .sc-el {
   position: relative;
+  /* 进度条场景跳转使用 scrollIntoView({block:'start'}) 时，标题停在固定标尺下方。 */
+  scroll-margin-top: 92px;
   white-space: pre-wrap;
   word-break: break-word;
   outline: none;
@@ -2111,6 +2113,12 @@ textarea {
   background: rgba(88, 166, 255, 0.10);
   z-index: 90;
   border-radius: 2px;
+}
+.board__selection-status {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 0 4px;
 }
 .zoom-ctl {
   display: flex;

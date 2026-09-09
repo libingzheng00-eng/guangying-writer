@@ -31,4 +31,5 @@ export {
   marqueeSel,
   filterBoardLinksToKeep,
   cardCenters,
+  splitBoardSelection,
 } from '../src/model/selection';

@@ -182,7 +182,7 @@ export function ProgressBar({ children }: { children?: React.ReactNode }) {
                   style={{ flexBasis: `${renderPct}%`, background: scene.color }}
                   title={`第 ${scene.number} 场 · ${scaleLabel}${percentText}${scene.heading ? ' · ' + scene.heading : ''} · 点击跳转`}
                   aria-label={`第 ${scene.number} 场，${scaleLabel}${percentText}`}
-                  onClick={() => requestFocus(scene.elementId, 'start')}
+                  onClick={() => requestFocus(scene.elementId, 'start', 'start')}
                 >
                   <span className="write-progress__scene-no">{scene.number}</span>
                 </button>

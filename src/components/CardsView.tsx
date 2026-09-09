@@ -31,7 +31,7 @@ export function CardsView() {
   }, [scenes, project.acts]);
 
   const jump = (elementId: string) => {
-    requestFocus(elementId, 'start');
+    requestFocus(elementId, 'start', 'start');
     setView('write');
   };
 

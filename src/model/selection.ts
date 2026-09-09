@@ -16,6 +16,26 @@
  */
 import type { BoardLink } from './types';
 
+export interface BoardSelectionParts {
+  sceneIds: string[];
+  beatIds: string[];
+}
+
+/** 将自由板选中值拆成场景元素 ID 与灵感卡 ID。兼容旧工程里的无前缀值。 */
+export function splitBoardSelection(ids: string[], sceneIds: ReadonlySet<string>, beatIds: ReadonlySet<string>): BoardSelectionParts {
+  const scenes: string[] = [];
+  const beats: string[] = [];
+  for (const raw of Array.isArray(ids) ? ids : []) {
+    const value = raw.startsWith('scene:') ? raw.slice(6) : raw.startsWith('beat:') ? raw.slice(5) : raw;
+    if (raw.startsWith('scene:') || sceneIds.has(value)) {
+      if (sceneIds.has(value) && !scenes.includes(value)) scenes.push(value);
+    } else if (raw.startsWith('beat:') || beatIds.has(value)) {
+      if (beatIds.has(value) && !beats.includes(value)) beats.push(value);
+    }
+  }
+  return { sceneIds: scenes, beatIds: beats };
+}
+
 /** 切换单个 id 选中状态 */
 export function toggleSel(prev: string[], id: string): string[] {
   const idx = prev.indexOf(id);
