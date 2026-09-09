@@ -130,7 +130,7 @@ interface StoreState {
   setScenePos: (elementId: string, x: number, y: number) => void;
 
   /* 自由画布：节拍卡 / 灵感卡 */
-  addBeat: (x: number, y: number, text?: string, kind?: Beat['kind']) => string;
+  addBeat: (x: number, y: number, text?: string, kind?: Beat['kind'], material?: Pick<Beat, 'title' | 'img'>) => string;
   updateBeat: (id: string, patch: Partial<Beat>) => void;
   /** resize 节拍卡到指定尺寸，coalesce 合并连续 resize；非法值由 clampSize 兜底 */
   resizeBeat: (id: string, w: number, h: number) => void;
@@ -587,11 +587,12 @@ export const useStore = create<StoreState>((set, get) => ({
     );
   },
 
-  addBeat: (x, y, text = '', kind) => {
+  addBeat: (x, y, text = '', kind, material) => {
     const id = uid('bt');
     get().mutate((p) => {
       const color = kind === 'sound' ? '#ccb887' : '#fff7d6';
-      const beat: Beat = { id, text, color, x, y };
+      // 图片读取成功后一次写入完整卡片；一次撤销不能留下无图的空卡。
+      const beat: Beat = { id, text, color, x, y, ...material };
       if (kind) beat.kind = kind;
       p.beats.push(beat);
     });
