@@ -134,7 +134,8 @@ export function paginateMeasured(
     const totalLines = Math.max(1, Math.round(measured / lineHeightPx));
     const mtLines = Number.isFinite(item.marginTopLines) ? Math.max(0, item.marginTopLines) : 0;
     const isDialogue = item.kind === 'single' && item.elements[0].type === 'dialogue';
-    const splitable = item.kind === 'single' && canSplit(item.elements[0]);
+    // 双列也使用统一裁剪窗；允许按行续页，避免长双列把场次标题独留上一页。
+    const splitable = item.kind === 'dual' || canSplit(item.elements[0]);
     if (cur.length && item.keep > 0) {
       let keepLines = mtLines + totalLines;
       let remaining = item.keep;

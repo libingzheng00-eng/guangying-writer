@@ -73,6 +73,24 @@ const esbuild = require('esbuild');
   const keptWithMore = run([['action', 2], ['scene_heading', 1], ['character', 1], ['dialogue', 4]]);
   assert.equal(keptWithMore.pageOf['element-1'], keptWithMore.pageOf['element-3'], '场次跟随预算也计入对白 MORE 提示');
 
+  const dualProject = createProject();
+  dualProject.titlePage.show = false;
+  dualProject.elements = [
+    { id: 'dual-scene', type: 'scene_heading', text: '内景 合成测试 日' },
+    { id: 'dual-left', type: 'dialogue', text: '合成左列', dual: 'left', dualGroup: 'test' },
+    { id: 'dual-right', type: 'dialogue', text: '合成右列', dual: 'right', dualGroup: 'test' },
+  ];
+  const dualResult = paginateMeasured(dualProject, new Map([['s:dual-scene', 20], ['d:test', 1800]]), { lineHeightPx: 20, contentHeightPx: 200, contentWidthPx: 600 });
+  assert.ok(dualResult.pages[0].items.some((chunk) => chunk.kind === 'dual'), '长双列不得将场次标题独留上一页');
+  const dualChunks = dualResult.pages.flatMap((page) => page.items).filter((chunk) => chunk.kind === 'dual');
+  let dualConsumed = 0;
+  for (const chunk of dualChunks) {
+    assert.equal(chunk.skipLines, dualConsumed, '双列续页必须连续且不重复');
+    dualConsumed += chunk.lines;
+  }
+  assert.equal(dualConsumed, 90, '双列所有行均须保留');
+  scenarios += 1;
+
   for (const capacity of [1, 2, 3, 4, 7, 10, 45]) {
     for (const margin of [0, 0.5, 1, 3, 20]) {
       for (const type of ['action', 'dialogue']) {
