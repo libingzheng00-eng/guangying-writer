@@ -25,7 +25,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     // 生产环境也能在 DevTools / 控制台看到堆栈
-    console.error('[墨场] 渲染异常已被错误边界捕获：', error, info?.componentStack || '');
+    console.error('[光影写手] 渲染异常已被错误边界捕获：', error, info?.componentStack || '');
   }
 
   private handleReload = () => {
@@ -41,7 +41,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
         <div className="fatal__card">
           <div className="fatal__icon">!</div>
           <h1 className="fatal__title">界面出现了一点问题</h1>
-          <p className="fatal__msg">墨场已拦截这次崩溃，你的剧本数据通常仍然完好。</p>
+          <p className="fatal__msg">光影写手已拦截这次崩溃，你的剧本数据通常仍然完好。</p>
           <pre className="fatal__detail">{error.message}</pre>
           <div className="fatal__actions">
             <button className="btn btn--primary" onClick={this.handleReload}>

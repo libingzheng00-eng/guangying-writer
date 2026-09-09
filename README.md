@@ -2,7 +2,7 @@
 
 > 开源许可证：[MIT](LICENSE)。稳定版本会发布在 GitHub 的 **Releases** 页面；请从 Releases 下载最新版 DMG 或 ZIP，不要从源码页面下载自动生成的源码压缩包。
 
-> 当前状态（2026-09-06）：源码仍是 `v1.3.0-alpha` 回迁分支，不能替代完整稳定版。用户本机可用的最新成品是独立安装的 v1.2.9。详见 [MIGRATION.md](MIGRATION.md) 和 [DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md)。首次启动模板必须保持为空白，仓库和发布包禁止包含用户剧本。
+> 当前状态（2026-09-09）：`v1.3.0-alpha.18` 为公开测试源码，已完成核心功能回迁与自动化回归；它是测试版而非 Apple 公证的稳定版。详见 [MIGRATION.md](MIGRATION.md)、[DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md) 与 [CORE_FEATURES.md](CORE_FEATURES.md)。首次启动模板必须保持为空白，仓库和发布包禁止包含用户剧本。
 
 ## 公开发布方式
 
@@ -10,7 +10,7 @@
 
 未购买 Apple Developer ID 的版本仍是 ad-hoc 签名，首次在另一台 Mac 上打开可能需要用户在“隐私与安全性”中手动确认；它不是已公证的正式签名应用。
 
-> 一款对标 Final Draft 的**中文剧本创作软件**。Electron 31 + React 18 + Zustand + Vite + TypeScript（arm64 / Apple Silicon 原生），纯本地存储，无后端、无账号体系。项目正式名称为「光影写手」；内部 npm 名与 `.zhsp` 格式保持不变，确保已有本地草稿兼容。
+> 一款对标 Final Draft 的**中文剧本创作软件**。Electron 31 + React 18 + Zustand + Vite + TypeScript（arm64 / Apple Silicon 原生），纯本地存储，无后端、无账号体系。项目正式名称为「光影写手」；`.zhsp` 旧工程可直接打开，已有本地草稿兼容。
 
 本文件面向**日后维护与二次开发**，覆盖：环境搭建、开发与调试、构建、打包发布、整体架构、数据模型、主题系统、扩展方式、测试与已知坑。
 
@@ -52,11 +52,11 @@
 ## 2. 目录结构
 
 ```
-zh-screenwriter/
+guangying-writer/
 ├── package.json            # 入口配置：main=electron/main.js、scripts、依赖
 ├── package.sh              # ★ 打包脚本（手动组装成 .app + .zip）
-├── 修复并启动.sh            # 旧版本地辅助脚本（不会用于分发；不得关闭 Gatekeeper）
-├── 启动墨场.command         # 双击调用上面的脚本（macOS）
+├── 启动开发版光影写手.sh    # 不改系统安全设置的开发版启动脚本
+├── 启动光影写手.command     # 双击启动开发版（macOS）
 ├── vite.config.ts          # 渲染进程构建配置（outDir=dist-renderer, base='./'）
 ├── tsconfig.json           # TypeScript 配置（含 @/* 别名）
 ├── index.html              # Vite 入口 HTML
@@ -218,7 +218,7 @@ bash package.sh
 
 未购买 Apple Developer ID 并完成公证的版本，可能会被 Gatekeeper/XProtect 拦截，表现为：
 
-- 弹出「「Mochang」已损坏，无法打开」；或
+- 弹出「「光影写手」已损坏，无法打开」；或
 - 直接被丢进废纸篓；或
 - 双击瞬间消失（`zsh: killed`）。
 
@@ -351,7 +351,7 @@ interface ScriptProject {
 
 | 格式 | 文件 | 说明 |
 | --- | --- | --- |
-| 墨场工程 `.zhsp` | `zhsp.ts` | **原生格式**：就是带版本号的 `ScriptProject` JSON，`serializeProject` / `parseProject`（容错，兼容旧字段） |
+| 光影写手工程 `.zhsp` | `zhsp.ts` | **原生格式**：就是带版本号的 `ScriptProject` JSON，`serializeProject` / `parseProject`（容错，兼容旧字段） |
 | Final Draft `.fdx` | `fdx.ts` | 导入：解析 FDX XML → 元素数组；导出走菜单 `file:exportFdx` |
 | 纯文本 `.txt` | `textscript.ts` | 导入时用 `guessType` 智能识别场次/人物/对白/转场 |
 | Markdown `.md` | 同上体系 | 导出为带结构的 Markdown |
@@ -445,7 +445,7 @@ interface ScriptProject {
 | `npm run typecheck` | `tsc --noEmit`，应有零错误 |
 | `npm run test:render` | `scripts/render-test.cjs`：用 jsdom 真实挂载 App，验证首屏 + 切 5 视图无 `console.error`，并打印元素数/卡片数 |
 | `npm run smoke` | `scripts/smoke.js`：用 Electron 无头启动、截图到 `/tmp`、收集 console 错误 |
-| `scripts/integration-test.cjs` | **真实 Electron 集成测试**：加载已构建的 `dist-renderer`，在真实渲染进程里验证 ① 预览/PDF 文字为深色且 PDF 非空 ② 自由板场景卡/灵感卡可拖动 ③ 故事板卡片可拖入指定幕 ④ 新增幕标题为中文数字。结果写 `/tmp/mochang-test-result.json`（通过 X/总 Y）与 `/tmp/mochang-test-log.txt` |
+| `scripts/integration-test.cjs` | **真实 Electron 集成测试**：加载已构建的 `dist-renderer`，在真实渲染进程里验证 ① 预览/PDF 文字为深色且 PDF 非空 ② 自由板场景卡/灵感卡可拖动 ③ 故事板卡片可拖入指定幕 ④ 新增幕标题为中文数字。结果写 `/tmp/guangying-test-result.json`（通过 X/总 Y）与 `/tmp/guangying-test-log.txt` |
 
 `render-test.cjs` 默认加载 `.tmp-app.cjs`（一次性构建的渲染包）；若缺失，先 `npx vite build` 并自行用 esbuild 打包 `src/main.tsx` 为 `.tmp-app.cjs`，或按需调整 `APP_BUNDLE` 环境变量指向 `dist-renderer` 的 bundle。
 
@@ -467,17 +467,17 @@ ln -sfn "$(pwd)" "$RES/app"
 # 3) 用 open -a 启动（不要用 `electron .`，否则会跑成 default_app）
 #    ⚠️ 启动前必须先清掉残留的 Electron 主进程：open -a 会复用已运行的实例，
 #       那只会切回旧窗口 / 旧入口，测试根本不会跑（表现：结果文件一直不生成）。
-pkill -9 -f "zh-screenwriter.*MacOS/Electron"   # ⚠️ 务必带项目路径
+pkill -9 -f "guangying-writer.*MacOS/Electron"   # ⚠️ 务必带项目路径
 open -a "$(pwd)/node_modules/electron/dist/Electron.app"
 #    等待 ~15s（脚本内有多处 sleep，完整跑完 17 项约 15s），读结果：
-cat /tmp/mochang-test-result.json
+cat /tmp/guangying-test-result.json
 
 # 4) 还原（很重要，否则正常启动会跑测试而非软件）
 rm -f "$RES/app"
 #    package.json 改回 "main": "electron/main.js"
 ```
 
-测试通过后会 `process.exit(0)`；任一项失败则 `exit(1)` 并在 `/tmp/mochang-test-log.txt` 给出逐条 ✅/❌。
+测试通过后会 `process.exit(0)`；任一项失败则 `exit(1)` 并在 `/tmp/guangying-test-log.txt` 给出逐条 ✅/❌。
 
 > **⚠️ 运行环境坑（本机必看）**：若启动时报 `Cannot read properties of undefined (reading 'handle')`（即 `ipcMain` 为 `undefined`），是 `require('electron')` 解析到了 npm 包而非运行时模块。根因是环境里预设了 `ELECTRON_RUN_AS_NODE=1`，让 Electron 以纯 Node 模式启动（`process.type` 为 `undefined`）。**解决**：运行前 `unset` 该变量：
 > ```bash
@@ -508,7 +508,7 @@ rm -f "$RES/app"
 `Brokered file token refused: modify backup failed` —— Electron 二进制拷贝被系统拦截。本仓库已改用 `package.sh` 手动组装绕过（§6）。如日后想在 CI 用 `electron-builder` 出 DMG 并公证，需配 `Developer ID` 证书与 `notarize`。
 
 ### 16.6 自动保存在 localStorage
-`App.tsx` 每 ~900ms 把 `project` 写入 `localStorage`（`mojiang:autosave`）。容量上限约 5MB，超长剧本可能写入失败（已 try/catch 忽略）。正式持久化请养成 `⌘S` 存 `.zhsp` 文件的习惯。
+`App.tsx` 每 ~900ms 把 `project` 写入 `localStorage`（`guangying:autosave`）。首次升级会读取旧版本自动保存并迁移，不丢失已有草稿。容量上限约 5MB，超长剧本可能写入失败（已 try/catch 忽略）。正式持久化请养成 `⌘S` 存 `.zhsp` 文件的习惯。
 
 ### 16.7 故事板分组 / 自由板拖拽 / 预览 PDF 文字（一批已修复，留作维护提醒）
 
@@ -541,7 +541,7 @@ rm -f "$RES/app"
 ### 16.9 写作字体颜色（外观设置）
 
 - 写作视图正文颜色由 CSS 变量 `--neon-yellow` 控制（默认荧光黄 `#e9ff3a`，见 `app.css` 的 `:root` 与 `.sc-el--editable`）。用户在「设置 → 外观 → 写作字体颜色」选择预设或用取色器自定义。
-- 这是 **app 级设置，不写入 `.zhsp`**：存在 `localStorage`（`mojiang:fontColor`），由 `store.fontColor` / `setFontColor` 管理；`App.tsx` 用 `useEffect` 把主色及派生的 `--neon-yellow-soft` / `--neon-yellow-glow` 写到 `document.documentElement.style`。派生色一律走 `utils/color.ts` 的 `hexToRgba()`，**不要在 CSS 里写死**，否则换色后发光/占位符颜色对不上。
+- 这是 **app 级设置，不写入 `.zhsp`**：存在 `localStorage`（`guangying:fontColor`），并兼容读取旧版外观设置，由 `store.fontColor` / `setFontColor` 管理；`App.tsx` 用 `useEffect` 把主色及派生的 `--neon-yellow-soft` / `--neon-yellow-glow` 写到 `document.documentElement.style`。派生色一律走 `utils/color.ts` 的 `hexToRgba()`，**不要在 CSS 里写死**，否则换色后发光/占位符颜色对不上。
 - **导出 PDF / 打印始终是黑字**，不受此设置影响（`app.css` 的 `@media print` 强制 `#000`，见 §16.7）。改动此处时别把打印样式一起带进去。
 
 ### 16.10 运行稳定性加固（本次优化，维护时勿撤）
@@ -558,7 +558,7 @@ rm -f "$RES/app"
 
 - **⑤ IPC 文件读写容错** [`electron/main.js` 的 `dialog:open` / `dialog:save` / `dialog:saveAs`]：文件读取、写入均包 `try/catch`，失败时弹错误框并返回 `null`（上层 `useCommands` 的 `save/open` 已 `try/catch` 兜第二次）。避免磁盘满/无权限/文件被占用时 IPC 拒绝导致界面卡死。
 
-- **⑥ 字体色脏值校验** [`src/store/store.ts` 的 `loadFontColor` + `src/App.tsx` 注入处]：`localStorage` 的 `mojiang:fontColor` 用 `utils/color.ts` 的 `isHexColor` 校验，非法值回退默认 `#e9ff3a`；注入 CSS 变量前再校验一次。防止手动改坏 localStorage 后注入非法 `--neon-yellow`，导致写作区字体颜色异常。
+- **⑥ 字体色脏值校验** [`src/store/store.ts` 的 `loadFontColor` + `src/App.tsx` 注入处]：`localStorage` 的字体色用 `utils/color.ts` 的 `isHexColor` 校验，非法值回退默认 `#e9ff3a`；注入 CSS 变量前再校验一次。防止手动改坏 localStorage 后注入非法 `--neon-yellow`，导致写作区字体颜色异常。
 
 - **⑦ 分页引擎除零兜底** [`src/hooks/PaginationProvider.tsx`]：`contentHeightPx` / `lineHeightPx` 在分页计算前 `Math.max(1, …)`，防止纸张/字号/行高被设成 0 时除法得到 `NaN/Infinity`，引发分页死循环或白屏。
 

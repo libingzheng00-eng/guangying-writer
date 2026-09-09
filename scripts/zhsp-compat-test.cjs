@@ -22,6 +22,7 @@ process.on('exit', () => {
 
 function wrap(oldA, extras = {}) {
   return JSON.stringify({
+    // 旧版 app 标识仍必须能被 parseProject 打开；新版保存时会写 guangying-writer。
     app: 'zh-screenwriter',
     fileVersion: 1,
     savedAt: 1,
@@ -103,6 +104,7 @@ function wrap(oldA, extras = {}) {
   // round-trip
   const oldSerialized = serializeProject(loadedOld);
   const oldReparsed = parseProject(oldSerialized);
+  ok('新版保存写入 guangying-writer 标识', JSON.parse(oldSerialized).app === 'guangying-writer');
   ok('round-trip Beat 数量', oldReparsed.beats.length === 2);
   ok('round-trip Beat[0].text', oldReparsed.beats[0].text === '合成卡片甲');
   ok('round-trip Beat[0].color', oldReparsed.beats[0].color === '#FCEBEB');

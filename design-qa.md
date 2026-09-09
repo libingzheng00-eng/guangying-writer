@@ -6,9 +6,9 @@
   - `/var/folders/ln/9kx_scj10zd4zmbznrs9jmj40000gn/T/codex-clipboard-ee408966-4b87-4608-a992-280de47648c9.png`（自由板日间状态，含深色元素类型框和关系备注问题）。
   - `/var/folders/ln/9kx_scj10zd4zmbznrs9jmj40000gn/T/codex-clipboard-bf983461-1caf-42b8-bea5-8d4a9b068da6.png`（设置弹窗日间状态）。
 - 实现截图（Chrome 本地预览、日间模式、756 × 413 CSS 像素）：
-  - `/private/tmp/mochang-ui-alpha12-day.png`：写作页与进度区。
-  - `/private/tmp/mochang-settings-alpha12-day.png`：设置弹窗。
-  - `/private/tmp/mochang-board-note-alpha12-day.png`：自由板关系备注。
+  - `/private/tmp/guangying-ui-alpha12-day.png`：写作页与进度区。
+  - `/private/tmp/guangying-settings-alpha12-day.png`：设置弹窗。
+  - `/private/tmp/guangying-board-note-alpha12-day.png`：自由板关系备注。
 - 所有截图按同一浏览器密度采集；示例工程内容不同，仅比较控件结构、颜色与层级。
 
 ## 比较与修正
@@ -47,8 +47,8 @@ final result: passed
   - `/var/folders/ln/9kx_scj10zd4zmbznrs9jmj40000gn/T/codex-clipboard-93d6e974-da3d-4ff9-8c6c-6ec71218be71.png`
   - `/var/folders/ln/9kx_scj10zd4zmbznrs9jmj40000gn/T/codex-clipboard-20726e9d-c0dc-434e-b22c-0ddc117a2ea1.png`
 - 本地 Chrome 实机截图：
-  - `/private/tmp/mochang-alpha13-writing-day.png`
-  - `/private/tmp/mochang-alpha13-board-day-v2.png`
+  - `/private/tmp/guangying-alpha13-writing-day.png`
+  - `/private/tmp/guangying-alpha13-board-day-v2.png`
 - 已核对：当前页仅显示 `1/100`，手写风格数字跨进度轨道两行居中；自由板顶部三分区和颜色工具区已进入 DOM 并使用日间对比度；卡片关联选择区和关系备注样式已按标注图调整；故事板卡片尺寸规则已放大。
 - 代码级验证：typecheck、build、render、writing、zhsp 兼容、history 全部通过。
 - 备注：Chrome 隔离页中的空白样本没有关系线和灵感卡，因此关系备注与卡片浮动按钮的最终像素位置仍需在含真实自由板卡片的工程中复核；不会读取用户剧本来做此注入。
@@ -60,9 +60,9 @@ final result: passed
 - 用户视觉目标：
   - `/var/folders/ln/9kx_scj10zd4zmbznrs9jmj40000gn/T/codex-clipboard-ff98b052-5139-48fd-91e1-cf86bb4afc8d.png`（日间模式下顶栏、统计、自由板按钮、颜色栏及侧栏顶部对齐问题）。
 - 实现截图（本机隔离 Chrome，日间模式，1440 × 900 CSS 像素，密度 1）：
-  - `/private/tmp/mochang-alpha14-writing-day.png`
-  - `/private/tmp/mochang-alpha14-stats-day.png`
-  - `/private/tmp/mochang-alpha14-board-recolored.png`
+  - `/private/tmp/guangying-alpha14-writing-day.png`
+  - `/private/tmp/guangying-alpha14-stats-day.png`
+  - `/private/tmp/guangying-alpha14-board-recolored.png`
 - 状态：空白样本工程；自由板中单击选中场景卡，再点第一枚颜色按钮。
 
 ### 比较历史与修正

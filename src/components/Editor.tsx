@@ -66,7 +66,7 @@ export function Editor() {
 
   // 仅发送轻量 UI 信号；不改变 React state，避免每次按键让整个编辑器重绘。
   const markTyping = useCallback(() => {
-    window.dispatchEvent(new Event('mochang:typing'));
+    window.dispatchEvent(new Event('guangying:typing'));
   }, []);
 
   const revMap = useMemo(() => {

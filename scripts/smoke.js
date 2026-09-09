@@ -1,12 +1,12 @@
 /**
- * 冒烟测试：无头加载渲染进程，收集控制台错误，并把界面截图写到 /tmp/mojiang-*.png
+ * 冒烟测试：无头加载渲染进程，收集控制台错误，并把界面截图写到 /tmp/guangying-*.png
  * 用法： ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron scripts/smoke.js
  */
 const { app, BrowserWindow } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const OUT = process.env.SMOKE_OUT || '/tmp/mojiang-smoke.png';
+const OUT = process.env.SMOKE_OUT || '/tmp/guangying-smoke.png';
 const WAIT = Number(process.env.SMOKE_WAIT || 6000);
 
 app.disableHardwareAcceleration();
