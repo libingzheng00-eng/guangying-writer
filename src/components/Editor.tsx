@@ -177,9 +177,9 @@ export function Editor() {
         acceptSuggest(true);
         return;
       }
-      if (suggest && (e.key === ' ' || e.key === 'Tab') && suggest.items.length) {
+      if (suggest && e.key === ' ' && suggest.items.length) {
         e.preventDefault();
-        // 空格或 Tab 只确认候选，不生成新行；Tab 绝不会因循环到末尾而自动换行。
+        // 空格只确认候选，不生成新行。Tab 固定留给元素类型循环，避免写作时快捷键失效。
         acceptSuggest(false);
         return;
       }
