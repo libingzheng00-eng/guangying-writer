@@ -2523,6 +2523,7 @@ textarea {
 .writing-material-controls b { display: inline-grid; min-width: 16px; height: 16px; margin-left: 2px; place-items: center; border-radius: 8px; background: rgba(217,180,140,.18); font-size: 9px; font-weight: 650; }
 
 .editor__scroll { position: relative; }
+.editor__scroll.is-image-drop-target::after { content: '松开以添加图片素材'; position: absolute; z-index: 9; inset: 18px; display: grid; place-items: center; pointer-events: none; border: 2px dashed rgba(116,168,208,.72); border-radius: 14px; color: #d8edff; background: rgba(41,85,122,.16); font: 600 14px -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; letter-spacing: .08em; }
 .writing-material-layer { position: absolute; inset: 0; z-index: 7; pointer-events: none; opacity: 1; visibility: visible; transition: opacity 160ms ease, visibility 160ms ease; }
 .writing-material-layer.is-hidden { opacity: 0; visibility: hidden; }
 .writing-material-card { position: absolute; width: 258px; min-height: 122px; padding: 8px; pointer-events: auto; color: #f2f2f7; border: 1px solid rgba(255,255,255,.18); border-radius: 12px; background: linear-gradient(150deg, rgba(217,180,140,.08), transparent 45%), rgba(28,28,38,.70); box-shadow: 0 14px 32px rgba(0,0,0,.38); cursor: grab; -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5); }
@@ -2536,6 +2537,9 @@ textarea {
 .writing-material-card__head button { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #9b9ba4; cursor: pointer; font-size: 17px; line-height: 1; }
 .writing-material-card__head button:hover { background: var(--danger-soft); color: var(--danger); }
 .writing-material-card textarea { display: block; width: 100%; min-height: 76px; padding: 7px 8px; resize: vertical; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; outline: none; background: rgba(0,0,0,.28); color: #f2f2f7; font: 12px/1.6 -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; }
+.writing-material-card--image { width: 290px; }
+.writing-material-card__image { display: block; width: 100%; max-height: 236px; margin-bottom: 7px; border-radius: 8px; object-fit: cover; background: rgba(0,0,0,.22); user-select: none; -webkit-user-drag: none; }
+.writing-material-card--image textarea { min-height: 56px; }
 
 /* 写作不是排版辅助工具：空元素不显示提示字，分页也不在稿纸中留虚线。 */
 .editor .sc-el--editable:hover { background: transparent; }
@@ -2604,6 +2608,7 @@ textarea {
 .app-shell[data-theme='day'] .editor > .write-progress .write-progress__goal input, .app-shell[data-theme='day'] .writing-material-controls button { color: #4c3d32; background: rgba(255,255,255,.72); border-color: rgba(73,61,50,.18); }
 .app-shell[data-theme='day'] .writing-material-card { color: #273640; background: rgba(255,255,255,.88); border-color: rgba(68,89,104,.22); box-shadow: 0 14px 32px rgba(47,64,76,.18); }
 .app-shell[data-theme='day'] .writing-material-card textarea { color: #273640; background: rgba(236,241,244,.82); border-color: rgba(68,89,104,.18); }
+.app-shell[data-theme='day'] .editor__scroll.is-image-drop-target::after { color: #23475f; border-color: rgba(57,119,164,.58); background: rgba(210,233,248,.42); }
 .app-shell[data-theme='day'] .writing-material-card__head input { color: #273640; }
 .app-shell[data-theme='day'] .bcard { color: #273640; border-color: rgba(68,89,104,.20); }
 .app-shell[data-theme='day'] .bcard--scene { background: rgba(255,255,255,.78); }

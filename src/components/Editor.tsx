@@ -42,6 +42,7 @@ export function Editor() {
   const noteMemoryRef = useRef(new Map<string, ElementType>());
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
   const [showSoundCards, setShowSoundCards] = useState(true);
+  const [isImageDropTarget, setIsImageDropTarget] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const selectMode = useStore((s) => s.writingSelectionMode);
@@ -442,11 +443,32 @@ export function Editor() {
   };
 
   const writingSounds = project.beats.filter((b) => (b.kind || 'beat') === 'sound');
+  // 图片只使用统一的 image 卡：自由板可新建，写作页保留“直接拖入照片”的入口。
+  // 这里不能恢复第二套 wimg/“写作图”数据类型，否则旧工程兼容和 PDF 素材页会再次分叉。
+  const writingImages = project.beats.filter((b) => b.kind === 'image');
+  const writingMaterials = [...writingSounds, ...writingImages];
   const addWritingSound = () => {
     const count = writingSounds.length;
     const x = Math.max(24, (scrollRef.current?.clientWidth || 980) - 274);
     const y = 84 + count * 24;
     addBeat(x, y, '', 'sound');
+  };
+
+  const handleImageDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    const image = Array.from(event.dataTransfer.files).find((file) => file.type.startsWith('image/'));
+    setIsImageDropTarget(false);
+    if (!image) return;
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    // 卡片坐标属于 editor__scroll；把落点限制在可见画布内，避免照片拖到边缘后无法找回。
+    const x = Math.max(16, Math.round(event.clientX - bounds.left - 129));
+    const y = Math.max(76, Math.round(event.clientY - bounds.top - 22));
+    const id = addBeat(x, y, '', 'image');
+    const title = image.name.replace(/\.[^.]+$/, '') || '图片素材';
+    updateBeat(id, { title });
+    const reader = new FileReader();
+    reader.onload = () => updateBeat(id, { img: String(reader.result || '') });
+    reader.readAsDataURL(image);
   };
 
   return (
@@ -466,8 +488,21 @@ export function Editor() {
           onAddSound={addWritingSound}
         />
       </ProgressBar>
-      <div className="editor__scroll">
-        <WritingMaterialCards cards={writingSounds} visible={showSoundCards} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
+      <div
+        className={`editor__scroll${isImageDropTarget ? ' is-image-drop-target' : ''}`}
+        onDragOver={(event) => {
+          if (Array.from(event.dataTransfer.types).includes('Files')) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+            setIsImageDropTarget(true);
+          }
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget === event.target) setIsImageDropTarget(false);
+        }}
+        onDrop={handleImageDrop}
+      >
+        <WritingMaterialCards cards={writingMaterials} visible={showSoundCards} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
         {settings.indent && project.titlePage.show ? <TitlePageCard /> : null}
         <div className="script-flow" ref={contentRef} style={columnStyle}>
           {items.map((item, i) => {
@@ -603,7 +638,7 @@ function MaterialControls({
 }
 
 function WritingMaterialCards({ cards, visible, onUpdate, onMove, onDelete }: {
-  cards: Array<{ id: string; x: number; y: number; text: string; title?: string; img?: string }>;
+  cards: Array<{ id: string; x: number; y: number; text: string; title?: string; img?: string; kind?: 'beat' | 'sound' | 'image' }>;
   visible: boolean;
   onUpdate: (id: string, patch: { title?: string; text?: string }) => void;
   onMove: (id: string, x: number, y: number) => void;
@@ -624,14 +659,15 @@ function WritingMaterialCards({ cards, visible, onUpdate, onMove, onDelete }: {
   return (
     <div className={'writing-material-layer' + (visible ? '' : ' is-hidden')} aria-hidden={!visible}>
       {cards.map((card) => (
-        <article key={card.id} className="writing-material-card" style={{ left: card.x, top: card.y }} onPointerDown={(e) => onPointerDown(e, card)} onPointerMove={onPointerMove} onPointerUp={stopDrag}>
+        <article key={card.id} className={`writing-material-card${card.kind === 'image' ? ' writing-material-card--image' : ''}`} style={{ left: card.x, top: card.y }} onPointerDown={(e) => onPointerDown(e, card)} onPointerMove={onPointerMove} onPointerUp={stopDrag}>
           <header className="writing-material-card__head">
-            <span className="writing-material-card__kind" aria-hidden>◌</span>
-            <input value={card.title || ''} placeholder="声音设计" aria-label="声音卡标题" onChange={(e) => onUpdate(card.id, { title: e.target.value, text: e.target.value })} />
+            <span className="writing-material-card__kind" aria-hidden>{card.kind === 'image' ? '▣' : '◌'}</span>
+            <input value={card.title || ''} placeholder={card.kind === 'image' ? '图片素材' : '声音设计'} aria-label={card.kind === 'image' ? '图片卡标题' : '声音卡标题'} onChange={(e) => onUpdate(card.id, { title: e.target.value })} />
             <span className="writing-material-card__drag" title="拖动卡片" aria-hidden>⠿</span>
-            <button type="button" title="删除这张声音卡" aria-label="删除这张声音卡" onClick={() => onDelete(card.id)}>×</button>
+            <button type="button" title={`删除这张${card.kind === 'image' ? '图片' : '声音'}卡`} aria-label={`删除这张${card.kind === 'image' ? '图片' : '声音'}卡`} onClick={() => onDelete(card.id)}>×</button>
           </header>
-          <textarea value={card.text} placeholder="声音、环境、节奏或情绪提示…" aria-label="声音卡内容" onChange={(e) => onUpdate(card.id, { text: e.target.value })} />
+          {card.kind === 'image' && card.img ? <img className="writing-material-card__image" src={card.img} alt={card.title || '图片素材'} draggable={false} /> : null}
+          <textarea value={card.text} placeholder={card.kind === 'image' ? '图片备注、画面灵感或场景提示…' : '声音、环境、节奏或情绪提示…'} aria-label={card.kind === 'image' ? '图片卡备注' : '声音卡内容'} onChange={(e) => onUpdate(card.id, { text: e.target.value })} />
         </article>
       ))}
     </div>
