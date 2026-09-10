@@ -55,14 +55,7 @@ export function caretOffset(root: HTMLElement): number {
   return offsetOf(root, range.endContainer, range.endOffset);
 }
 
-export function isCaretAtStart(root: HTMLElement): boolean {
-  return caretOffset(root) === 0;
-}
 
-export function isCaretAtEnd(root: HTMLElement): boolean {
-  const o = caretOffset(root);
-  return o >= 0 && o >= domLength(root);
-}
 
 function locate(root: HTMLElement, target: number): { node: Node; offset: number } {
   let acc = 0;
@@ -114,10 +107,4 @@ export function splitHtml(root: HTMLElement, offset: number): { before: string; 
   const d2 = document.createElement('div');
   d2.appendChild(r2.cloneContents());
   return { before: d1.innerHTML, after: d2.innerHTML };
-}
-
-/** 判断选区是否跨块（用于禁止跨块选择时的合并操作） */
-export function selectionCollapsed(): boolean {
-  const sel = window.getSelection();
-  return !sel || sel.isCollapsed;
 }

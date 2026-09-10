@@ -1,6 +1,6 @@
 import type { ElementType, ScriptProject } from '../model/types';
 import { newElement } from '../model/project';
-import { plain, toLines, countWords } from '../utils/text';
+import { plain, toLines } from '../utils/text';
 
 const SCENE_RE = /^(\d+[.、．]\s*|[第]\s*[0-9一二三四五六七八九十百]+\s*[场鏡镜]\s*[.、．:-]?\s*)?(内景|外景|内外景|内\/外景|外\/内景|INT|EXT|int|ext|I\/E)[\s.．、:：-]/;
 const TRANSITION_RE = /^(切至|切出|切入|淡入|淡出|叠化|溶至|黑场|白场|淡入淡出|字幕|FADE|CUT TO)[\s]?[：:]?[\s]?[.。]?$/;
@@ -204,8 +204,5 @@ ${body}
 </body></html>`;
 }
 
-export function wordCountOf(p: ScriptProject): number {
-  return p.elements.reduce((n, el) => n + countWords(el.text), 0);
-}
 
 export type { ElementType };

@@ -13,7 +13,7 @@
     "start": "vite build && electron .",
     "electron:dev": "electron .",
     "typecheck": "tsc --noEmit",
-    "pack:mac": "npm run build && bash package.sh",
+    "pack:mac": "bash package.sh",
     "dist": "bash package.sh",
     "test:render": "node scripts/render-test.cjs",
     "test:zhsp": "node scripts/zhsp-compat-test.cjs",

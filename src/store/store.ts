@@ -11,7 +11,7 @@ import type {
   ScriptSettings,
   TitlePage,
 } from '../model/types';
-import { cloneProject, createProject, defaultActs, newElement, deriveScenes } from '../model/project';
+import { cloneProject, createProject, newElement, deriveScenes } from '../model/project';
 import { dualAfterEnter } from '../model/flow';
 import { plain, cnNum } from '../utils/text';
 import { uid } from '../utils/id';
@@ -853,14 +853,7 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 }));
 
-/** 便捷：当前元素 */
-export function useActiveElement(): ScriptElement | null {
-  return useStore((s) => s.project.elements.find((e) => e.id === s.activeId) || null);
-}
 
-export function defaultActsList() {
-  return defaultActs();
-}
 
 /**
  * 把第 from 个场景（连同其后续元素）整体移动到第 to 个场景的位置，直接修改 p.elements。

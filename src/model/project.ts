@@ -2,7 +2,6 @@ import type {
   Act,
   ElementType,
   Scene,
-  SceneMeta,
   ScriptElement,
   ScriptProject,
   ScriptSettings,
@@ -13,7 +12,6 @@ import { uid } from '../utils/id';
 import { plain, stripSceneNumber } from '../utils/text';
 
 export const FILE_VERSION = 1;
-export const FILE_EXT = 'zhsp';
 
 export function defaultSettings(): ScriptSettings {
   return {
@@ -93,20 +91,6 @@ export function defaultActs(): Act[] {
 /* 场景派生：场景由 scene_heading 元素派生，保证场号与正文一致          */
 /* --------------------------------------------------------------- */
 
-export function metaFor(project: ScriptProject, elementId: string): SceneMeta {
-  let m = project.sceneMeta.find((s) => s.elementId === elementId);
-  if (!m) {
-    m = {
-      id: uid('sc'),
-      elementId,
-      title: '',
-      synopsis: '',
-      color: CARD_COLORS[0],
-    };
-    project.sceneMeta.push(m);
-  }
-  return m;
-}
 
 export function deriveScenes(project: ScriptProject): Scene[] {
   const out: Scene[] = [];
@@ -142,17 +126,7 @@ export function deriveScenes(project: ScriptProject): Scene[] {
   return out;
 }
 
-export function sceneNumberText(project: ScriptProject, index: number): string {
-  const n = String(index + 1);
-  const p = project.settings.sceneNumberPrefix || '';
-  return p ? `${p}${n}` : n;
-}
 
-/** 场景标题文本（不含自动编号） */
-export function headingText(project: ScriptProject, elementId: string): string {
-  const el = project.elements.find((e) => e.id === elementId);
-  return el ? plain(el.text).trim() : '';
-}
 
 /* --------------------------------------------------------------- */
 /* 角色派生                                                          */
@@ -173,11 +147,6 @@ export function normalizeName(raw: string): string {
   return s;
 }
 
-export function isCharacterName(raw: string): boolean {
-  const s = normalizeName(raw);
-  if (!s || s.length > 20) return false;
-  return true;
-}
 
 export function deriveCharacters(project: ScriptProject): CharacterStat[] {
   const map = new Map<string, CharacterStat>();
