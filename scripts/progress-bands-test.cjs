@@ -1,0 +1,38 @@
+/** 场景条红线：目标未完成时必须留白，不能被 flex-grow / 最小宽度撑满。 */
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const Module = require('node:module');
+(async () => {
+  const root = path.resolve(__dirname, '..');
+  const bundle = await require('esbuild').build({ entryPoints: [path.join(root, 'src/model/progress.ts')], bundle: true, write: false, platform: 'node', format: 'cjs' });
+  const mod = new Module(__filename, module);
+  mod.paths = module.paths;
+  mod._compile(bundle.outputFiles[0].text, __filename);
+  const { sceneBandPercent } = mod.exports;
+  assert.deepEqual(sceneBandPercent(75, 1, 100), { targetPct: .75, renderPct: .75 });
+  assert.deepEqual(sceneBandPercent(25, 1, 100), { targetPct: .25, renderPct: .25 });
+  assert.equal([75,25].reduce((sum,pct) => sum + sceneBandPercent(pct,1,100).renderPct,0), 1, '1/100 页的场景总宽只能是1%');
+  assert.deepEqual(sceneBandPercent(75,100,100), { targetPct:75,renderPct:75 });
+  assert.deepEqual(sceneBandPercent(75,150,100), { targetPct:112.5,renderPct:75 });
+  assert.deepEqual(sceneBandPercent(25,150,100), { targetPct:37.5,renderPct:25 });
+  assert.deepEqual(sceneBandPercent(25,0,100), { targetPct:0,renderPct:0 });
+  assert.deepEqual(sceneBandPercent(25,1,0), { targetPct:25,renderPct:25 });
+  assert.deepEqual(sceneBandPercent(NaN,1,100), { targetPct:0,renderPct:0 });
+  assert.deepEqual(sceneBandPercent(150,1,100), { targetPct:1,renderPct:1 });
+  assert.deepEqual(sceneBandPercent(-5,1,100), { targetPct:0,renderPct:0 });
+  const component = fs.readFileSync(path.join(root,'src/components/ProgressBar.tsx'),'utf8');
+  const css = fs.readFileSync(path.join(root,'src/styles/progress-bands.css'),'utf8');
+  const main = fs.readFileSync(path.join(root,'src/main.tsx'),'utf8');
+  assert.ok(component.includes('flex: `0 0 ${renderPct}%`'), '不允许 flex-grow 重新瓜分目标留白');
+  assert.match(css,/min-width:\s*0/);
+  assert.match(css,/padding:\s*0/);
+  assert.match(css,/border:\s*0/);
+  assert.match(css,/@media screen/);
+  assert.ok(main.indexOf('progress-bands.css') > main.indexOf('studio.css'));
+  assert.ok(component.includes("requestFocus(scene.elementId, 'start', 'start')"), '保留既有精确场标题跳转');
+  assert.match(css,/grid-template-columns:\s*max-content minmax\(160px, 1fr\) max-content/, '页数使用实际内容宽度');
+  assert.match(css,/font-family:\s*"Snell Roundhand"/, '使用本机英式圆手体');
+  assert.ok(!/[;{]\s*(?:height|min-height|grid-template-rows)\s*:/.test(css), '不能改变顶栏总高度或网格行几何');
+  console.log('progress-bands: 21 checks passed');
+})().catch(error => { console.error(error); process.exitCode = 1; });

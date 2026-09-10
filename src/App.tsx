@@ -17,6 +17,7 @@ import { parseProject } from './io/zhsp';
 import { sampleProject } from './model/sample';
 import { hexToRgba } from './utils/color';
 import { resolveFontColor } from './model/appearance';
+import { subscribeAutosave } from './app/autosaveSubscription';
 
 // 新名称使用独立键；读取旧键一次，确保升级后不会丢失已有自动保存。
 const LS_KEY = 'guangying:autosave';
@@ -29,7 +30,6 @@ export default function App() {
   const appTheme = useStore((s) => s.appTheme);
   // 只订阅窗口标题真正需要的字段；避免每次打字都让整个 App 树重新渲染。
   const projectName = useStore((s) => s.project.name);
-  const version = useStore((s) => s.version);
   const [dialog, setDialog] = useState<null | 'settings' | 'title'>(null);
   const commands = useCommands();
   // 与工作台共用纯色背景；仅改变显示，不改变稿纸或素材的坐标。
@@ -57,16 +57,13 @@ export default function App() {
   }, []);
 
   /* 自动保存到本地 */
-  useEffect(() => {
-    const t = setTimeout(() => {
+  useEffect(() => subscribeAutosave(useStore, (saved) => {
       try {
-        localStorage.setItem(LS_KEY, JSON.stringify({ project: useStore.getState().project, filePath: useStore.getState().filePath }));
+        localStorage.setItem(LS_KEY, JSON.stringify(saved));
       } catch {
         /* 忽略容量问题 */
       }
-    }, 900);
-    return () => clearTimeout(t);
-  }, [version]);
+  }), []);
 
   useEffect(() => {
     document.title = `${projectName} · 光影写手`;

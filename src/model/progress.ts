@@ -52,6 +52,17 @@ export interface SceneBand {
   pct: number;
 }
 
+/** 显示比例契约：目标未完成时不能把剩余空白分给场景；超目标才按当前稿归一。
+ * 与统计页词字数分析是不同口径，这里保留现有预计行数权重，不改变分页。
+ */
+export function sceneBandPercent(scenePct: number, writtenPages: number, target: number) {
+  const pct = Number.isFinite(scenePct) ? Math.max(0, Math.min(100, scenePct)) : 0;
+  const written = Number.isFinite(writtenPages) ? Math.max(0, writtenPages) : 0;
+  const goal = Number.isFinite(target) ? Math.max(0, target) : 0;
+  const targetPct = goal > 0 ? pct * written / goal : pct;
+  return { targetPct, renderPct: goal > 0 && written <= goal ? targetPct : pct };
+}
+
 /**
  * 计算每个场景的预计行数与占比。
  * - 不写入 project；

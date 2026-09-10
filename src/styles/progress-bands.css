@@ -1,0 +1,50 @@
+/* 写作进度栏的屏幕呈现；不改写作画布、进度栏高度、分页或素材位置。 */
+@media screen {
+  /* 页数按内容取宽，不能再用94px固定列和旧min-width挤压标尺。
+     Snell Roundhand为macOS本机英式圆手体，仅引用字体，不分发系统字体文件。 */
+  .app-shell[data-theme] .editor > .write-progress {
+    grid-template-columns: max-content minmax(160px, 1fr) max-content;
+    column-gap: 18px;
+    padding-inline: 18px;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__label {
+    min-width: 0;
+    padding-inline: 3px;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__value {
+    font-family: "Snell Roundhand", "Apple Chancery", "Segoe Script", cursive;
+    font-size: 23px;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0;
+    white-space: nowrap;
+    align-items: baseline;
+    -webkit-text-stroke: 0;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__value strong {
+    font-family: inherit;
+    font-size: 28px;
+    font-weight: 600;
+  }
+  .app-shell[data-theme] .editor > .write-progress :is(.write-progress__divider, .write-progress__target) {
+    font-family: inherit;
+    font-size: 22px;
+    font-weight: 500;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__goal { padding-left: 0; gap: 6px; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__tools { gap: 4px; }
+  @media (max-width: 1100px) {
+    .app-shell[data-theme] .editor > .write-progress { column-gap: 12px; padding-inline: 12px; }
+  }
+  .editor > .write-progress .write-progress__scenes { position: relative; }
+  .editor > .write-progress .write-progress__scene {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: inset -1px 0 rgba(0, 0, 0, .18);
+    box-sizing: border-box;
+    justify-content: flex-start;
+  }
+  .editor > .write-progress .write-progress__scene-no { margin-left: 2px; }
+  .editor > .write-progress .write-progress__over { position: absolute; right: 0; top: 0; pointer-events: none; }
+}

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store/store';
 import { deriveScenes } from '../model/project';
 import { CARD_COLORS } from '../model/elements';
-import { clampSize, sizeLimitFor, sceneEndpoint, beatEndpoint, FALLBACK_CARD_W, FALLBACK_SCENE_H, FALLBACK_BEAT_H } from '../model/board';
+import { clampSize, sizeLimitFor, sceneEndpoint, beatEndpoint, FALLBACK_CARD_W, FALLBACK_BEAT_H } from '../model/board';
 import { cardCenters, marqueeSel } from '../model/selection';
 import type { Beat, BoardLink, Scene } from '../model/types';
 
@@ -11,6 +11,8 @@ type Filter = 'both' | 'scenes' | 'beats';
 const CARD_W = 220;
 const CARD_GAP_X = 260;
 const CARD_GAP_Y = 224;
+// 只改变自由板未设尺寸的卡片显示；不写工程、不改变共用尺寸或写作素材布局。
+const SCENE_DISPLAY_H = 150;
 
 function autoPos(index: number): { x: number; y: number } {
   const col = index % 4;
@@ -50,10 +52,26 @@ export function BoardView() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [filter, setFilter] = useState<Filter>('both');
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
+  const [showGrid, setShowGrid] = useState(true);
 
   // 提前声明 showScenes / showBeats：useEffect 内闭包依赖它们，避免 TDZ 错误
   const showScenes = filter !== 'beats';
   const showBeats = filter !== 'scenes';
+  // 红线：子板块是显示过滤，不删除关系数据；隐藏卡片不能参与范围选、改色或批量删除。
+  const visibleIds = useMemo(() => [
+    ...(showScenes ? scenes.map((s) => `scene:${s.elementId}`) : []),
+    ...(showBeats ? project.beats.map((b) => `beat:${b.id}`) : []),
+  ], [showScenes, showBeats, scenes, project.beats]);
+  const visibleIdSet = useMemo(() => new Set(visibleIds), [visibleIds]);
+  const visibleSelectedIds = useMemo(() => visibleIds.filter((id) =>
+    selectedIds.includes(id) || selectedIds.includes(id.slice(id.indexOf(':') + 1))), [visibleIds, selectedIds]);
+  const changeFilter = (next: Filter) => {
+    setFilter(next);
+    const ids = visibleSelectedIds.filter((id) => next === 'both' || (next === 'scenes' ? id.startsWith('scene:') : id.startsWith('beat:')));
+    setSelectedIds(ids);
+    setLinkFrom(null);
+    lastAnchorRef.current = null;
+  };
 
   const canvasRef = useRef<HTMLDivElement>(null);
   // 拖拽状态：{ mode: 'card'|'beat'|'pan'|'resize'|'marquee', id, sx, sy, ox, oy, ow, oh, kind, moved, node?, marqueeRect?, marqueeAdditive? }
@@ -119,10 +137,7 @@ export function BoardView() {
       }
       if (e.shiftKey) {
         // 范围选择：把 scenes / beats 拼成有顺序的列表，按锚点 + target 选连续区间
-        const ordered = [
-          ...scenes.map((s) => `scene:${s.elementId}`),
-          ...project.beats.map((b) => `beat:${b.id}`),
-        ];
+        const ordered = visibleIds;
         const anchor = lastAnchorRef.current;
         selectRange(ordered, anchor, selectionId);
         lastAnchorRef.current = selectionId;
@@ -232,7 +247,7 @@ export function BoardView() {
                 x,
                 y,
                 w: sc.w ?? FALLBACK_CARD_W,
-                h: sc.h ?? FALLBACK_SCENE_H,
+                h: sc.h ?? SCENE_DISPLAY_H,
               });
             });
           }
@@ -248,7 +263,7 @@ export function BoardView() {
             });
           }
           const additive = !!d.marqueeAdditive;
-          setSelectedIds(marqueeSel([], cardCenters(visibleCards), wx1, wy1, wx2 - wx1, wy2 - wy1, additive, selectedIds));
+          setSelectedIds(marqueeSel([], cardCenters(visibleCards), wx1, wy1, wx2 - wx1, wy2 - wy1, additive, visibleSelectedIds));
         }
         setMarquee(null);
       }
@@ -260,7 +275,21 @@ export function BoardView() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [zoom, scenes, requestFocus, setView, setScenePos, moveBeat, resizeBeat, resizeSceneMeta, project.beats, selectedIds, toggleSelection, setSelectedIds, showScenes, showBeats]);
+  }, [zoom, scenes, requestFocus, setView, setScenePos, moveBeat, resizeBeat, resizeSceneMeta, project.beats, visibleSelectedIds, toggleSelection, setSelectedIds, showScenes, showBeats]);
+
+  const deleteVisibleCards = useCallback((ids: string[]) => {
+    const targets = ids.filter((id) => visibleIdSet.has(id));
+    if (!targets.length) return;
+    const sceneCount = targets.filter((id) => id.startsWith('scene:')).length;
+    // 场景卡不是副本：必须在任何删除入口说明会删除整场正文，取消不变选择/正文/历史。
+    if (sceneCount && !window.confirm(`删除 ${sceneCount} 场完整戏？这会删除这些场景的正文和故事信息，并清理相关连线；关联素材会保留并解除关联。${targets.length > sceneCount ? `同时删除 ${targets.length - sceneCount} 张所选素材卡。` : ''}\n可用撤销恢复。`)) return;
+    setSelectedIds(targets);
+    const removed = deleteSelectedBoardCards();
+    if (removed.scenes || removed.beats) {
+      const parts = [removed.scenes ? `${removed.scenes} 场` : '', removed.beats ? `${removed.beats} 张卡片` : ''].filter(Boolean);
+      notify(`已删除 ${parts.join('、')}`, 'ok');
+    }
+  }, [visibleIdSet, setSelectedIds, deleteSelectedBoardCards, notify]);
 
   /* ⌫ / Delete → 批量删除选中的场景与卡片；正文场景删除可由撤销恢复。 */
   useEffect(() => {
@@ -270,36 +299,26 @@ export function BoardView() {
       const tgt = e.target as HTMLElement | null;
       if (tgt) {
         const tag = tgt.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tgt.isContentEditable) return;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tgt.isContentEditable) return;
       }
       if (e.key !== 'Backspace' && e.key !== 'Delete') return;
-      const ids = useStore.getState().selectedIds;
+      const ids = visibleSelectedIds;
       if (!ids || ids.length === 0) return;
       e.preventDefault();
-      const removed = useStore.getState().deleteSelectedBoardCards();
-      if (removed.scenes || removed.beats) {
-        const parts = [removed.scenes ? `${removed.scenes} 场` : '', removed.beats ? `${removed.beats} 张卡片` : ''].filter(Boolean);
-        notify(`已删除 ${parts.join('、')}`, 'ok');
-      }
+      deleteVisibleCards(ids);
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [view, notify]);
+  }, [view, visibleSelectedIds, deleteVisibleCards]);
 
   const deleteSelected = () => {
-    const removed = deleteSelectedBoardCards();
-    if (removed.scenes || removed.beats) {
-      const parts = [removed.scenes ? `${removed.scenes} 场` : '', removed.beats ? `${removed.beats} 张卡片` : ''].filter(Boolean);
-      notify(`已删除 ${parts.join('、')}`, 'ok');
-    }
+    deleteVisibleCards(visibleSelectedIds);
   };
 
   const deleteSceneCard = (elementId: string) => {
-    setSelectedIds([`scene:${elementId}`]);
-    const removed = useStore.getState().deleteSelectedBoardCards();
-    if (removed.scenes) notify(`已删除 ${removed.scenes} 场`, 'ok');
+    deleteVisibleCards([`scene:${elementId}`]);
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
@@ -343,48 +362,42 @@ export function BoardView() {
   const endpoints = useMemo(() => {
     const out = new Map<string, { x: number; y: number }>();
     scenes.forEach((scene, index) => {
-      // scene.x / scene.y 缺省时按 autoPos 兜底；w / h 缺省时按 FALLBACK_* 兜底
-      // （详见 src/model/board.ts 的 sceneEndpoint 纯函数）。
+      // 与本视图实际显示一致：无尺寸场景只在这里使用150px高度，不改旧工程字段。
       const fallback = autoPos(index);
-      out.set(`scene:${scene.elementId}`, sceneEndpoint(scene, fallback));
+      out.set(`scene:${scene.elementId}`, sceneEndpoint({ ...scene, h: scene.h ?? SCENE_DISPLAY_H }, fallback));
     });
     project.beats.forEach((beat) => {
       out.set(`beat:${beat.id}`, beatEndpoint(beat));
     });
     return out;
   }, [scenes, project.beats]);
-  const boardLinks = (project.boardLinks || []).filter((link) => endpoints.has(link.from) && endpoints.has(link.to));
+  const boardLinks = (project.boardLinks || []).filter((link) => visibleIdSet.has(link.from) && visibleIdSet.has(link.to));
   const onCardLink = (endpoint: string) => {
     if (!linkFrom) {
       setLinkFrom(endpoint);
       return;
     }
-    if (linkFrom !== endpoint) addBoardLink(linkFrom, endpoint);
+    if (linkFrom !== endpoint && visibleIdSet.has(linkFrom) && visibleIdSet.has(endpoint)) addBoardLink(linkFrom, endpoint);
     setLinkFrom(null);
   };
   const applySelectedColor = (color: string) => {
-    selectedIds.forEach((id) => {
+    visibleSelectedIds.forEach((id) => {
       if (id.startsWith('scene:')) updateSceneMeta(id.slice(6), { color });
       if (id.startsWith('beat:')) updateBeat(id.slice(5), { color });
-      // 兼容本轮修复前已存在于内存中的无前缀选中值；选中态本身不写入工程文件。
-      if (!id.includes(':')) {
-        if (scenes.some((scene) => scene.elementId === id)) updateSceneMeta(id, { color });
-        if (project.beats.some((beat) => beat.id === id)) updateBeat(id, { color });
-      }
     });
   };
 
   return (
-    <div className="board">
+    <div className="board board--polished">
       <div className="board__bar">
         <div className="segmented board__subtabs" role="tablist" aria-label="自由板子板块">
-          <button role="tab" aria-selected={filter === 'both'} className={filter === 'both' ? 'is-active' : ''} onClick={() => setFilter('both')}>
+          <button role="tab" aria-selected={filter === 'both'} className={filter === 'both' ? 'is-active' : ''} onClick={() => changeFilter('both')}>
             总览
           </button>
-          <button role="tab" aria-selected={filter === 'scenes'} className={filter === 'scenes' ? 'is-active' : ''} onClick={() => setFilter('scenes')}>
+          <button role="tab" aria-selected={filter === 'scenes'} className={filter === 'scenes' ? 'is-active' : ''} onClick={() => changeFilter('scenes')}>
             场景板
           </button>
-          <button role="tab" aria-selected={filter === 'beats'} className={filter === 'beats' ? 'is-active' : ''} onClick={() => setFilter('beats')}>
+          <button role="tab" aria-selected={filter === 'beats'} className={filter === 'beats' ? 'is-active' : ''} onClick={() => changeFilter('beats')}>
             灵感板
           </button>
         </div>
@@ -396,24 +409,24 @@ export function BoardView() {
                   key={color}
                   type="button"
                   style={{ backgroundColor: color }}
-                  disabled={!selectedIds.length}
-                  title={selectedIds.length ? `设为颜色 ${index + 1}` : '先选中卡片'}
+                  disabled={!visibleSelectedIds.length}
+                  title={visibleSelectedIds.length ? `设为颜色 ${index + 1}` : '先选中卡片'}
                   aria-label={`卡片颜色 ${index + 1}`}
                   onClick={() => applySelectedColor(color)}
                 />
               ))}
           </div>
           {linkFrom ? <button className="btn btn--ghost board__link-state" onClick={() => setLinkFrom(null)}>选择另一张卡片连接 · 取消</button> : null}
-          {selectedIds.length ? (
+          {visibleSelectedIds.length ? (
             <span className="board__selection-status" aria-live="polite">
-              已选 {selectedIds.length}
+              已选 {visibleSelectedIds.length}
             </span>
           ) : null}
         </div>
         <div className="board__actions">
-          {selectedIds.length ? (
+          {visibleSelectedIds.length ? (
             <button className="btn btn--danger" onClick={deleteSelected} title="删除选中的场景或卡片（可用撤销恢复）">
-              删除所选
+              {visibleSelectedIds.some((id) => id.startsWith('scene:')) ? '删除所选（含整场）' : '删除所选'}
             </button>
           ) : null}
           <button className="btn btn--ghost" onClick={addSceneCard}>
@@ -444,6 +457,7 @@ export function BoardView() {
             </button>
           </div>
           <div className="zoom-ctl">
+          <button className="btn btn--ghost board__grid-toggle" aria-pressed={showGrid} title="只显示参考网格，不吸附或移动卡片" onClick={() => setShowGrid((value) => !value)}>网格</button>
           <button className="icon-btn" onClick={() => setZoom((z) => Math.max(0.4, z - 0.1))}>
             －
           </button>
@@ -460,6 +474,8 @@ export function BoardView() {
 
       <div
         className="board__canvas"
+        data-grid={showGrid ? 'on' : 'off'}
+        style={{ backgroundSize: `${28 * zoom}px ${28 * zoom}px`, backgroundPosition: `${pan.x}px ${pan.y}px` }}
         ref={canvasRef}
         onWheel={onWheel}
         onMouseDown={onCanvasMouseDown}
@@ -574,12 +590,12 @@ function SceneCard({ scene, pos, linking, onLink, onOpen, onDelete, onChangeSyno
       data-id={scene.elementId}
       data-kind="scene"
       className={`bcard bcard--scene ${scene.omit ? 'is-omit' : ''} ${selected ? 'is-selected' : ''}`}
-      style={{ left: pos.x, top: pos.y, '--scene-color': scene.color, width: scene.w, height: scene.h } as React.CSSProperties}
+      style={{ left: pos.x, top: pos.y, '--scene-color': scene.color, width: scene.w, height: scene.h ?? SCENE_DISPLAY_H } as React.CSSProperties}
       onDoubleClick={(e) => { e.stopPropagation(); onOpen(); }}
     >
       <div className="bcard__head">
         <span className="bcard__no">{scene.number}</span>
-        <span className="bcard__actions"><span className="bcard__tag">场</span><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onLink} title="连接到另一张卡片">↗</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除整场（可撤销）" aria-label="删除整场">×</button></span>
+        <span className="bcard__actions" onDoubleClick={(e) => e.stopPropagation()}><button className={`bcard__connect ${linking ? 'is-active' : ''}`} aria-pressed={linking} onMouseDown={(e) => e.stopPropagation()} onClick={onLink} title="连接到另一张卡片">连接</button><button className="bcard__del bcard__del-scene" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除整场正文与故事信息（可撤销）" aria-label="删除整场">删除整场</button></span>
       </div>
       <div className="bcard__title">{scene.title || scene.heading || '（未命名场景）'}</div>
       {/* 与大纲/故事板共用 synopsis；空白不能拿标题填充，也不能把编辑手势当卡片拖动。 */}
@@ -642,7 +658,7 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
     >
       <div className="bcard__head">
         {(isSound || isMedia) ? <span className={`bcard__tag bcard__tag--${kind}`}>{isSound ? '声音' : '图片'}</span> : null}
-        <span className="bcard__actions"><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onBoardLink} title="连接到另一张卡片">↗</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除">×</button></span>
+        <span className="bcard__actions" onDoubleClick={(e) => e.stopPropagation()}><button className={`bcard__connect ${linking ? 'is-active' : ''}`} aria-pressed={linking} onMouseDown={(e) => e.stopPropagation()} onClick={onBoardLink} title="连接到另一张卡片">连接</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除卡片" aria-label="删除卡片">×</button></span>
       </div>
       <div className="bcard__body">
         {hasMedia ? (

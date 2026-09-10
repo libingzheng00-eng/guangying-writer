@@ -13,6 +13,7 @@ import type {
 } from '../model/types';
 import { cloneProject, createProject, newElement, deriveScenes } from '../model/project';
 import { dualAfterEnter } from '../model/flow';
+import { moveStoryboardScenes, type StoryboardPlacement } from '../model/storyboard';
 import { plain, cnNum } from '../utils/text';
 import { uid } from '../utils/id';
 import { DEFAULT_FONT_COLOR, normalizeFontColor } from '../model/appearance';
@@ -122,6 +123,7 @@ interface StoreState {
   moveSceneTo: (from: number, to: number) => void;
   /** 故事板拖拽落位：移动场景并归入目标幕，一次操作只产生一条撤销记录 */
   dropSceneInAct: (from: number, to: number, elementId: string, actId?: string) => void;
+  moveScenesToAct: (ids: string[], actId?: string, placement?: StoryboardPlacement) => void;
   addSceneAfter: (elementId: string) => void;
   /** 删除场景标题及其后续正文，连同场景卡元数据；可由 undo 恢复。 */
   deleteScene: (elementId: string) => boolean;
@@ -195,6 +197,32 @@ function loadAppTheme(): AppTheme {
   } catch { return 'night'; }
 }
 let lastCoalesce: { key: string; ts: number } | null = null;
+
+/** Both immutable text edits and generic mutations use the same history boundary.
+ * `next` must be a new project owned by the caller; never mutate a saved snapshot.
+ */
+function projectChange(state: StoreState, next: ScriptProject, opts?: MutateOptions) {
+  const history = opts?.history !== false;
+  const now = Date.now();
+  next.updatedAt = now;
+  let shouldPush = history;
+  if (history && opts?.coalesce) {
+    if (lastCoalesce && lastCoalesce.key === opts.coalesce && now - lastCoalesce.ts < 1500) {
+      shouldPush = false;
+    }
+    lastCoalesce = { key: opts.coalesce, ts: now };
+  } else {
+    // 非历史更新也是操作边界；不得合并前后的编辑 / resize。
+    lastCoalesce = null;
+  }
+  return {
+    project: next,
+    dirty: true,
+    version: state.version + 1,
+    past: shouldPush ? [...state.past, state.project].slice(-HISTORY_LIMIT) : state.past,
+    future: history ? [] : state.future,
+  };
+}
 
 export const useStore = create<StoreState>((set, get) => ({
   project: createProject(),
@@ -286,37 +314,16 @@ export const useStore = create<StoreState>((set, get) => ({
   markSaved: (path) => set({ filePath: path, dirty: false }),
 
   mutate: (fn, opts) => {
-    const { project, past } = get();
+    const { project } = get();
     const next = cloneProject(project);
     fn(next);
-    const history = opts?.history !== false;
     // 组件可能在每次输入事件都调用 mutate；没有实际数据变化时不应制造
     // 撤销点、清空重做栈或把 dirty 标成 true。
     if (JSON.stringify(next) === JSON.stringify(project)) {
       lastCoalesce = null;
       return;
     }
-    next.updatedAt = Date.now();
-    let shouldPush = history;
-    if (history && opts?.coalesce) {
-      const now = Date.now();
-      if (lastCoalesce && lastCoalesce.key === opts.coalesce && now - lastCoalesce.ts < 1500) {
-        shouldPush = false;
-      }
-      lastCoalesce = { key: opts.coalesce, ts: now };
-    } else if (history) {
-      lastCoalesce = null;
-    } else {
-      // 非历史状态更新也是一次操作边界，不能与前后的 resize 合并。
-      lastCoalesce = null;
-    }
-    set({
-      project: next,
-      dirty: true,
-      version: get().version + 1,
-      past: shouldPush ? [...past, project].slice(-HISTORY_LIMIT) : past,
-      future: history ? [] : get().future,
-    });
+    set(projectChange(get(), next, opts));
   },
 
   undo: () => {
@@ -400,13 +407,19 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   setText: (id, text) => {
-    get().mutate(
-      (p) => {
-        const el = p.elements.find((e) => e.id === id);
-        if (el) el.text = text;
-      },
-      { coalesce: `text:${id}` },
-    );
+    const state = get();
+    const { project } = state;
+    const index = project.elements.findIndex((e) => e.id === id);
+    if (index < 0 || project.elements[index].text === text) {
+      // 与 mutate 的 no-op 完全一致：保留 redo/dirty/version，只切断合并窗口。
+      lastCoalesce = null;
+      return;
+    }
+    // 输入性能红线：只复制元素列表和当前段落，禁止每个字 JSON 复制整个工程。
+    // 未改段落 / 图片 / 设置保持引用；后续通用 mutate 仍深拷贝，保护撤销快照。
+    const elements = project.elements.slice();
+    elements[index] = { ...elements[index], text };
+    set(projectChange(state, { ...project, elements }, { coalesce: `text:${id}` }));
   },
 
   removeElement: (id) => {
@@ -523,18 +536,16 @@ export const useStore = create<StoreState>((set, get) => ({
    * 必须合并为一次 mutate —— 若拆成 moveSceneTo + updateSceneMeta 两次调用，
    * 会产生两条撤销记录，用户按一次 Cmd+Z 只能回退一半（表现为「撤销不了」）。
    */
-  dropSceneInAct: (from, to, elementId, actId) => {
-    get().mutate((p) => {
-      moveSceneBlock(p, from, to);
-      let m = p.sceneMeta.find((s) => s.elementId === elementId);
-      if (!m) {
-        m = { id: uid('sc'), elementId, title: '', synopsis: '', color: '#cfe4ff' };
-        p.sceneMeta.push(m);
-      }
-      if (actId) m.actId = actId;
-      else delete m.actId;
-    });
+  dropSceneInAct: (_from, to, elementId, actId) => {
+    // 旧调用兼容；未归幕的新契约是只解除归属，不移动正文。
+    const scenes = deriveScenes(get().project);
+    if (!Number.isInteger(to)) return;
+    const target = scenes[to];
+    get().moveScenesToAct([elementId], actId,
+      actId && target?.actId === actId ? { targetId: target.elementId, edge: 'before' } : undefined);
   },
+
+  moveScenesToAct: (ids, actId, placement) => get().mutate(p => moveStoryboardScenes(p, ids, actId, placement)),
 
   addSceneAfter: (elementId) => {
     const { insertAfter, project } = get();
@@ -858,7 +869,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
 /**
  * 把第 from 个场景（连同其后续元素）整体移动到第 to 个场景的位置，直接修改 p.elements。
- * 抽成纯函数，供 moveSceneTo 与 dropSceneInAct 复用。
+ * 供既有 moveSceneTo 使用；故事板的插入边界语义在 dropSceneInAct 单独处理。
  */
 function moveSceneBlock(p: ScriptProject, from: number, to: number) {
   // 找到第 from 个与第 to 个 scene_heading，整体移动该场景的区块

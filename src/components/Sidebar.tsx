@@ -87,7 +87,7 @@ function NavigatorPanel() {
               <span className="nav-item__text">
                 <span className="nav-item__heading">{s.title || s.heading || '（未命名场景）'}</span>
                 <span className="nav-item__sub">
-                  {s.heading || '—'} · 第 {pageOf[s.elementId] !== undefined ? pageOf[s.elementId] + 1 : '?'} 页
+                  第 {pageOf[s.elementId] !== undefined ? pageOf[s.elementId] + 1 : '?'} 页 · {project.acts.find((act) => act.id === s.actId)?.title || '未归幕'}
                 </span>
               </span>
             </button>
