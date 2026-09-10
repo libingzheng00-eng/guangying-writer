@@ -13,6 +13,8 @@
   .board--polished .bcard__head {
     min-height: 28px;
     flex-shrink: 0;
+    gap: 6px;
+    margin-bottom: 6px;
   }
   .board--polished .bcard__head .bcard__actions {
     position: static;
@@ -20,14 +22,62 @@
     gap: 4px;
     flex-shrink: 0;
   }
-  .board--polished .bcard__connect,
-  .board--polished .bcard__del-scene {
-    width: auto;
-    min-width: 40px;
-    height: 28px;
-    padding: 0 5px;
-    font-size: 11px;
-    white-space: nowrap;
+  .app-shell[data-theme] .board--polished .bcard__actions {
+    background: transparent;
+  }
+  .board--polished .bcard__actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0;
+    opacity: .55;
+    transition: opacity .12s ease;
+  }
+  .board--polished .bcard:hover .bcard__actions button,
+  .board--polished .bcard.is-selected .bcard__actions button,
+  .board--polished .bcard:focus-within .bcard__actions button,
+  .board--polished .bcard__actions button.is-active {
+    opacity: 1;
+  }
+  .board--polished .bcard__actions button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .board--polished .bcard__head .bcard__title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.35;
+  }
+  .board--polished .bcard__no { flex-shrink: 0; }
+  /* 只淡染自由板；不改保存尺寸、坐标、连线端点或写作素材。 */
+  .app-shell[data-theme] .board--polished .bcard--scene {
+    background: color-mix(in srgb, var(--scene-color) 18%, var(--glass-bg));
+    border-top-color: transparent;
+    box-shadow: var(--card-glow);
+  }
+  .app-shell[data-theme='day'] .board--polished .bcard--scene {
+    background: color-mix(in srgb, var(--scene-color) 55%, var(--glass-bg));
+  }
+  .app-shell[data-theme] .board--polished .bcard__scene-notes {
+    background: color-mix(in srgb, var(--control-bg) 35%, transparent);
+    border-color: color-mix(in srgb, var(--border) 55%, transparent);
+  }
+  .app-shell[data-theme] .board--polished .bcard__resize {
+    /* 保留18px拖动区域与斜线，不显示文字和灰底。 */
+    background-color: transparent;
+    color: var(--muted);
+    box-shadow: none;
+  }
+  .app-shell[data-theme] .board--polished .bcard__resize:hover {
+    color: var(--accent);
   }
   .board--polished .bcard__del-scene { color: var(--muted); }
   .board--polished .bcard__del-scene:hover { color: var(--danger, #b34242); }
