@@ -1,0 +1,50 @@
+/* 仅故事板分组与卡片控件；不改变正文、自由板、分页和打印几何。 */
+@media screen {
+  .cards .cards__bar { flex-wrap: wrap; gap: 10px; }
+  .cards .cards__bar .hint { font-size: 12px; }
+  .cards .cards__act {
+    padding: 16px;
+    margin-bottom: 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    transition: border-color .16s ease, background-color .16s ease;
+  }
+  .cards .cards__act-head { flex-wrap: wrap; gap: 8px; margin-bottom: 12px; min-height: 32px; }
+  .cards .cards__act-head::before { content: ''; width: 4px; height: 22px; border-radius: 3px; background: var(--act-color); }
+  .cards .cards__act-title { width: 170px; max-width: 100%; font-size: 15px; }
+  .cards .cards__act-count { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cards .cards__act-hint { flex: 1; min-width: 150px; color: var(--muted); font-size: 12px; }
+  .cards .cards__collapse { border: 0; background: transparent; color: var(--text); cursor: pointer; padding: 5px 8px; }
+  .cards .cards__grid[hidden] { display: none; }
+  .cards .cards__grid { gap: 18px; }
+  .cards .cards__empty { padding: 26px; background: transparent; font-size: 13px; }
+  .cards .cards__act.is-drop-target { border-color: var(--accent); background: var(--accent-soft); }
+  .cards .cards__act.is-drop-target .cards__grid { outline: none; background: transparent; }
+  .cards .cards__act.is-drop-target .cards__act-hint { color: var(--text); }
+  .cards .cards__act--ungrouped .cards__act-head::before { background: var(--muted); }
+  .cards .card { position: relative; min-height: 212px; width: 310px; max-width: 100%; }
+  .cards .card.is-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .cards .card.is-insert-before::before, .cards .card.is-insert-after::after {
+    position: absolute; content: ''; width: 3px; top: -4px; bottom: -4px;
+    background: var(--accent); border-radius: 3px; pointer-events: none;
+  }
+  .cards .card.is-insert-before::before { left: -10px; }
+  .cards .card.is-insert-after::after { right: -10px; }
+  .cards .card.is-dragging { opacity: .55; }
+  .cards .card__head { gap: 8px; }
+  .cards .card__select { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; color-scheme: light; }
+  .cards .card__no { cursor: grab; user-select: none; }
+  .cards .card__footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; padding-top: 8px; }
+  .cards .card__footer select { min-width: 0; max-width: 180px; width: 100%; }
+  .cards .card__footer .btn { white-space: nowrap; padding: 4px 6px; font-size: 12px; color: #263328; background: rgba(255,255,255,.8); }
+  .cards .card__footer .btn:hover { background: #fff; }
+  .cards .card__footer select { color: #263328; background: rgba(255,255,255,.8); border: 1px solid rgba(38,51,40,.25); border-radius: 6px; padding: 5px; }
+  .cards .cards__bulk-move { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .cards .cards__bulk-move select { padding: 6px 8px; max-width: 220px; }
+  .cards .cards__delete-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; border: 1px solid var(--border); padding: 12px; margin-bottom: 12px; border-radius: 8px; color: var(--text); }
+  .cards .cards__delete-confirm span { flex: 1; min-width: 200px; }
+  .cards .cards__remove-act { font-size: 12px; color: var(--muted); }
+  .cards :is(button, select, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .cards .cards__act { transition: none; } }
+}

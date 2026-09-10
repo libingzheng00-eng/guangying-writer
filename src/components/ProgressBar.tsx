@@ -3,6 +3,7 @@ import { useStore } from '../store/store';
 import { usePagination } from '../hooks/PaginationProvider';
 import {
   computeSceneBands,
+  sceneBandPercent,
   overPages as computeOverPages,
   writtenPagesExcludingTitle,
   type SceneBand,
@@ -169,8 +170,7 @@ export function ProgressBar({ children }: { children?: React.ReactNode }) {
       >
         {sceneBands.length
           ? sceneBands.map((scene, index) => {
-              const targetPct = target > 0 ? (scene.pct * writtenPages) / target : scene.pct;
-              const renderPct = target > 0 && overP <= 0 ? targetPct : scene.pct;
+              const { targetPct, renderPct } = sceneBandPercent(scene.pct, writtenPages, target);
               const percentText = `${targetPct.toFixed(targetPct < 1 ? 1 : 0)}%`;
               const scaleLabel = target > 0 ? '占目标 ' : '占当前剧本 ';
               return (
@@ -179,7 +179,7 @@ export function ProgressBar({ children }: { children?: React.ReactNode }) {
                   role="listitem"
                   key={scene.elementId}
                   className={'write-progress__scene' + (index === activeSceneIndex ? ' is-active' : '')}
-                  style={{ flexBasis: `${renderPct}%`, background: scene.color }}
+                  style={{ flex: `0 0 ${renderPct}%`, background: scene.color }}
                   title={`第 ${scene.number} 场 · ${scaleLabel}${percentText}${scene.heading ? ' · ' + scene.heading : ''} · 点击跳转`}
                   aria-label={`第 ${scene.number} 场，${scaleLabel}${percentText}`}
                   onClick={() => requestFocus(scene.elementId, 'start', 'start')}

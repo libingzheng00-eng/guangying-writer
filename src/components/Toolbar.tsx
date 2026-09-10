@@ -33,6 +33,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
   const menuRef = useRef<HTMLDivElement>(null);
 
   const activeEl = project.elements.find((e) => e.id === activeId) || null;
+  const selecting = view === 'write' && writingSelectionMode;
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -53,22 +54,35 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
 
   return (
     <div className="toolbar" ref={menuRef}>
-      <div className="toolbar__group">
+      <div className="toolbar__group toolbar__document">
         <button className="doc-title" onClick={onOpenTitle} title={`${filePath || '尚未保存为文件'} · 点击编辑剧本信息`}>
           {filePath?.split(/[\\/]/).pop() || project.name}
           {dirty ? <i className="dot-dirty" title="有未保存的修改">●</i> : null}
         </button>
       </div>
 
-      <div className="toolbar__group segmented">
+      <div className="toolbar__group segmented toolbar__views">
         {VIEWS.map((v) => (
           <button key={v.key} className={view === v.key ? 'is-active' : ''} onClick={() => setView(v.key)}>
             {v.label}
           </button>
         ))}
       </div>
+      <select className="type-select toolbar__view-select" aria-label="工作视图" value={view} onChange={(e) => setView(e.target.value as ViewMode)}>
+        {VIEWS.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
+      </select>
 
-      <div className="toolbar__group">
+      {/* 写作红线：多选只替换同宽工具区，不增加顶栏高度、不动正文或 Tab 逻辑。
+          完成多选后恢复全部原格式入口，避免展开操作挤压文件菜单及视图按钮。 */}
+      <div className="toolbar__group toolbar__context">
+      {selecting ? (
+        <div className="toolbar__group writing-select-toolbar writing-select-toolbar--actions" role="group" aria-label="段落多选操作">
+          <span className="writing-select-toolbar__count" title={`已选 ${writingSelectedIds.length} 段`} aria-live="polite">已选 {writingSelectedIds.length} 段</span>
+          <button title="选择全部正文段落" onClick={() => setWritingSelectedIds(project.elements.map((el) => el.id))}>全选</button>
+          <button disabled={!writingSelectedIds.length} title="删除选中的正文段落" onClick={() => deleteWritingElements(writingSelectedIds)}>删除所选</button>
+          <button title="撤销最近一次修改" onClick={undo}>撤销</button>
+        </div>
+      ) : <>
         <select
           className="type-select"
           value={activeEl?.type || 'action'}
@@ -103,10 +117,11 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
         >
           ⊘
         </button>
+      </>}
       </div>
 
       {project.settings.revisionMode ? (
-        <div className="toolbar__group">
+        <div className="toolbar__group toolbar__revisions" title="修订稿颜色（可横向滚动）">
           <span className="rev-label">修订</span>
           {project.revisions.slice(1).map((r) => (
             <button
@@ -126,7 +141,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
       ) : null}
 
       {view === 'write' ? (
-        <div className="toolbar__group writing-select-toolbar">
+        <div className="toolbar__group writing-select-toolbar writing-select-toolbar--toggle">
           <button
             className={writingSelectionMode ? 'is-active' : ''}
             aria-pressed={writingSelectionMode}
@@ -135,20 +150,12 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
           >
             {writingSelectionMode ? '完成多选' : '多选段落'}
           </button>
-          {writingSelectionMode ? (
-            <>
-              <span>已选 {writingSelectedIds.length} 段</span>
-              <button title="选择全部正文段落" onClick={() => setWritingSelectedIds(project.elements.map((el) => el.id))}>全选</button>
-              <button disabled={!writingSelectedIds.length} title="删除选中的正文段落" onClick={() => deleteWritingElements(writingSelectedIds)}>删除所选</button>
-              <button title="撤销最近一次修改" onClick={undo}>撤销</button>
-            </>
-          ) : null}
         </div>
       ) : null}
 
       <div className="spacer" />
 
-      <div className="toolbar__group">
+      <div className="toolbar__group toolbar__file-actions">
         <button className="icon-btn" title="撤销 ⌘Z" onClick={undo}>
           ↶
         </button>

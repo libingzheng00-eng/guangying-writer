@@ -13,6 +13,7 @@ import type {
 } from '../model/types';
 import { cloneProject, createProject, newElement, deriveScenes } from '../model/project';
 import { dualAfterEnter } from '../model/flow';
+import { moveStoryboardScenes, type StoryboardPlacement } from '../model/storyboard';
 import { plain, cnNum } from '../utils/text';
 import { uid } from '../utils/id';
 import { DEFAULT_FONT_COLOR, normalizeFontColor } from '../model/appearance';
@@ -122,6 +123,7 @@ interface StoreState {
   moveSceneTo: (from: number, to: number) => void;
   /** 故事板拖拽落位：移动场景并归入目标幕，一次操作只产生一条撤销记录 */
   dropSceneInAct: (from: number, to: number, elementId: string, actId?: string) => void;
+  moveScenesToAct: (ids: string[], actId?: string, placement?: StoryboardPlacement) => void;
   addSceneAfter: (elementId: string) => void;
   /** 删除场景标题及其后续正文，连同场景卡元数据；可由 undo 恢复。 */
   deleteScene: (elementId: string) => boolean;
@@ -523,18 +525,16 @@ export const useStore = create<StoreState>((set, get) => ({
    * 必须合并为一次 mutate —— 若拆成 moveSceneTo + updateSceneMeta 两次调用，
    * 会产生两条撤销记录，用户按一次 Cmd+Z 只能回退一半（表现为「撤销不了」）。
    */
-  dropSceneInAct: (from, to, elementId, actId) => {
-    get().mutate((p) => {
-      moveSceneBlock(p, from, to);
-      let m = p.sceneMeta.find((s) => s.elementId === elementId);
-      if (!m) {
-        m = { id: uid('sc'), elementId, title: '', synopsis: '', color: '#cfe4ff' };
-        p.sceneMeta.push(m);
-      }
-      if (actId) m.actId = actId;
-      else delete m.actId;
-    });
+  dropSceneInAct: (_from, to, elementId, actId) => {
+    // 旧调用兼容；未归幕的新契约是只解除归属，不移动正文。
+    const scenes = deriveScenes(get().project);
+    if (!Number.isInteger(to)) return;
+    const target = scenes[to];
+    get().moveScenesToAct([elementId], actId,
+      actId && target?.actId === actId ? { targetId: target.elementId, edge: 'before' } : undefined);
   },
+
+  moveScenesToAct: (ids, actId, placement) => get().mutate(p => moveStoryboardScenes(p, ids, actId, placement)),
 
   addSceneAfter: (elementId) => {
     const { insertAfter, project } = get();
@@ -858,7 +858,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
 /**
  * 把第 from 个场景（连同其后续元素）整体移动到第 to 个场景的位置，直接修改 p.elements。
- * 抽成纯函数，供 moveSceneTo 与 dropSceneInAct 复用。
+ * 供既有 moveSceneTo 使用；故事板的插入边界语义在 dropSceneInAct 单独处理。
  */
 function moveSceneBlock(p: ScriptProject, from: number, to: number) {
   // 找到第 from 个与第 to 个 scene_heading，整体移动该场景的区块

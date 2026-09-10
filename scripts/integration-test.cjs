@@ -300,8 +300,8 @@ async function main() {
   }
   try {
     const cv = fs.readFileSync(path.join(ROOT, 'src', 'components', 'CardsView.tsx'), 'utf8');
-    check('静态检查·故事板落位用 dropSceneInAct 一次成型（避免产生两条撤销记录）',
-      /dropSceneInAct\s*\(/.test(cv) && !/moveSceneTo\s*\(/.test(cv), '');
+    check('静态检查·故事板落位用 moveScenesToAct 一次成型（单场/多场共享原子操作）',
+      /moveScenesToAct\s*\(/.test(cv) && !/moveSceneTo\s*\(/.test(cv), '');
   } catch (e) {
     check('静态检查·CardsView 落位', false, String(e && e.message));
   }

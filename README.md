@@ -2,7 +2,7 @@
 
 > 开源许可证：[MIT](LICENSE)。稳定版本会发布在 GitHub 的 **Releases** 页面；请从 Releases 下载最新版 DMG 或 ZIP，不要从源码页面下载自动生成的源码压缩包。
 
-> 当前状态（2026-09-09）：`v1.3.0-alpha.18.2` 为公开测试源码，已完成核心功能回迁与自动化回归；它是测试版而非 Apple 公证的稳定版。详见 [MIGRATION.md](MIGRATION.md)、[DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md) 与 [CORE_FEATURES.md](CORE_FEATURES.md)。首次启动模板必须保持为空白，仓库和发布包禁止包含用户剧本。
+> 当前源码版本（2026-09-10）：`v1.3.0-alpha.18.6`，整合幕管理、统计分析、自由板参考网格与选择保护、紧凑手写体进度栏。安装附件的可用状态以 Releases 为准；本地提交或 Push 分支不会自动发布安装包。它仍是测试版，而非 Apple 公证的稳定版。详见 [MIGRATION.md](MIGRATION.md)、[DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md) 与 [CORE_FEATURES.md](CORE_FEATURES.md)。首次启动模板必须保持为空白，仓库和发布包禁止包含用户剧本。
 
 ### PDF 导出怎么选
 

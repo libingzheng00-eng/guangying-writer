@@ -1,0 +1,33 @@
+/* 仅屏幕顶栏的布局保护层；禁止写入正文、分页、素材或打印几何规则。 */
+@media screen {
+  .app-shell[data-theme] .toolbar { flex-wrap: nowrap; }
+  .app-shell[data-theme] .toolbar :is(button, select, .rev-label) { white-space: nowrap; flex-shrink: 0; }
+  .app-shell[data-theme] .toolbar > .toolbar__group { flex-shrink: 0; }
+  .app-shell[data-theme] .toolbar .toolbar__document { min-width: 64px; flex: 0 1 160px; }
+  .app-shell[data-theme] .toolbar .doc-title { max-width: 100%; min-width: 0; flex-shrink: 1; }
+  .app-shell[data-theme] .toolbar .toolbar__context { width: 316px; gap: 5px; }
+  .app-shell[data-theme] .toolbar .toolbar__context > .type-select { width: 110px; }
+  .app-shell[data-theme] .toolbar .toolbar__context > .icon-btn { min-width: 27px; padding-inline: 5px; }
+  .app-shell[data-theme] .toolbar .toolbar__view-select { display: none; }
+  .app-shell[data-theme] .toolbar .writing-select-toolbar--toggle { width: 91px; margin-left: 0; padding-left: 7px; }
+  .app-shell[data-theme] .toolbar .writing-select-toolbar--actions { margin: 0; padding: 0; border: 0; width: 100%; gap: 5px; }
+  .app-shell[data-theme] .toolbar .writing-select-toolbar__count { display: inline-block; width: 78px; overflow: hidden; text-overflow: ellipsis; }
+  .app-shell[data-theme] .toolbar .toolbar__revisions { max-width: 112px; overflow-x: auto; scrollbar-width: thin; }
+  .app-shell[data-theme] .toolbar .toolbar__file-actions { gap: 4px; }
+  .app-shell[data-theme] .toolbar .toolbar__file-actions > .btn { padding-inline: 9px; }
+  .app-shell[data-theme] .toolbar .menu { max-height: calc(100vh - var(--toolbar-h) - 16px); overflow-y: auto; }
+  .app-shell[data-theme] .toolbar .menu__item { white-space: normal; }
+  .app-shell[data-theme] .toolbar .spacer { min-width: 0; }
+
+  /* 窄窗切换同一组视图，不裁切右侧文件菜单，不改变顶栏高度。 */
+  @media (max-width: 1250px) {
+    .app-shell[data-theme] .toolbar .toolbar__views { display: none; }
+    .app-shell[data-theme] .toolbar .toolbar__view-select { display: block; width: 88px; }
+    .app-shell[data-theme] .toolbar .toolbar__document { flex-basis: 140px; }
+    .app-shell[data-theme] .toolbar .toolbar__revisions { max-width: 76px; }
+  }
+  @media (max-width: 900px) {
+    .app-shell[data-theme] .toolbar { gap: 4px; padding-left: 8px; padding-right: 8px; }
+    .app-shell[data-theme] .toolbar .toolbar__document { flex-basis: 90px; }
+  }
+}

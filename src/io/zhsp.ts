@@ -82,7 +82,8 @@ export function parseProject(raw: string): ScriptProject {
     // 边界兜底：0 / 负数 / NaN / 超大数 → undefined（旧工程视为未设 → 启动时按 default 100 显示）；
     // 旧工程显式保存的合法正整数原样保留；>9999 封顶。
     targetPages: normalizeTargetPages(p.targetPages),
-    acts: Array.isArray(p.acts) && p.acts.length ? p.acts : [{ id: 'act-1', title: '第一幕', color: '#cfe4ff' }],
+    // 显式空数组表示用户已删除所有幕；只有旧工程缺失该字段才补默认幕。
+    acts: Array.isArray(p.acts) ? p.acts : [{ id: 'act-1', title: '第一幕', color: '#cfe4ff' }],
     revisions: Array.isArray(p.revisions) && p.revisions.length ? p.revisions : DEFAULT_REVISIONS,
     settings,
   };

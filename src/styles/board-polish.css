@@ -1,0 +1,38 @@
+/* 自由板屏幕层：禁止扩大到写作素材、PDF、全局 .bcard 或共享几何。 */
+@media screen {
+  .app-shell[data-theme] .board--polished .board__canvas {
+    --board-grid-line: rgba(120, 144, 128, .13);
+    background-image: none;
+  }
+  .app-shell[data-theme='day'] .board--polished .board__canvas {
+    --board-grid-line: rgba(91, 110, 92, .09);
+  }
+  .app-shell[data-theme] .board--polished .board__canvas[data-grid='on'] {
+    background-image: linear-gradient(to right, var(--board-grid-line) 1px, transparent 1px), linear-gradient(to bottom, var(--board-grid-line) 1px, transparent 1px);
+  }
+  .board--polished .bcard__head {
+    min-height: 28px;
+    flex-shrink: 0;
+  }
+  .board--polished .bcard__head .bcard__actions {
+    position: static;
+    margin-left: auto;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .board--polished .bcard__connect,
+  .board--polished .bcard__del-scene {
+    width: auto;
+    min-width: 40px;
+    height: 28px;
+    padding: 0 5px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .board--polished .bcard__del-scene { color: var(--muted); }
+  .board--polished .bcard__del-scene:hover { color: var(--danger, #b34242); }
+  .board--polished .board__grid-toggle[aria-pressed='true'] {
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+}

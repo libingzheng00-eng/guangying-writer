@@ -40,3 +40,9 @@ jobs:
           node scripts/appearance-test.cjs
           node scripts/outline-reorder-test.cjs
           node scripts/scene-notes-test.cjs
+          node scripts/storyboard-drop-test.cjs
+          node scripts/storyboard-acts-test.cjs
+          node scripts/reports-test.cjs
+          node scripts/board-polish-test.cjs
+          node scripts/writing-controls-test.cjs
+          node scripts/progress-bands-test.cjs
