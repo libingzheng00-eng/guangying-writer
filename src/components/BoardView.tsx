@@ -581,6 +581,13 @@ interface SceneCardProps {
   pos: { x: number; y: number };
 }
 
+// 仅替换视觉标签；连接、整场删除确认、撤销和鼠标冒泡契约不可改变。
+function CardIcon({ kind }: { kind: 'link' | 'delete' }) {
+  return <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    {kind === 'link' ? <><path d="M10 13a5 5 0 0 0 7 .2l3-3a5 5 0 0 0-7-7l-2 2" /><path d="M14 11a5 5 0 0 0-7-.2l-3 3a5 5 0 0 0 7 7l2-2" /></> : <><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></>}
+  </svg>;
+}
+
 function SceneCard({ scene, pos, linking, onLink, onOpen, onDelete, onChangeSynopsis, onResizeStart, selected }: SceneCardProps & { linking: boolean; onLink: () => void; onOpen: () => void; onDelete: () => void; onChangeSynopsis: (synopsis: string) => void; onResizeStart: (e: React.MouseEvent) => void; selected: boolean }) {
   const lim = sizeLimitFor('scene');
   return (
@@ -595,9 +602,9 @@ function SceneCard({ scene, pos, linking, onLink, onOpen, onDelete, onChangeSyno
     >
       <div className="bcard__head">
         <span className="bcard__no">{scene.number}</span>
-        <span className="bcard__actions" onDoubleClick={(e) => e.stopPropagation()}><button className={`bcard__connect ${linking ? 'is-active' : ''}`} aria-pressed={linking} onMouseDown={(e) => e.stopPropagation()} onClick={onLink} title="连接到另一张卡片">连接</button><button className="bcard__del bcard__del-scene" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除整场正文与故事信息（可撤销）" aria-label="删除整场">删除整场</button></span>
+        <div className="bcard__title" title={scene.title || scene.heading}>{scene.title || scene.heading || '（未命名场景）'}</div>
+        <span className="bcard__actions" onDoubleClick={(e) => e.stopPropagation()}><button className={`bcard__connect ${linking ? 'is-active' : ''}`} aria-pressed={linking} aria-label="连接到另一张卡片" onMouseDown={(e) => e.stopPropagation()} onClick={onLink} title="连接到另一张卡片"><CardIcon kind="link" /></button><button className="bcard__del bcard__del-scene" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除整场正文与故事信息（可撤销）" aria-label="删除整场"><CardIcon kind="delete" /></button></span>
       </div>
-      <div className="bcard__title">{scene.title || scene.heading || '（未命名场景）'}</div>
       {/* 与大纲/故事板共用 synopsis；空白不能拿标题填充，也不能把编辑手势当卡片拖动。 */}
       <textarea
         className="bcard__scene-notes"
@@ -621,7 +628,7 @@ function SceneCard({ scene, pos, linking, onLink, onOpen, onDelete, onChangeSyno
           onResizeStart(e);
         }}
       >
-        缩放
+        <span aria-hidden="true" />
       </button>
     </div>
   );
@@ -657,8 +664,8 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
       style={{ left: beat.x, top: beat.y, background: beat.color, width: beat.w, height: beat.h }}
     >
       <div className="bcard__head">
-        {(isSound || isMedia) ? <span className={`bcard__tag bcard__tag--${kind}`}>{isSound ? '声音' : '图片'}</span> : null}
-        <span className="bcard__actions" onDoubleClick={(e) => e.stopPropagation()}><button className={`bcard__connect ${linking ? 'is-active' : ''}`} aria-pressed={linking} onMouseDown={(e) => e.stopPropagation()} onClick={onBoardLink} title="连接到另一张卡片">连接</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除卡片" aria-label="删除卡片">×</button></span>
+        {isSound ? <span className="bcard__tag bcard__tag--sound">声音</span> : null}
+        <span className="bcard__actions" onDoubleClick={(e) => e.stopPropagation()}><button className={`bcard__connect ${linking ? 'is-active' : ''}`} aria-pressed={linking} aria-label="连接到另一张卡片" onMouseDown={(e) => e.stopPropagation()} onClick={onBoardLink} title="连接到另一张卡片"><CardIcon kind="link" /></button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除卡片" aria-label="删除卡片"><CardIcon kind="delete" /></button></span>
       </div>
       <div className="bcard__body">
         {hasMedia ? (
@@ -711,7 +718,7 @@ function BeatCard({ beat, scenes, onChange, onDelete, onLink, linking, onBoardLi
           onResizeStart(e);
         }}
       >
-        缩放
+        <span aria-hidden="true" />
       </button>
     </div>
   );
