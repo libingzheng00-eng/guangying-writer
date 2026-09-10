@@ -1,6 +1,6 @@
 # 光影写手源码接手摘要
 
-更新时间：2026-09-10；维护目标 `1.3.0-alpha.18.6`。本轮只准备本地提交和候选安装包，由用户自行 Push。具体测试、安装与发布状态以本次交付记录和 Git 状态为准，本文不是实机验收证明。
+更新时间：2026-09-10；维护目标 `1.3.0-alpha.18.7`。输入性能优化仅在本地准备，不自动推送、发布或覆盖现用应用。具体测试、安装与发布状态以本次交付记录和 Git 状态为准，本文不是实机验收证明。
 
 ## 版本边界
 
@@ -22,6 +22,8 @@
 
 ## 发布前继续核对
 
+- alpha.18.7 输入热路径：`store.setText` 只复制当前段落与元素列表，`projectChange` 共用旧撤销/合并规则；通用 `mutate` 仍深拷贝防止污染共享快照。`app/autosaveSubscription.ts` 直接订阅版本变化，不让 App 为保存计时器每字重渲染；仍用 900ms 与最新状态。未改 Editor/Tab/分页算法/PDF/统计口径/主题/卡片交互。不要为了优化而延后保存或使用过期分页导出。
+- `input-performance-test.cjs` 已接入两条 CI；`--compare-ref a0dc5c3` 可本地只读比较旧 store。计时只代表数据更新，不代表完整输入延迟。`input-electron.cjs` 在独立临时 userData 中检查 300 段连续输入、CDP 中文组合输入与自动保存恢复，不能替代用户实际输入法及长时间写作验收。
 - alpha.18.6 本轮变更隔离：幕归属与正文移动仅在 `model/storyboard.ts` / `moveScenesToAct`；既有大纲排序仍用原入口。统计只读投影不替换公共统计或分页；自由板过滤同时限定连线和选择；进度样式/顶栏样式只限屏幕，保留76px进度栏与52px顶栏几何。
 - 新增回归：`reports-test`、`storyboard-acts-test`、`storyboard-drop-test`、`board-polish-test`、`writing-controls-test`、`progress-bands-test` 已接入两条 CI。统计重命名、归幕/删除撤销、筛选后隐藏卡片保护都要一起跑，不能只跑自己改的界面。
 - 本机英式数字引用 `Snell Roundhand` / `Apple Chancery`，不将系统字体拷贝到仓库或DMG；不同平台没有这些字体时使用书写体回退，不宣称跨平台外观完全相同。
@@ -29,7 +31,7 @@
 
 - 以最新 [CORE_FEATURES.md](CORE_FEATURES.md) 为验收清单；[MIGRATION.md](MIGRATION.md) 用于追溯历史，不要重新实现已被用户取消的三主题进度或素材附页。
 - 当前真实 PNG 打字机指针位于 `src/assets/typewriter-pointer.png`，由 `ProgressBar.tsx` 使用；不要重新放回 `StatusBar.tsx`。
-- 当前维护目标为 `1.3.0-alpha.18.6`；完成全部回归后才能考虑正式 `1.3.0`。
+- 当前维护目标为 `1.3.0-alpha.18.7`；完成全部回归后才能考虑正式 `1.3.0`。
 - 新建候选安装包，保留用户当前应用与资料。打包脚本拒绝覆盖已有产物，可显式选择已验证的 `RUNTIME_APP`；这不代表签名/公证或跨机安装已完成。
 
 ## 隐私红线
@@ -52,6 +54,7 @@ node scripts/render-test.cjs
 node scripts/writing-test.cjs
 node scripts/zhsp-compat-test.cjs
 node scripts/history-test.cjs
+node scripts/input-performance-test.cjs
 node scripts/pagination-safety-test.cjs
 ```
 

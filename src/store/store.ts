@@ -198,6 +198,32 @@ function loadAppTheme(): AppTheme {
 }
 let lastCoalesce: { key: string; ts: number } | null = null;
 
+/** Both immutable text edits and generic mutations use the same history boundary.
+ * `next` must be a new project owned by the caller; never mutate a saved snapshot.
+ */
+function projectChange(state: StoreState, next: ScriptProject, opts?: MutateOptions) {
+  const history = opts?.history !== false;
+  const now = Date.now();
+  next.updatedAt = now;
+  let shouldPush = history;
+  if (history && opts?.coalesce) {
+    if (lastCoalesce && lastCoalesce.key === opts.coalesce && now - lastCoalesce.ts < 1500) {
+      shouldPush = false;
+    }
+    lastCoalesce = { key: opts.coalesce, ts: now };
+  } else {
+    // 非历史更新也是操作边界；不得合并前后的编辑 / resize。
+    lastCoalesce = null;
+  }
+  return {
+    project: next,
+    dirty: true,
+    version: state.version + 1,
+    past: shouldPush ? [...state.past, state.project].slice(-HISTORY_LIMIT) : state.past,
+    future: history ? [] : state.future,
+  };
+}
+
 export const useStore = create<StoreState>((set, get) => ({
   project: createProject(),
   filePath: null,
@@ -288,37 +314,16 @@ export const useStore = create<StoreState>((set, get) => ({
   markSaved: (path) => set({ filePath: path, dirty: false }),
 
   mutate: (fn, opts) => {
-    const { project, past } = get();
+    const { project } = get();
     const next = cloneProject(project);
     fn(next);
-    const history = opts?.history !== false;
     // 组件可能在每次输入事件都调用 mutate；没有实际数据变化时不应制造
     // 撤销点、清空重做栈或把 dirty 标成 true。
     if (JSON.stringify(next) === JSON.stringify(project)) {
       lastCoalesce = null;
       return;
     }
-    next.updatedAt = Date.now();
-    let shouldPush = history;
-    if (history && opts?.coalesce) {
-      const now = Date.now();
-      if (lastCoalesce && lastCoalesce.key === opts.coalesce && now - lastCoalesce.ts < 1500) {
-        shouldPush = false;
-      }
-      lastCoalesce = { key: opts.coalesce, ts: now };
-    } else if (history) {
-      lastCoalesce = null;
-    } else {
-      // 非历史状态更新也是一次操作边界，不能与前后的 resize 合并。
-      lastCoalesce = null;
-    }
-    set({
-      project: next,
-      dirty: true,
-      version: get().version + 1,
-      past: shouldPush ? [...past, project].slice(-HISTORY_LIMIT) : past,
-      future: history ? [] : get().future,
-    });
+    set(projectChange(get(), next, opts));
   },
 
   undo: () => {
@@ -402,13 +407,19 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   setText: (id, text) => {
-    get().mutate(
-      (p) => {
-        const el = p.elements.find((e) => e.id === id);
-        if (el) el.text = text;
-      },
-      { coalesce: `text:${id}` },
-    );
+    const state = get();
+    const { project } = state;
+    const index = project.elements.findIndex((e) => e.id === id);
+    if (index < 0 || project.elements[index].text === text) {
+      // 与 mutate 的 no-op 完全一致：保留 redo/dirty/version，只切断合并窗口。
+      lastCoalesce = null;
+      return;
+    }
+    // 输入性能红线：只复制元素列表和当前段落，禁止每个字 JSON 复制整个工程。
+    // 未改段落 / 图片 / 设置保持引用；后续通用 mutate 仍深拷贝，保护撤销快照。
+    const elements = project.elements.slice();
+    elements[index] = { ...elements[index], text };
+    set(projectChange(state, { ...project, elements }, { coalesce: `text:${id}` }));
   },
 
   removeElement: (id) => {

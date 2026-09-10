@@ -17,6 +17,7 @@
 - 智能识别、自动补全、双列对白、场号、同一人物再次说话的 `(CONT'D)` 视觉提示保持正常。
 - 写作多选模式下：普通点击可选择段落；Shift 点击正文或复选框可按正文顺序连续选择；删除只删除选中段落；普通写作模式绝不能被这套逻辑干扰。
 - `⌘/Ctrl+Z` 撤销与 `⌘/Ctrl+Shift+Z` 重做须支持多步恢复正文、卡片、关系线；输入及同一卡片连续移动/缩放可按既有规则合并，不得跨不相关操作误合并，批量删除必须一次完整撤回。
+- 输入性能：`setText` 仅不可变更新当前段落与元素列表，不能按每个字 JSON 复制/比较整个含图工程；未改对象可共享引用，但严禁直接修改当前工程或撤销快照。它与通用 `mutate` 必须共用同一历史提交规则。无变化/无效 ID 保留 redo、dirty、version 并切断合并窗口。自动保存保持约 900ms 停笔后保存最新正文/路径，订阅不能导致 App 整树随字重渲染。专项：`input-performance-test.cjs`；实际组合输入与重载恢复：`input-electron.cjs`。
 
 ## 三、创作素材与 PDF 导出
 
@@ -60,6 +61,7 @@ node scripts/render-test.cjs
 node scripts/writing-test.cjs
 node scripts/zhsp-compat-test.cjs
 node scripts/history-test.cjs
+node scripts/input-performance-test.cjs
 node scripts/pagination-safety-test.cjs
 node scripts/outline-reorder-test.cjs
 node scripts/scene-notes-test.cjs
