@@ -36,3 +36,7 @@ jobs:
           node scripts/zhsp-compat-test.cjs
           node scripts/history-test.cjs
           node scripts/pagination-safety-test.cjs
+          node scripts/studio-theme-test.cjs
+          node scripts/appearance-test.cjs
+          node scripts/outline-reorder-test.cjs
+          node scripts/scene-notes-test.cjs

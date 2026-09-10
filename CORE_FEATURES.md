@@ -29,6 +29,8 @@
 
 ## 四、故事板与自由板
 
+- 大纲拖动场号把手到目标卡片的上/下半部，必须按稳定场景 ID 移动整场（含正文），一次操作可完整撤销。原位、取消、外部拖入不得新增历史；标题/摘要编辑不能触发跳转或拖动。双击场号定位正文，Alt+↑/↓ 可相邻移动。
+- 自由板场景卡上方显示标题，下方直接编辑 `SceneMeta.synopsis`，与大纲、故事板共用一份故事信息。空摘要显示提示语，不重复标题；文本输入、选择、双击和滚动不能误拖卡、跳正文、缩放画布或删除场景。不得因此改变正文、坐标、尺寸或关系线。
 - 故事板卡片支持排序、修改标题/梗概/颜色，并能稳定拖入某一幕归幕；一次拖拽只产生一次状态变更与一次撤销记录。
 - 自由板支持场景卡、卡片连接线、可编辑关系备注、卡片缩放与尺寸持久化。
 - 自由板支持 ⌘/Ctrl 多选、Shift 范围选、框选、批量删除；删除需同时清理孤儿关系线，但不能误删未选卡片的关系。
@@ -52,6 +54,8 @@ node scripts/writing-test.cjs
 node scripts/zhsp-compat-test.cjs
 node scripts/history-test.cjs
 node scripts/pagination-safety-test.cjs
+node scripts/outline-reorder-test.cjs
+node scripts/scene-notes-test.cjs
 ```
 
 涉及写作交互、导出、拖拽或主题时，还要在真实浏览器或 Electron 中做一次人工验证；自动测试通过不等于视觉与鼠标手势已经验收。
@@ -63,6 +67,7 @@ node scripts/pagination-safety-test.cjs
 | Tab 焦点闭环、备忘往返、正文 Shift 多选 | `src/model/flow.ts`、`Editor.tsx`、`ScriptBlock.tsx` | writing / render / 实机连续 Tab |
 | 拖入图片、原位卡片创作 PDF、A4 纯文本 | `Editor.tsx`、`src/io/creativePdf.ts`、`useCommands.ts`、`PreviewView.tsx`、`PaginationProvider.tsx`、`electron/pdf.js` | image-drop-electron / pdf-layout-electron / pagination-safety / PDF 渲染检查 |
 | 选择、归幕、删除、撤销重做 | `store.ts`、`selection.ts`、`board.ts`、`BoardView.tsx`、`CardsView.tsx` | history / writing / render / 实机拖放 |
+| 大纲整场拖动、场景故事信息同步编辑 | `outline.ts`、`Sidebar.tsx`、`BoardView.tsx`、`CardsView.tsx` | outline-reorder / scene-notes / 实机拖放与输入 |
 | 工程兼容、空白启动、保存恢复 | `src/io/zhsp.ts`、`src/model/sample.ts`、`src/App.tsx`、`electron/main.js` | zhsp-compat / core-guard / 隔离用户目录启动保存重开 |
 | 场景进度与跳转、角色改名同步 | `ProgressBar.tsx`、`progress.ts`、`ReportsView.tsx`、`store.ts` | writing / render / history / 实机跳转 |
 

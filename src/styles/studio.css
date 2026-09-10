@@ -1,0 +1,176 @@
+/* 光影写手 · 安静工作台
+ * 外观层集中在此：只改色彩、材质、UI 字体与焦点提示。
+ * 红线：不改稿纸/正文/素材的几何尺寸、分页与拖放原点、标尺高度或功能显隐。
+ * 用 screen 隔离 A4 打印；创作 PDF 仍冻结屏幕实际样式与原位图文。
+ */
+@media screen {
+  .app-shell[data-theme] {
+    --bg: #181d1b;
+    --panel: #222824;
+    --panel-2: #262d28;
+    --border: #39423b;
+    --border-strong: #525f54;
+    --text: #e1e7df;
+    --muted: #a2afa4;
+    --accent: #b4cbb3;
+    --neon-yellow: var(--writing-font-color, #ffffff);
+    --danger: #f58a80;
+    --accent-soft: rgba(166, 195, 165, .12);
+    --accent-glow: transparent;
+    --control-bg: #1d231f;
+    --control-hover: #303b32;
+    --control-text: var(--text);
+    --warm: #cbb997;
+    --glass-bg: #252d27;
+    --glass-border: var(--border);
+    --card-glow: 0 5px 18px rgba(0, 0, 0, .18);
+    --glow-shadow: var(--card-glow);
+    --glow-cyan: 0 0 0 transparent;
+    --glow-cyan-strong: 0 0 0 transparent;
+    --glow-warm: 0 0 0 transparent;
+    --toolbar-glow: none;
+    --studio-paper: #222824;
+    --studio-paper-shadow: 0 8px 26px rgba(0, 0, 0, .16);
+    --studio-popover-shadow: 0 12px 32px rgba(0, 0, 0, .26);
+    --studio-ruler: #30382f;
+    --studio-tick: rgba(210, 223, 207, .14);
+    --studio-fill: #849a7c;
+    --studio-strong-ink: #1e2d20;
+    color-scheme: dark;
+  }
+  .app-shell[data-theme='day'] {
+    --bg: #eeede8;
+    --panel: #f8f7f3;
+    --panel-2: #efeee8;
+    --border: #dadcd2;
+    --border-strong: #b9c2b5;
+    --text: #303b32;
+    --muted: #677365;
+    --accent: #496a4c;
+    --neon-yellow: var(--writing-font-color, #000000);
+    --danger: #ad3833;
+    --accent-soft: rgba(84, 117, 83, .09);
+    --control-bg: #fdfcf9;
+    --control-hover: #e6eade;
+    --warm: #806845;
+    --glass-bg: #faf9f5;
+    --card-glow: 0 5px 18px rgba(47, 58, 43, .07);
+    --studio-paper: #fffefb;
+    --studio-paper-shadow: 0 8px 26px rgba(47, 58, 43, .07);
+    --studio-popover-shadow: 0 12px 32px rgba(47, 58, 43, .13);
+    --studio-ruler: #edece4;
+    --studio-tick: rgba(67, 83, 58, .15);
+    --studio-fill: #b1c0a5;
+    --studio-strong-ink: #fffefb;
+    color-scheme: light;
+  }
+  .app-shell[data-theme] :is(.toolbar, .statusbar, .board__bar, .cards__bar, .reports__bar, .preview__bar) {
+    background: var(--panel); border-color: var(--border); box-shadow: none; color: var(--text);
+  }
+  .app-shell[data-theme] .sidebar { background: var(--panel-2); }
+  .app-shell[data-theme] :is(.sidebar__tabs, .sidebar.is-collapsed) { background: var(--panel-2); border-color: var(--border); }
+  .app-shell[data-theme] :is(.sidebar__collapse, .sidebar__reveal) { background: var(--panel); color: var(--muted); border-color: var(--border); box-shadow: none; }
+  /* 把手必须高于侧栏内容；旧 .sidebar > * 会把它压到面板下面。位置与点击范围不变。 */
+  .app-shell[data-theme] .sidebar > :is(.sidebar__collapse, .sidebar__reveal) { z-index: 3; }
+  .app-shell[data-theme] :is(.write-bg, .board__canvas, .preview, .sidebar)::before,
+  .app-shell[data-theme] :is(.write-bg, .board__canvas, .preview)::after { content: none; animation: none; }
+  .app-shell[data-theme] .board__canvas { background-image: radial-gradient(circle, var(--border) .75px, transparent .75px); }
+  .app-shell[data-theme] .preview__scroll { background: var(--bg); background-image: none; }
+  .app-shell[data-theme] .script-flow { background: var(--studio-paper); border-color: var(--border); box-shadow: var(--studio-paper-shadow); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .app-shell[data-theme] .editor .sc-el--editable { color: var(--neon-yellow); text-shadow: none; }
+  .app-shell[data-theme] .editor .sc-el.is-selected { background: var(--accent-soft); box-shadow: inset 0 -1px var(--accent); }
+  .app-shell[data-theme] .editor .sc-el--character.has-contd::after { color: var(--muted); }
+  .app-shell[data-theme] .sidebar__tab.is-active { box-shadow: inset 0 -2px var(--accent); }
+  .app-shell[data-theme] :is(.nav-item__main, .nav-item__heading, .outline-item__title, .doc-title) { color: var(--text); }
+  .app-shell[data-theme] .outline-item__drag { color: #263328; }
+  .app-shell[data-theme] .outline-item__synopsis { color: var(--text); background: var(--control-bg); }
+  .app-shell[data-theme] .outline-item__synopsis::placeholder { color: var(--muted); }
+  .app-shell[data-theme] .toolbar .doc-title { background: transparent; border: 0; border-radius: 6px; font-size: 13px; text-align: left; cursor: pointer; }
+  .app-shell[data-theme] .toolbar .doc-title:hover { background: var(--control-hover); }
+  .app-shell[data-theme] :is(.panel__search, .type-select, .field input, .field select, .field textarea) { background: var(--control-bg); border-color: var(--border); color: var(--text); }
+  .app-shell[data-theme] :is(.panel__search, .field input, .field textarea)::placeholder { color: var(--muted); }
+  .app-shell[data-theme] .type-select option { background: var(--control-bg); color: var(--text); }
+  .app-shell[data-theme] .toolbar .segmented,
+  .app-shell[data-theme] .board__bar .segmented { background: var(--panel-2); border-color: var(--border); }
+  .app-shell[data-theme] .toolbar .segmented button,
+  .app-shell[data-theme] .board__bar .segmented button { color: var(--muted); text-shadow: none; }
+  .app-shell[data-theme] .toolbar .segmented button.is-active,
+  .app-shell[data-theme] .board__bar .segmented button.is-active { color: var(--text); background: var(--control-bg); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .app-shell[data-theme] :is(.toolbar, .modal, .board__bar) .btn { background: var(--control-bg); border-color: var(--border); color: var(--text); }
+  .app-shell[data-theme] .toolbar .btn--ghost { background: transparent; border-color: transparent; }
+  .app-shell[data-theme] :is(.toolbar, .modal, .board__bar) .btn:hover { background: var(--control-hover); color: var(--text); }
+  .app-shell[data-theme] .btn.btn--primary,
+  .app-shell[data-theme] .btn.btn--primary:hover { background: var(--accent); border-color: var(--accent); color: var(--studio-strong-ink); }
+  .app-shell[data-theme] :is(.toolbar, .modal, .board__bar) .btn.btn--primary,
+  .app-shell[data-theme] :is(.toolbar, .modal, .board__bar) .btn.btn--primary:hover { background: var(--accent); border-color: var(--accent); color: var(--studio-strong-ink); }
+  .app-shell[data-theme] .btn.btn--danger,
+  .app-shell[data-theme] :is(.toolbar, .modal, .board__bar) .btn.btn--danger,
+  .app-shell[data-theme] :is(.toolbar, .modal, .board__bar) .btn.btn--danger:hover { color: var(--danger); }
+  .app-shell[data-theme] .writing-select-toolbar button[title='删除选中的正文段落'] { color: var(--danger); }
+  .app-shell[data-theme] input[type='checkbox'] { accent-color: var(--accent); }
+  .app-shell[data-theme] .toolbar .icon-btn { color: var(--muted); }
+  .app-shell[data-theme] .toolbar .icon-btn:hover { color: var(--text); background: var(--control-hover); box-shadow: none; }
+  .app-shell[data-theme] :is(.menu, .smarttype, .modal) { background: var(--panel); border-color: var(--border); box-shadow: var(--studio-popover-shadow); backdrop-filter: none; }
+  .app-shell[data-theme] :is(.menu__item, .smarttype__item, .modal__head h3) { color: var(--text); }
+  .app-shell[data-theme] :is(.menu__item:hover, .menu__item:focus-visible, .smarttype__item:hover, .smarttype__item.is-active) { color: var(--accent); background: var(--accent-soft); }
+  .app-shell[data-theme] :is(.menu__sep, .modal__head, .modal__foot, .tabs) { border-color: var(--border); }
+  .app-shell[data-theme] .menu__sep { background: var(--border); }
+  .app-shell[data-theme] .tabs button { color: var(--muted); }
+  .app-shell[data-theme] .tabs button.is-active { color: var(--accent); background: var(--accent-soft); box-shadow: none; }
+  .app-shell[data-theme] .checkbox { color: var(--text) !important; }
+  .app-shell[data-theme] :is(button, select, input, textarea):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* 标尺保留全部刻度、PNG 指针、25/75% 标记与目标输入，仅更换表面材质。 */
+  .app-shell[data-theme] .editor > .write-progress { background: var(--panel); border-color: var(--border); box-shadow: 0 1px 0 var(--border); }
+  .app-shell[data-theme] .editor > .write-progress :is(.write-progress__label, .write-progress__goal, .write-progress__value) { color: var(--text); }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__value { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 18px; font-weight: 500; letter-spacing: -.03em; -webkit-text-stroke: 0; }
+  .app-shell[data-theme] .write-progress__value strong { font-size: 24px; font-weight: 600; }
+  .app-shell[data-theme] :is(.write-progress__divider, .write-progress__target) { font-size: 15px; font-weight: 400; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__road { background: repeating-linear-gradient(90deg, transparent 0 31px, var(--studio-tick) 31px 32px), var(--studio-ruler); border-color: var(--border-strong); box-shadow: none; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__fill { background: var(--studio-fill); border-right-color: var(--accent); box-shadow: none; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__milestone { background: var(--studio-tick); box-shadow: none; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__milestone.is-done { background: var(--accent); }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__marker { filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+  .app-shell[data-theme] .write-progress__end::before { color: var(--warm); text-shadow: none; }
+  .app-shell[data-theme] .write-progress__end.is-reached { filter: none; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__scenes { background: var(--panel-2); border-color: var(--border); }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__scene { color: #263328; filter: none; border-right-color: rgba(38,51,40,.16); justify-content: flex-start; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__scene:hover { filter: brightness(1.05); }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__scene.is-active { outline: 2px solid #49644b; outline-offset: -2px; filter: none; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__scene:focus-visible { outline: 2px solid #263328; outline-offset: -2px; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__scenes.is-over-target { border-color: var(--danger); }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__goal input,
+  .app-shell[data-theme] .writing-material-controls button { color: var(--text); background: var(--control-bg); border-color: var(--border); }
+  .app-shell[data-theme] .writing-material-controls b { background: var(--accent-soft); }
+  .app-shell[data-theme] .write-progress__tip { background: var(--panel); }
+  .app-shell[data-theme] .writing-material-controls button[aria-pressed='false'] { color: var(--muted); background: var(--panel-2); }
+
+  .app-shell[data-theme] .writing-material-card { color: var(--text); background: var(--glass-bg); border-color: var(--border); box-shadow: var(--card-glow); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .app-shell[data-theme] .writing-material-card textarea { color: var(--text); background: var(--control-bg); border-color: var(--border); }
+  .app-shell[data-theme] .writing-material-card__head input { color: var(--text); }
+  .app-shell[data-theme] .writing-material-card__kind { color: var(--muted); }
+  .app-shell[data-theme] .bcard { color: var(--text); background: var(--glass-bg); border-color: var(--border); box-shadow: var(--card-glow); backdrop-filter: none; }
+  .app-shell[data-theme] .bcard--scene { box-shadow: inset 3px 0 var(--scene-color), var(--card-glow); }
+  .app-shell[data-theme] .bcard:hover { border-color: var(--border-strong); }
+  .app-shell[data-theme] .bcard.is-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .app-shell[data-theme] :is(.bcard__title, .bcard__media-title, .bcard__edit, .board-link-note input) { color: var(--text); text-shadow: none; }
+  .app-shell[data-theme] :is(.bcard__edit, .bcard__media) { background: var(--control-bg); }
+  .app-shell[data-theme] .bcard__synopsis,
+  .app-shell[data-theme] .board-link-note input::placeholder { color: var(--muted); }
+  .app-shell[data-theme] .board__color-bar { background: var(--panel); border-color: var(--border); }
+  .app-shell[data-theme] .board__link-state { color: var(--accent); }
+  .app-shell[data-theme] .bcard .bcard__link { color: var(--text); background: var(--control-bg); border-color: var(--border); }
+  .app-shell[data-theme] .bcard__actions { background: var(--control-bg); border-radius: 4px; }
+  .app-shell[data-theme] .bcard__connect { color: var(--muted); }
+  .app-shell[data-theme] .bcard__connect.is-active { color: var(--accent); background: var(--accent-soft); }
+  .app-shell[data-theme] :is(.cards__label, .reports__label, .preview__label, .cards__act-title) { color: var(--text); }
+  /* 故事卡保留作者选择的浅色卡面；文字必须始终用深色，不能继承夜间浅字。 */
+  .app-shell[data-theme] .cards .card { border-color: var(--border); box-shadow: var(--card-glow); backdrop-filter: none; }
+  .app-shell[data-theme] .cards :is(.card__title, .card__synopsis) { color: #263328; background: rgba(255,255,255,.55); }
+  .app-shell[data-theme] .cards .card__heading { color: #465448; }
+  .app-shell[data-theme] .cards .card__no { color: #263328; background: rgba(255,255,255,.5); }
+  .app-shell[data-theme] .cards .card__dot { border-color: rgba(38,51,40,.18); }
+  .app-shell[data-theme] :is(.stat__value, .report-block h3, .character-name-edit, .table td) { color: var(--text); }
+  .app-shell[data-theme] :is(.stat__label, .table th, .report-block__title span) { color: var(--muted); }
+  .app-shell[data-theme] .stat, .app-shell[data-theme] .report-block { background: var(--panel); border-color: var(--border); box-shadow: none; }
+}

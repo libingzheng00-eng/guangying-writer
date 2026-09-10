@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useStore, type SidebarMode } from '../store/store';
 import { deriveScenes } from '../model/project';
+import { reorderOutlineScene } from '../model/outline';
 import { CARD_COLORS, ELEMENT_META, ELEMENT_ORDER } from '../model/elements';
 import { usePagination } from '../hooks/PaginationProvider';
 import type { ElementType } from '../model/types';
@@ -123,25 +124,95 @@ function OutlinePanel() {
   const updateSceneMeta = useStore((s) => s.updateSceneMeta);
   const requestFocus = useStore((s) => s.requestFocus);
   const setView = useStore((s) => s.setView);
+  const drag = React.useRef<{ elementId: string; projectId: string } | null>(null);
+  const [draggingId, setDraggingId] = React.useState<string | null>(null);
+  const [over, setOver] = React.useState<{ elementId: string; edge: 'before' | 'after' } | null>(null);
+  const dragType = 'application/x-guangying-outline-scene';
+  const clearDrag = () => { drag.current = null; setDraggingId(null); setOver(null); };
+  const validDrag = (event: React.DragEvent) => drag.current?.projectId === useStore.getState().project.id
+    && Array.from(event.dataTransfer.types).includes(dragType);
+  const edgeAt = (event: React.DragEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return event.clientY < bounds.top + bounds.height / 2 ? 'before' as const : 'after' as const;
+  };
+  const move = (sourceId: string, targetId: string, edge: 'before' | 'after') => {
+    const state = useStore.getState();
+    // 整场排序只提交一次；原位/相邻原位落下不调用 mutate，也不清空重做记录。
+    if (!reorderOutlineScene(state.project.elements, sourceId, targetId, edge)) return;
+    state.mutate((project) => {
+      const elements = reorderOutlineScene(project.elements, sourceId, targetId, edge);
+      if (elements) project.elements = elements;
+    });
+  };
   return (
     <div className="panel">
-      <div className="panel__hint">写下每场的故事点，拖拽卡片视图可调整顺序</div>
+      <div className="panel__hint">拖动场号到卡片上/下半部排序；双击场号定位正文</div>
       <div className="panel__list">
         {scenes.map((s) => (
-          <div className="outline-item" key={s.id}>
+          <div
+            className={`outline-item${draggingId === s.elementId ? ' is-dragging' : ''}${over?.elementId === s.elementId ? ` is-drop-${over.edge}` : ''}`}
+            key={s.id}
+            data-outline-scene={s.elementId}
+            onDragOverCapture={(event) => {
+              if (!validDrag(event)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              event.dataTransfer.dropEffect = 'move';
+              const edge = edgeAt(event);
+              setOver((previous) => previous?.elementId === s.elementId && previous.edge === edge ? previous : { elementId: s.elementId, edge });
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setOver((previous) => previous?.elementId === s.elementId ? null : previous);
+              }
+            }}
+            onDropCapture={(event) => {
+              if (!validDrag(event)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const sourceId = drag.current!.elementId;
+              const edge = edgeAt(event);
+              clearDrag();
+              move(sourceId, s.elementId, edge);
+            }}
+          >
             <div className="outline-item__head">
-              <span className="outline-item__no" style={{ background: s.color }}>
+              <button
+                type="button"
+                className="outline-item__no outline-item__drag"
+                style={{ background: s.color }}
+                draggable
+                aria-label={`拖动第 ${s.number} 场排序`}
+                title="拖动排序；双击定位正文；Alt+↑/↓ 上下移动"
+                onDragStart={(event) => {
+                  drag.current = { elementId: s.elementId, projectId: useStore.getState().project.id };
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData(dragType, s.elementId);
+                  const card = event.currentTarget.closest('.outline-item');
+                  if (card && event.dataTransfer.setDragImage) event.dataTransfer.setDragImage(card, 16, 14);
+                  setDraggingId(s.elementId);
+                }}
+                onDragEnd={clearDrag}
+                onDoubleClick={() => {
+                  requestFocus(s.elementId, 'start', 'start');
+                  setView('write');
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') clearDrag();
+                  if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+                  event.preventDefault();
+                  const before = event.key === 'ArrowUp';
+                  const neighbor = scenes[s.index + (before ? -1 : 1)];
+                  if (neighbor) move(s.elementId, neighbor.elementId, before ? 'before' : 'after');
+                }}
+              >
                 {s.number}
-              </span>
+              </button>
               <input
                 className="outline-item__title"
                 value={s.title}
                 placeholder={s.heading || '场景标题'}
                 onChange={(e) => updateSceneMeta(s.elementId, { title: e.target.value })}
-                onClick={() => {
-                  requestFocus(s.elementId, 'start', 'start');
-                  setView('write');
-                }}
               />
             </div>
             <textarea
