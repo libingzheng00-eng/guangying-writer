@@ -486,6 +486,7 @@ export function BoardView() {
                     setView('write');
                   }}
                   onDelete={() => deleteSceneCard(sc.elementId)}
+                  onChangeSynopsis={(synopsis) => updateSceneMeta(sc.elementId, { synopsis })}
                   onResizeStart={(e) => {
                     // 场景卡 resize：与节拍卡共用 drag.current 'resize' 模式
                     const node = e.currentTarget.closest('[data-card]') as HTMLElement | null;
@@ -564,7 +565,7 @@ interface SceneCardProps {
   pos: { x: number; y: number };
 }
 
-function SceneCard({ scene, pos, linking, onLink, onOpen, onDelete, onResizeStart, selected }: SceneCardProps & { linking: boolean; onLink: () => void; onOpen: () => void; onDelete: () => void; onResizeStart: (e: React.MouseEvent) => void; selected: boolean }) {
+function SceneCard({ scene, pos, linking, onLink, onOpen, onDelete, onChangeSynopsis, onResizeStart, selected }: SceneCardProps & { linking: boolean; onLink: () => void; onOpen: () => void; onDelete: () => void; onChangeSynopsis: (synopsis: string) => void; onResizeStart: (e: React.MouseEvent) => void; selected: boolean }) {
   const lim = sizeLimitFor('scene');
   return (
     <div
@@ -581,7 +582,18 @@ function SceneCard({ scene, pos, linking, onLink, onOpen, onDelete, onResizeStar
         <span className="bcard__actions"><span className="bcard__tag">场</span><button className={`bcard__connect ${linking ? 'is-active' : ''}`} onMouseDown={(e) => e.stopPropagation()} onClick={onLink} title="连接到另一张卡片">↗</button><button className="bcard__del" onMouseDown={(e) => e.stopPropagation()} onClick={onDelete} title="删除整场（可撤销）" aria-label="删除整场">×</button></span>
       </div>
       <div className="bcard__title">{scene.title || scene.heading || '（未命名场景）'}</div>
-      <div className="bcard__synopsis">{scene.synopsis || scene.heading}</div>
+      {/* 与大纲/故事板共用 synopsis；空白不能拿标题填充，也不能把编辑手势当卡片拖动。 */}
+      <textarea
+        className="bcard__scene-notes"
+        aria-label={`第 ${scene.number} 场故事信息`}
+        placeholder="这一场发生了什么？"
+        value={scene.synopsis}
+        rows={1}
+        onChange={(e) => onChangeSynopsis(e.target.value)}
+        onMouseDown={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+      />
       <button
         type="button"
         className="bcard__resize"

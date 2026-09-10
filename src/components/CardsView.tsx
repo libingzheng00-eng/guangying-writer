@@ -70,6 +70,7 @@ export function CardsView() {
 
   const renderSection = (actId: string | null, titleNode: React.ReactNode, list: typeof scenes) => (
     <section
+      key={actId || '__ungrouped__'}
       className={`cards__act${actId ? '' : ' cards__act--ungrouped'}${dropTarget === (actId || '__ungrouped__') ? ' is-drop-target' : ''}`}
       onDragOver={(e) => {
         e.preventDefault();

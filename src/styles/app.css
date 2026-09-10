@@ -526,6 +526,11 @@ textarea {
   gap: 6px;
   align-items: center;
 }
+.outline-item__drag { border: 0; flex: 0 0 auto; cursor: grab; user-select: none; }
+.outline-item__drag:active { cursor: grabbing; }
+.outline-item.is-dragging { opacity: .55; }
+.outline-item.is-drop-before { box-shadow: inset 0 3px var(--accent); }
+.outline-item.is-drop-after { box-shadow: inset 0 -3px var(--accent); }
 .outline-item__no {
   min-width: 22px;
   height: 20px;
@@ -1859,6 +1864,8 @@ textarea {
 }
 .bcard--scene {
   min-height: 96px;
+  /* hidden 仍会在摘要聚焦时自动滚动整卡，遮住场号/按钮；只允许 textarea 自己滚动。 */
+  overflow: clip;
 }
 .bcard--beat {
   border-top: 3px solid var(--warm);
@@ -1935,6 +1942,25 @@ textarea {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* 场景卡下方是可编辑摘要，不是重复场景标题；不改外卡尺寸和世界坐标。 */
+.bcard__scene-notes {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 26px;
+  min-height: 26px;
+  padding: 3px 4px;
+  resize: none;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: 12px/1.45 -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+  cursor: text;
+  user-select: text;
+}
+.bcard__scene-notes::placeholder { color: var(--muted); }
+.bcard__scene-notes:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
 .bcard__edit {
   flex: 1 1 auto;
   width: 100%;

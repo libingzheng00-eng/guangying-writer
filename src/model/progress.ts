@@ -24,18 +24,18 @@ export const CHARS_PER_LINE: Partial<Record<string, number>> = {
 };
 const DEFAULT_CHARS_PER_LINE = 30;
 
-/** 场景条带调色板：统一的雾蓝系，适合深浅两种工作台。 */
+/** 场景条带：低饱和植物/纸张色；编号与选中框仍是主要识别方式。仅改颜色，不改比例。 */
 export const SCENE_BAND_PALETTE = [
-  '#76a8be',
-  '#8ab8c8',
-  '#69a0b8',
-  '#9bc4d0',
-  '#7eafc2',
-  '#a7ccd4',
-  '#6398b2',
-  '#91bdcc',
-  '#73a9c1',
-  '#b0d2d8',
+  '#b8c7b3',
+  '#d9c9ad',
+  '#b6c8cb',
+  '#d4bdb5',
+  '#c3bfd0',
+  '#c9d0b5',
+  '#d8c5bb',
+  '#b9c6bf',
+  '#c7cbd9',
+  '#d5ceb8',
 ];
 
 export interface SceneBand {

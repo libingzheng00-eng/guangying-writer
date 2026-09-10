@@ -15,7 +15,7 @@ import { cloneProject, createProject, newElement, deriveScenes } from '../model/
 import { dualAfterEnter } from '../model/flow';
 import { plain, cnNum } from '../utils/text';
 import { uid } from '../utils/id';
-import { isHexColor } from '../utils/color';
+import { DEFAULT_FONT_COLOR, normalizeFontColor } from '../model/appearance';
 import { clampTargetPages } from '../model/progress';
 import { clampSize } from '../model/board';
 import {
@@ -64,7 +64,7 @@ interface StoreState {
   version: number;
   pageCount: number;
   zoom: number;
-  /** 写作字体颜色（app 级外观设置，不写入 .zhsp） */
+  /** 写作字体颜色（auto 随日夜主题；app 级设置，不写入 .zhsp） */
   fontColor: string;
   /** 应用外观（app 级设置，不写入 .zhsp） */
   appTheme: AppTheme;
@@ -177,13 +177,13 @@ const LS_FONT_COLOR = 'guangying:fontColor';
 const LS_APP_THEME = 'guangying:appTheme';
 const LEGACY_LS_FONT_COLOR = 'mojiang:fontColor';
 const LEGACY_LS_APP_THEME = 'mojiang:appTheme';
-export const DEFAULT_FONT_COLOR = '#e9ff3a';
+export { DEFAULT_FONT_COLOR } from '../model/appearance';
 
 function loadFontColor(): string {
   try {
     const v = localStorage.getItem(LS_FONT_COLOR) || localStorage.getItem(LEGACY_LS_FONT_COLOR);
     // 校验合法性：localStorage 可能被手动改坏，脏值会污染 CSS 变量导致界面异常
-    return v && isHexColor(v) ? v : DEFAULT_FONT_COLOR;
+    return normalizeFontColor(v);
   } catch {
     return DEFAULT_FONT_COLOR;
   }
@@ -228,12 +228,13 @@ export const useStore = create<StoreState>((set, get) => ({
   setZoom: (n) => set({ zoom: Math.max(0.6, Math.min(1.8, n)) }),
 
   setFontColor: (c) => {
+    const fontColor = normalizeFontColor(c);
     try {
-      localStorage.setItem(LS_FONT_COLOR, c);
+      localStorage.setItem(LS_FONT_COLOR, fontColor);
     } catch {
       /* 忽略存储失败 */
     }
-    set({ fontColor: c });
+    set({ fontColor });
   },
   setAppTheme: (appTheme) => {
     try { localStorage.setItem(LS_APP_THEME, appTheme); } catch { /* 忽略存储失败 */ }

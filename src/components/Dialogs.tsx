@@ -3,13 +3,14 @@ import { useStore } from '../store/store';
 import { ELEMENT_META, ELEMENT_ORDER, FONT_PRESETS, REVISION_COLORS } from '../model/elements';
 import type { ElementType, Revision, TextAlign } from '../model/types';
 import { uid } from '../utils/id';
-import { DEFAULT_FONT_COLOR } from '../store/store';
-import { hexToRgba, isHexColor } from '../utils/color';
+import { DEFAULT_FONT_COLOR, resolveFontColor } from '../model/appearance';
+import { isHexColor } from '../utils/color';
 
-/** 写作字体颜色预设（第一个为默认荧光黄） */
+/** 可选自定义颜色；默认值另用 auto 跟随日夜主题。 */
 const FONT_COLOR_PRESETS = [
-  { name: '荧光黄（默认）', color: '#e9ff3a' },
+  { name: '纯黑', color: '#000000' },
   { name: '纯白', color: '#ffffff' },
+  { name: '荧光黄', color: '#e9ff3a' },
   { name: '暖白', color: '#ffe9c4' },
   { name: '青蓝', color: '#8fd3ff' },
   { name: '薄荷', color: '#a8ffcf' },
@@ -82,6 +83,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const fontColor = useStore((s) => s.fontColor);
   const setFontColor = useStore((s) => s.setFontColor);
   const appTheme = useStore((s) => s.appTheme);
+  const resolvedFontColor = resolveFontColor(fontColor, appTheme);
   const setAppTheme = useStore((s) => s.setAppTheme);
   const [tab, setTab] = useState<'page' | 'indent' | 'revision' | 'appearance' | 'general'>('page');
 
@@ -325,11 +327,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               <button className={appTheme === 'night' ? 'is-active' : ''} onClick={() => setAppTheme('night')}>夜间</button>
               <button className={appTheme === 'day' ? 'is-active' : ''} onClick={() => setAppTheme('day')}>日间</button>
             </div>
-            <p className="hint">只影响本机界面外观，不会写入剧本文件，也不会影响导出。</p>
+            <p className="hint">只影响本机外观，不会写入剧本文件。默认正文随主题切换：日间黑色，夜间白色。</p>
           </div>
           <div className="field">
             <label>写作字体颜色</label>
             <div className="rev-picker">
+              <button className={`btn ${fontColor === DEFAULT_FONT_COLOR ? 'btn--primary' : 'btn--ghost'}`} aria-pressed={fontColor === DEFAULT_FONT_COLOR} onClick={() => setFontColor(DEFAULT_FONT_COLOR)}>
+                随主题（默认）
+              </button>
               {FONT_COLOR_PRESETS.map((c) => (
                 <button
                   key={c.color}
@@ -346,12 +351,12 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input
                 type="color"
-                value={fontColor}
+                value={resolvedFontColor}
                 onChange={(e) => setFontColor(e.target.value)}
                 style={{ width: 56, height: 28, padding: 0, border: 'none', background: 'none' }}
               />
               <input
-                value={fontColor}
+                value={resolvedFontColor}
                 style={{ width: 110 }}
                 onChange={(e) => {
                   if (isHexColor(e.target.value)) setFontColor(e.target.value);
@@ -366,8 +371,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <label>预览</label>
             <div
               style={{
-                color: fontColor,
-                textShadow: `0 0 6px ${hexToRgba(fontColor, 0.4)}, 0 0 14px ${hexToRgba(fontColor, 0.18)}`,
+                color: resolvedFontColor,
                 padding: '10px 12px',
                 background: 'rgba(255, 255, 255, 0.03)',
                 border: '1px solid var(--border)',
@@ -376,7 +380,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             >
               内景 · 深夜的居酒屋 · 夜
             </div>
-            <p className="hint">只影响写作视图的正文颜色；导出的 PDF / 打印始终保持黑字，不受此设置影响。</p>
+            <p className="hint">自选颜色保留在本机；恢复默认后重新随主题切换。A4 纯文本打印保持黑字，创作版 PDF 保留屏幕上的图文外观。</p>
           </div>
         </div>
       ) : null}

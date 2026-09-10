@@ -16,8 +16,7 @@ import { isElectron } from './io/native';
 import { parseProject } from './io/zhsp';
 import { sampleProject } from './model/sample';
 import { hexToRgba } from './utils/color';
-import { isHexColor } from './utils/color';
-import { DEFAULT_FONT_COLOR } from './store/store';
+import { resolveFontColor } from './model/appearance';
 
 // 新名称使用独立键；读取旧键一次，确保升级后不会丢失已有自动保存。
 const LS_KEY = 'guangying:autosave';
@@ -33,11 +32,10 @@ export default function App() {
   const version = useStore((s) => s.version);
   const [dialog, setDialog] = useState<null | 'settings' | 'title'>(null);
   const commands = useCommands();
-  // 原源码包遗漏了示例背景图。使用内置渐变保证开源仓库可以直接构建；
-  // 后续若添加可再分发的原创图片，可在此处作为可选的视觉资源接入。
+  // 与工作台共用纯色背景；仅改变显示，不改变稿纸或素材的坐标。
   const writeBg = appTheme === 'day'
-    ? 'radial-gradient(circle at 76% 12%, rgba(155, 181, 199, .22), transparent 34%), linear-gradient(140deg, #edf2f5 0%, #e5ebef 52%, #dce4e9 100%)'
-    : 'radial-gradient(circle at 76% 12%, rgba(63, 82, 104, .18), transparent 34%), linear-gradient(140deg, #111820 0%, #17232e 52%, #0d1218 100%)';
+    ? 'linear-gradient(#eeede8, #eeede8)'
+    : 'linear-gradient(#181d1b, #181d1b)';
 
   /* 启动：读取自动保存或示例剧本 */
   useEffect(() => {
@@ -77,12 +75,13 @@ export default function App() {
   /* 写作字体颜色 → CSS 变量（soft / glow 由主色派生，保证视觉一致） */
   useEffect(() => {
     // 二次兜底：即便 localStorage 里残留非法值，也只用合法颜色，保证 CSS 变量永远有效
-    const color = isHexColor(fontColor) ? fontColor : DEFAULT_FONT_COLOR;
+    const color = resolveFontColor(fontColor, appTheme);
     const root = document.documentElement;
+    root.style.setProperty('--writing-font-color', color);
     root.style.setProperty('--neon-yellow', color);
     root.style.setProperty('--neon-yellow-soft', hexToRgba(color, 0.4));
     root.style.setProperty('--neon-yellow-glow', `0 0 6px ${hexToRgba(color, 0.4)}, 0 0 14px ${hexToRgba(color, 0.18)}`);
-  }, [fontColor]);
+  }, [fontColor, appTheme]);
 
   /* 菜单 / 快捷键 */
   useEffect(() => {
