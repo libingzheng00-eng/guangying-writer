@@ -3,6 +3,9 @@
 export interface PdfOptions {
   pageSize: { width: number; height: number }; // 微米
   landscape?: boolean;
+  mode?: 'creative' | 'print';
+  html?: string;
+  name?: string;
 }
 
 export interface NativeApi {

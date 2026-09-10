@@ -2,7 +2,12 @@
 
 > 开源许可证：[MIT](LICENSE)。稳定版本会发布在 GitHub 的 **Releases** 页面；请从 Releases 下载最新版 DMG 或 ZIP，不要从源码页面下载自动生成的源码压缩包。
 
-> 当前状态（2026-09-09）：`v1.3.0-alpha.18` 为公开测试源码，已完成核心功能回迁与自动化回归；它是测试版而非 Apple 公证的稳定版。详见 [MIGRATION.md](MIGRATION.md)、[DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md) 与 [CORE_FEATURES.md](CORE_FEATURES.md)。首次启动模板必须保持为空白，仓库和发布包禁止包含用户剧本。
+> 当前状态（2026-09-09）：`v1.3.0-alpha.18.2` 为公开测试源码，已完成核心功能回迁与自动化回归；它是测试版而非 Apple 公证的稳定版。详见 [MIGRATION.md](MIGRATION.md)、[DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md) 与 [CORE_FEATURES.md](CORE_FEATURES.md)。首次启动模板必须保持为空白，仓库和发布包禁止包含用户剧本。
+
+### PDF 导出怎么选
+
+- **创作版 PDF（原位卡片）**：保留写作画布中正文、图片、声音卡的位置与尺寸，例如第五场旁的视角参考图仍在第五场旁，不统一移到文末。采用数字画布尺寸，不强制 A4。
+- **A4 纯文本 PDF**（或 `⌘/Ctrl+P`）：只输出剧本正文与格式，按 A4 分页，适合打印。导出不会修改原工程纸型、卡片坐标或正文。
 
 ## 公开发布方式
 

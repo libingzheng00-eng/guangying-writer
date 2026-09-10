@@ -35,10 +35,6 @@ export function countWords(text: string): number {
   return cjk + words;
 }
 
-/** 只统计中文字符数 */
-export function countCJK(text: string): number {
-  return plain(text).match(/[\u4e00-\u9fff\u3400-\u4dbf]/g)?.length ?? 0;
-}
 
 export function isBlank(html: string): boolean {
   return plain(html).trim() === '';
@@ -65,13 +61,6 @@ export function cnNum(n: number): string {
   return String(n);
 }
 
-/** 把秒数格式化为 mm:ss */
-export function fmtDuration(minutes: number): string {
-  const total = Math.round(minutes * 60);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
 
 /**
  * 自动编号时，去掉场次标题里手写的序号前缀

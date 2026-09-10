@@ -38,6 +38,8 @@ export interface PaginationResult {
   lineHeightPx: number;
   contentWidthPx: number;
   contentHeightPx: number;
+  /** 仅在当前版本、纸型的 DOM 测量与分页完成后赋值；导出不能使用旧页数。 */
+  readyKey?: string;
 }
 
 interface Item {
@@ -91,6 +93,121 @@ function buildItems(project: ScriptProject): Item[] {
   return out;
 }
 
+/** 根据实测正文高度分页。每次循环必须消费正文行或结束当前页，不能以页数上限截掉内容。 */
+export function paginateMeasured(
+  project: ScriptProject,
+  heights: ReadonlyMap<string, number>,
+  geometry: Pick<PaginationResult, 'contentHeightPx' | 'contentWidthPx' | 'lineHeightPx'>,
+): PaginationResult {
+  const finitePositive = (value: number, fallback: number) => Number.isFinite(value) && value > 0 ? value : fallback;
+  const lineHeightPx = finitePositive(geometry.lineHeightPx, 18);
+  // 极端页边距至少留下一个正文行；否则任何格式都无法容纳正文。
+  const contentHeightPx = Math.max(lineHeightPx, finitePositive(geometry.contentHeightPx, lineHeightPx));
+  const pages: PageInfo[] = [];
+  const pageOf: Record<string, number> = {};
+  const breaks: number[] = [];
+  let cur: Placed[] = [];
+  let curH = 0;
+  let curRev: string | null = null;
+  let prevPageLastCharacter: string | null = null;
+  const revRank = (id?: string) => id ? project.revisions.findIndex((r) => r.id === id) : -1;
+  const flush = () => {
+    if (!cur.length) return;
+    prevPageLastCharacter = null;
+    for (let i = cur.length - 1; i >= 0 && !prevPageLastCharacter; i -= 1) {
+      const dialogue = [...cur[i].elements].reverse().find((e) => e.type === 'dialogue');
+      if (dialogue) prevPageLastCharacter = characterForDialogue(project, dialogue.id);
+    }
+    pages.push({ index: pages.length, items: cur, revColor: curRev });
+    cur = [];
+    curH = 0;
+    curRev = null;
+  };
+
+  const measuredItems = buildItems(project);
+  const linesFor = (item: Item) => Math.max(1, Math.round(finitePositive(heights.get(item.key) || 0, lineHeightPx) / lineHeightPx));
+  const marginFor = (item: Item) => Number.isFinite(item.marginTopLines) ? Math.max(0, item.marginTopLines) : 0;
+  for (let itemIndex = 0; itemIndex < measuredItems.length; itemIndex += 1) {
+    const item = measuredItems[itemIndex];
+    const measured = finitePositive(heights.get(item.key) || 0, lineHeightPx);
+    // offsetHeight 是整数，而行高常为小数；round 避免测量四舍五入造成虚构末行。
+    const totalLines = Math.max(1, Math.round(measured / lineHeightPx));
+    const mtLines = Number.isFinite(item.marginTopLines) ? Math.max(0, item.marginTopLines) : 0;
+    const isDialogue = item.kind === 'single' && item.elements[0].type === 'dialogue';
+    // 双列也使用统一裁剪窗；允许按行续页，避免长双列把场次标题独留上一页。
+    const splitable = item.kind === 'dual' || canSplit(item.elements[0]);
+    if (cur.length && item.keep > 0) {
+      let keepLines = mtLines + totalLines;
+      let remaining = item.keep;
+      for (let nextIndex = itemIndex + 1; nextIndex < measuredItems.length && remaining > 0; nextIndex += 1) {
+        const next = measuredItems[nextIndex];
+        const taken = Math.min(remaining, linesFor(next));
+        keepLines += marginFor(next) + taken;
+        if (taken < linesFor(next) && next.kind === 'single' && next.elements[0].type === 'dialogue' && project.settings.moreText) keepLines += 1;
+        remaining -= taken;
+        // 人物/括号自身也有跟随约束，避免场次带上人物后，人物又单独移到下一页。
+        if (taken === linesFor(next)) remaining = Math.max(remaining, next.keep);
+      }
+      const keepHeight = keepLines * lineHeightPx;
+      if (curH + keepHeight > contentHeightPx && keepHeight <= contentHeightPx) flush();
+    }
+    let start = 0;
+    while (start < totalLines) {
+      const rest = totalLines - start;
+      let margin = start ? 0 : mtLines;
+      let contd = start && isDialogue && project.settings.showContd
+        ? contdLabelFor(item, project, prevPageLastCharacter) : undefined;
+      const availableLines = Math.max(0, Math.floor((contentHeightPx - curH) / lineHeightPx + 1e-7));
+      const continuationLines = contd ? 1 : 0;
+      let take = rest;
+      let more = false;
+      if (margin + continuationLines + rest > availableLines) {
+        // 中途断开的对白需要预留 MORE；下一页的 CONT'D 独立预算。
+        more = isDialogue && !!project.settings.moreText;
+        let fit = Math.floor(availableLines - margin - continuationLines - (more ? 1 : 0));
+        if (cur.length && (!splitable || fit < 2 || rest - fit < 2)) {
+          flush();
+          continue;
+        }
+        if (!cur.length && fit < 1) {
+          // 极端小版心先让出空白及提示行，始终保留正文，不循环制造空页。
+          margin = Math.min(margin, Math.max(0, availableLines - 1));
+          if (availableLines - margin - (contd ? 1 : 0) - (more ? 1 : 0) < 1) more = false;
+          if (availableLines - margin - (contd ? 1 : 0) < 1) contd = undefined;
+          fit = Math.max(1, Math.floor(availableLines - margin - (contd ? 1 : 0) - (more ? 1 : 0)));
+        }
+        take = Math.min(rest, Math.max(1, fit));
+        more = more && take < rest;
+      }
+      const placed: Placed = {
+        key: `${item.key}#${start}`,
+        kind: item.kind,
+        elements: item.elements,
+        lines: take,
+        skipLines: start,
+        more,
+        contd,
+        spaceBefore: margin,
+      };
+      cur.push(placed);
+      curH += (margin + take + (contd ? 1 : 0) + (more ? 1 : 0)) * lineHeightPx;
+      // 普通、拆分、强制分页都走同一路径，场景跳页与修订色不再漏记。
+      item.elements.forEach((e) => {
+        if (pageOf[e.id] === undefined) pageOf[e.id] = pages.length;
+        if (e.rev && revRank(e.rev) > revRank(curRev || undefined)) curRev = e.rev;
+      });
+      if (start === 0) breaks.push(item.startIndex);
+      start += take;
+      if (start < totalLines) flush();
+    }
+  }
+  flush();
+  const withTitle = project.titlePage.show && project.settings.titlePageBreak
+    ? [{ index: -1, items: [], revColor: null } as PageInfo, ...pages]
+    : pages;
+  return { pages: withTitle, pageOf, breaks, lineHeightPx, contentWidthPx: geometry.contentWidthPx, contentHeightPx };
+}
+
 const Ctx = createContext<PaginationResult>({ pages: [], pageOf: {}, breaks: [], lineHeightPx: 18, contentWidthPx: 500, contentHeightPx: 700 });
 
 export function usePagination(): PaginationResult {
@@ -100,6 +217,7 @@ export function usePagination(): PaginationResult {
 export function PaginationProvider({ children }: { children: React.ReactNode }) {
   const project = useStore((s) => s.project);
   const version = useStore((s) => s.version);
+  const view = useStore((s) => s.view);
   const setPageCount = useStore((s) => s.setPageCount);
   const refs = useRef(new Map<string, HTMLElement>());
   const [result, setResult] = useState<PaginationResult>({
@@ -111,178 +229,37 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
     contentHeightPx: 700,
   });
 
+  const paperName = view === 'preview' ? 'A4' : project.settings.paper;
+  const requestedKey = `${version}:${paperName}`;
   const geo = useMemo(() => {
-    const paper = PAPER_MM[project.settings.paper] || PAPER_MM.A4;
+    const paper = PAPER_MM[paperName] || PAPER_MM.A4;
     const s = project.settings;
     const w = (paper.w - (s.marginLeft + s.marginRight) * 10) * PX_PER_MM;
     const h = (paper.h - (s.marginTop + s.marginBottom) * 10) * PX_PER_MM;
     const fs = s.fontSize * PT_TO_PX;
     return { contentWidthPx: w, contentHeightPx: h, fontSizePx: fs, lineHeightPx: fs * s.lineHeight };
-  }, [project.settings]);
+  }, [project.settings, paperName]);
 
   const items = useMemo(() => buildItems(project), [project.elements, project.settings.indent]);
 
   useEffect(() => {
     let cancelled = false;
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
+      // 字体加载会改变折行，必须等字体就绪后测量，才能向 PDF 导出声明 ready。
+      if (document.fonts) await document.fonts.ready;
       if (cancelled) return;
-      const { contentHeightPx: rawCH, lineHeightPx: rawLH } = geo;
-    // 兜底：防止 margin / 字号 / 行高被设成 0 时除法得到 NaN / Infinity，导致分页死循环或白屏
-    const contentHeightPx = Math.max(1, rawCH || 0);
-    const lineHeightPx = Math.max(1, rawLH || 0);
-      const pages: PageInfo[] = [];
-      const pageOf: Record<string, number> = {};
-      const breaks: number[] = [];
-      let cur: Placed[] = [];
-      let curH = 0;
-      let curRev: string | null = null;
-      /** 上一页最末一段对白所属人物；只有「当前对白人物 === 上一页最末人物」才显示「角色名（续）」 */
-      let prevPageLastCharacter: string | null = null;
-
-      const lastCharacterOf = (placed: Placed[]): string | null => {
-        for (let i = placed.length - 1; i >= 0; i -= 1) {
-          const it = placed[i];
-          const els = it.elements;
-          for (let j = els.length - 1; j >= 0; j -= 1) {
-            if (els[j].type === 'dialogue') {
-              return characterForDialogue(project, els[j].id);
-            }
-          }
-        }
-        return null;
-      };
-
-      const flush = () => {
-        prevPageLastCharacter = lastCharacterOf(cur);
-        pages.push({ index: pages.length, items: cur, revColor: curRev });
-        cur = [];
-        curH = 0;
-        curRev = null;
-      };
-      const newPage = () => {
-        if (cur.length) flush();
-      };
-
-      const revRank = (id?: string) => (id ? project.revisions.findIndex((r) => r.id === id) : -1);
-
-      items.forEach((item) => {
-        const node = refs.current.get(item.key);
-        const height = node ? (node as HTMLElement).offsetHeight : lineHeightPx;
-        const mtLines = item.marginTopLines;
-        const mt = mtLines * lineHeightPx;
-        const splitable = item.kind === 'single' && canSplit(item.elements[0]);
-        const el0 = item.elements[0];
-        const isDialogue = el0.type === 'dialogue';
-        const reserve = isDialogue ? 1 : 0; // 「（更多）」/「（续）」占 1 行
-
-        // 保持与后续内容同页
-        if (cur.length && item.keep > 0) {
-          const need = mt + Math.min(height, item.keep * lineHeightPx) + item.keep * lineHeightPx;
-          if (curH + need > contentHeightPx && height + item.keep * lineHeightPx <= contentHeightPx) newPage();
-        }
-
-        const totalLines = Math.max(1, Math.round(height / lineHeightPx));
-        let chunkStart = 0;
-        let guard = 0;
-        while (chunkStart < totalLines && guard < 40) {
-          guard += 1;
-          const rest = totalLines - chunkStart;
-          const mtNow = chunkStart === 0 ? mt : 0;
-          const res = chunkStart === 0 ? 0 : reserve;
-          const h = rest * lineHeightPx;
-          const need = mtNow + h + res * lineHeightPx;
-          const first = chunkStart === 0;
-          if (cur.length === 0 && need > contentHeightPx && splitable && rest > 2) {
-            // 单块超过一整页：强制切分
-          }
-          if (curH + need <= contentHeightPx) {
-            cur.push({
-              key: `${item.key}#${chunkStart}`,
-              kind: item.kind,
-              elements: item.elements,
-              lines: rest,
-              skipLines: chunkStart,
-              more: false,
-              contd: chunkStart > 0 && reserve ? contdLabelFor(item, project, prevPageLastCharacter) : undefined,
-              spaceBefore: mtLines,
-            });
-            curH += need;
-            item.elements.forEach((e) => {
-              if (pageOf[e.id] === undefined) pageOf[e.id] = pages.length;
-              if (e.rev && revRank(e.rev) > revRank(curRev || undefined)) curRev = e.rev;
-            });
-            if (first) breaks.push(item.startIndex);
-            break;
-          }
-          // 放不下：尝试拆分
-          const avail = contentHeightPx - curH - mtNow - res * lineHeightPx;
-          let fit = Math.floor(avail / lineHeightPx);
-          const orphan = 2;
-          const widow = 2;
-          if (splitable && cur.length > 0 && fit >= orphan && rest - fit >= widow) {
-            cur.push({
-              key: `${item.key}#${chunkStart}`,
-              kind: item.kind,
-              elements: item.elements,
-              lines: fit,
-              skipLines: chunkStart,
-              more: isDialogue,
-              spaceBefore: mtLines,
-            });
-            curH += mtNow + fit * lineHeightPx + res * lineHeightPx;
-            item.elements.forEach((e) => {
-              if (pageOf[e.id] === undefined) pageOf[e.id] = pages.length;
-              if (e.rev && revRank(e.rev) > revRank(curRev || undefined)) curRev = e.rev;
-            });
-            if (first) breaks.push(item.startIndex);
-            chunkStart += fit;
-            newPage();
-            continue;
-          }
-          if (cur.length === 0) {
-            // 空页都放不下：强行按可用行数截断，避免死循环
-            const maxLines = Math.max(1, Math.floor(contentHeightPx / lineHeightPx));
-            const take = Math.min(rest, maxLines);
-            cur.push({
-              key: `${item.key}#${chunkStart}`,
-              kind: item.kind,
-              elements: item.elements,
-              lines: take,
-              skipLines: chunkStart,
-              more: isDialogue && rest > take,
-              spaceBefore: mtLines,
-            });
-            curH += take * lineHeightPx;
-            if (first) breaks.push(item.startIndex);
-            chunkStart += take;
-            newPage();
-            continue;
-          }
-          newPage();
-        }
-      });
-
-      if (cur.length) flush();
-      const withTitle =
-        project.titlePage.show && project.settings.titlePageBreak
-          ? [{ index: -1, items: [], revColor: null } as PageInfo, ...pages.map((p, i) => ({ ...p, index: i }))]
-          : pages;
-      setResult({
-        pages: withTitle,
-        pageOf,
-        breaks,
-        lineHeightPx: geo.lineHeightPx,
-        contentWidthPx: geo.contentWidthPx,
-        contentHeightPx: geo.contentHeightPx,
-      });
-      setPageCount(withTitle.length);
+      const heights = new Map<string, number>();
+      refs.current.forEach((node, key) => heights.set(key, node.offsetHeight));
+      const measured = paginateMeasured(project, heights, geo);
+      setResult({ ...measured, readyKey: requestedKey });
+      setPageCount(measured.pages.length);
     }, 180);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, items, geo, project.revisions, project.titlePage.show, project.settings.titlePageBreak]);
+  }, [version, requestedKey, items, geo, project.revisions, project.titlePage.show, project.settings.titlePageBreak]);
 
   const sceneNo = useMemo(() => {
     const m: Record<string, string> = {};

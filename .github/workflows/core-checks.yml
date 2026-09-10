@@ -1,0 +1,38 @@
+name: 核心功能回归
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-checks:
+    name: core-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 安装锁定依赖
+        run: npm ci
+      - name: 发布卫生与核心契约
+        run: node scripts/core-guard.cjs
+      - name: 类型和构建
+        run: |
+          npm run typecheck
+          npm run build
+      - name: 正文交互、兼容与撤销
+        run: |
+          node scripts/render-test.cjs
+          node scripts/writing-test.cjs
+          node scripts/zhsp-compat-test.cjs
+          node scripts/history-test.cjs
+          node scripts/pagination-safety-test.cjs

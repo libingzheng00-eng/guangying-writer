@@ -119,18 +119,6 @@ export const DEFAULT_INDENT: Record<ElementType, ElementFormat> = {
   note: { left: 0, right: 0, align: 'left', spaceBefore: 1 },
 };
 
-/** 参与排版的元素（备忘不参与） */
-export const PRINTABLE: ElementType[] = [
-  'act',
-  'scene_heading',
-  'action',
-  'character',
-  'parenthetical',
-  'dialogue',
-  'transition',
-  'shot',
-  'general',
-];
 
 export const DIALOGUE_TYPES: ElementType[] = ['character', 'parenthetical', 'dialogue'];
 
@@ -177,6 +165,3 @@ export const COMMON_TRANSITIONS = ['切至：', '切出', '淡入：', '淡出�
 
 /** 常用镜头 */
 export const COMMON_SHOTS = ['特写 -', '大特写 -', '近景 -', '中景 -', '全景 -', '远景 -', '俯拍 -', '主观镜头 -', '插入镜头 -'];
-
-/** 内外景前缀 */
-export const SCENE_PREFIXES = ['内景', '外景', '内/外景', '外/内景'];

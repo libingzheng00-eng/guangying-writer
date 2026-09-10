@@ -34,7 +34,10 @@ export function Editor() {
   const updateBeat = useStore((s) => s.updateBeat);
   const moveBeat = useStore((s) => s.moveBeat);
   const deleteBeat = useStore((s) => s.deleteBeat);
-  const { breaks, lineHeightPx, contentWidthPx } = usePagination();
+  const notify = useStore((s) => s.notify);
+  const pdfExportMode = useStore((s) => s.pdfExportMode);
+  const version = useStore((s) => s.version);
+  const { breaks, lineHeightPx, contentWidthPx, readyKey } = usePagination();
 
   const refs = useRef(new Map<string, HTMLDivElement>());
   const composingRef = useRef(false);
@@ -446,7 +449,8 @@ export function Editor() {
   // 图片只使用统一的 image 卡：自由板可新建，写作页保留“直接拖入照片”的入口。
   // 这里不能恢复第二套 wimg/“写作图”数据类型，否则旧工程兼容和 PDF 素材页会再次分叉。
   const writingImages = project.beats.filter((b) => b.kind === 'image');
-  const writingMaterials = [...writingSounds, ...writingImages];
+  // 声音开关只控制声音，不能把已拖入的图片一起隐藏。
+  const writingMaterials = [...(showSoundCards || pdfExportMode === 'creative' ? writingSounds : []), ...writingImages];
   const addWritingSound = () => {
     const count = writingSounds.length;
     const x = Math.max(24, (scrollRef.current?.clientWidth || 980) - 274);
@@ -454,21 +458,51 @@ export function Editor() {
     addBeat(x, y, '', 'sound');
   };
 
-  const handleImageDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    const image = Array.from(event.dataTransfer.files).find((file) => file.type.startsWith('image/'));
+  // 核心红线：本地图片拖入由写作面板接管，不得落入 contentEditable 正文。
+  // .editor 才是滚动容器，内层 bounds.top 已包含滚动偏移，不能再加 scrollTop。
+  const handleImageDrop = async (event: React.DragEvent<HTMLDivElement>) => {
     setIsImageDropTarget(false);
-    if (!image) return;
+    if (!Array.from(event.dataTransfer.types).includes('Files')) return;
     event.preventDefault();
+    event.stopPropagation();
+    const images = Array.from(event.dataTransfer.files).filter((file) =>
+      file.type.startsWith('image/') || (!file.type && /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(file.name)),
+    );
+    if (!images.length) {
+      notify('请拖入本地图片文件（如 PNG、JPEG 或 WebP）。', 'error');
+      return;
+    }
     const bounds = event.currentTarget.getBoundingClientRect();
-    // 卡片坐标属于 editor__scroll；把落点限制在可见画布内，避免照片拖到边缘后无法找回。
-    const x = Math.max(16, Math.round(event.clientX - bounds.left - 129));
-    const y = Math.max(76, Math.round(event.clientY - bounds.top - 22));
-    const id = addBeat(x, y, '', 'image');
-    const title = image.name.replace(/\.[^.]+$/, '') || '图片素材';
-    updateBeat(id, { title });
-    const reader = new FileReader();
-    reader.onload = () => updateBeat(id, { img: String(reader.result || '') });
-    reader.readAsDataURL(image);
+    const maxX = Math.max(16, bounds.width - 290 - 16);
+    const x = Math.max(16, Math.min(maxX, Math.round(event.clientX - bounds.left - 145)));
+    const viewport = scrollRef.current!.getBoundingClientRect();
+    const y = Math.max(16, Math.min(viewport.bottom - bounds.top - 100, Math.round(event.clientY - bounds.top - 22)));
+    const projectAtDrop = useStore.getState().project.id;
+    for (const [index, image] of images.entries()) {
+      try {
+        const img = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(new Error('读取失败'));
+          reader.onabort = () => reject(new Error('读取中断'));
+          reader.onload = () => {
+            const data = String(reader.result || '');
+            const decoded = new Image();
+            decoded.onload = () => resolve(data);
+            decoded.onerror = () => reject(new Error('图片无法解码'));
+            decoded.src = data;
+          };
+          reader.readAsDataURL(image);
+        });
+        // 读取期间切换工程时，不能把上一份工程的图片写进新工程。
+        if (useStore.getState().project.id !== projectAtDrop) return;
+        addBeat(Math.min(maxX, x + index * 20), y, '', 'image', {
+          title: image.name.replace(/\.[^.]+$/, '') || '图片素材', img,
+        });
+      } catch {
+        if (useStore.getState().project.id !== projectAtDrop) return;
+        notify(`无法读取图片“${image.name}”，请尝试有效的 PNG、JPEG 或 WebP 文件。`, 'error');
+      }
+    }
   };
 
   return (
@@ -490,7 +524,8 @@ export function Editor() {
       </ProgressBar>
       <div
         className={`editor__scroll${isImageDropTarget ? ' is-image-drop-target' : ''}`}
-        onDragOver={(event) => {
+        data-ready={readyKey === `${version}:${project.settings.paper}` ? 'true' : 'false'}
+        onDragOverCapture={(event) => {
           if (Array.from(event.dataTransfer.types).includes('Files')) {
             event.preventDefault();
             event.dataTransfer.dropEffect = 'copy';
@@ -498,11 +533,11 @@ export function Editor() {
           }
         }}
         onDragLeave={(event) => {
-          if (event.currentTarget === event.target) setIsImageDropTarget(false);
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsImageDropTarget(false);
         }}
-        onDrop={handleImageDrop}
+        onDropCapture={handleImageDrop}
       >
-        <WritingMaterialCards cards={writingMaterials} visible={showSoundCards} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
+        <WritingMaterialCards cards={writingMaterials} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
         {settings.indent && project.titlePage.show ? <TitlePageCard /> : null}
         <div className="script-flow" ref={contentRef} style={columnStyle}>
           {items.map((item, i) => {
@@ -637,9 +672,8 @@ function MaterialControls({
   );
 }
 
-function WritingMaterialCards({ cards, visible, onUpdate, onMove, onDelete }: {
+function WritingMaterialCards({ cards, onUpdate, onMove, onDelete }: {
   cards: Array<{ id: string; x: number; y: number; text: string; title?: string; img?: string; kind?: 'beat' | 'sound' | 'image' }>;
-  visible: boolean;
   onUpdate: (id: string, patch: { title?: string; text?: string }) => void;
   onMove: (id: string, x: number, y: number) => void;
   onDelete: (id: string) => void;
@@ -657,7 +691,7 @@ function WritingMaterialCards({ cards, visible, onUpdate, onMove, onDelete }: {
   };
   const stopDrag = () => { dragRef.current = null; };
   return (
-    <div className={'writing-material-layer' + (visible ? '' : ' is-hidden')} aria-hidden={!visible}>
+    <div className="writing-material-layer">
       {cards.map((card) => (
         <article key={card.id} className={`writing-material-card${card.kind === 'image' ? ' writing-material-card--image' : ''}`} style={{ left: card.x, top: card.y }} onPointerDown={(e) => onPointerDown(e, card)} onPointerMove={onPointerMove} onPointerUp={stopDrag}>
           <header className="writing-material-card__head">

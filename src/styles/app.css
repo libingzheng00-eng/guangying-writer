@@ -1104,40 +1104,6 @@ textarea {
 .preview__page .sc-el {
   color: inherit;
 }
-.preview__material-page {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.preview__material-kicker {
-  color: #66717b;
-  font: 600 10pt -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
-  letter-spacing: .08em;
-}
-.preview__material-title {
-  margin: 0 0 6px;
-  color: #18232d;
-  font: 700 20pt -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
-}
-.preview__material-notes,
-.preview__material-missing {
-  margin: 0;
-  color: #293641;
-  white-space: pre-wrap;
-  font: 13pt/1.7 -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
-}
-.preview__material-missing { color: #6d5641; }
-.preview__material-image {
-  display: block;
-  width: 100%;
-  min-height: 120px;
-  max-height: 72%;
-  object-fit: contain;
-  object-position: center;
-  border: 1px solid #d3dbe0;
-  border-radius: 6px;
-  background: #f4f6f7;
-}
 .page__num {
   position: absolute;
   font-family: inherit;
@@ -1315,11 +1281,6 @@ textarea {
   position: relative;
   z-index: 5;
 }
-.target-pages { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--muted); }
-.target-pages input { width: 52px; min-width: 52px; height: 20px; padding: 1px 4px; border: 1px solid var(--border-strong); border-radius: 4px; background: #0c1119; color: #e6edf3; font-variant-numeric: tabular-nums; }
-.typewriter-progress { position: relative; width: clamp(92px, 14vw, 190px); height: 14px; overflow: visible; border: 1px solid #3b414b; border-radius: 2px; background: repeating-linear-gradient(90deg, #e6e2d8 0 13px, #7d8389 13px 14px); box-shadow: inset 0 1px 1px rgba(0,0,0,.45); }
-.typewriter-progress__paper { height: 100%; min-width: 1px; background: repeating-linear-gradient(90deg, #293440 0 13px, #4c5965 13px 14px); border-right: 1px solid #b34d3d; }
-.typewriter-progress__pointer { position: absolute; top: -10px; width: 34px; height: 13px; transform: translateX(-50%); object-fit: contain; filter: drop-shadow(0 1px 1px rgba(0,0,0,.55)); pointer-events: none; user-select: none; }
 .statusbar .sep {
   width: 1px;
   height: 12px;
@@ -2386,11 +2347,7 @@ textarea {
   .page__body,
   .sc-scene-no,
   .sc-contd,
-  .sc-more,
-  .preview__material-kicker,
-  .preview__material-title,
-  .preview__material-notes,
-  .preview__material-missing {
+  .sc-more {
     color: #000 !important;
   }
   .preview__page {

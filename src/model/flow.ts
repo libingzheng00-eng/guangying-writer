@@ -107,11 +107,6 @@ export function canSplit(el: ScriptElement): boolean {
   return el.type === 'action' || el.type === 'general' || el.type === 'dialogue';
 }
 
-export function isDualGroup(elements: ScriptElement[], i: number): boolean {
-  const el = elements[i];
-  if (!el || !el.dual) return false;
-  return true;
-}
 
 /** 收集连续的同一双列对白分组 */
 export function groupDual(elements: ScriptElement[]): (ScriptElement | ScriptElement[])[] {
@@ -136,35 +131,6 @@ export function groupDual(elements: ScriptElement[]): (ScriptElement | ScriptEle
   return out;
 }
 
-/**
- * 自动识别一段文本可能的元素类型（用于纯文本导入与粘贴）
- */
-export function guessType(line: string, prev?: ScriptElement): ElementType {
-  const s = line.trim();
-  if (!s) return 'action';
-  // 场次标题：1. 内景 咖啡厅 日 / 场景 3 - 外景 街道 夜 / INT. ...
-  if (/^\d+[.、．]\s*\S+/.test(s)) return 'scene_heading';
-  if (/^第\s*[0-9一二三四五六七八九十百]+\s*[场鏡镜幕]/.test(s)) return 'scene_heading';
-  if (/^(内景|外景|内外景|内\/外景|外\/内景|INT|EXT|int|ext)[\s.．、:]/.test(s)) return 'scene_heading';
-  if (/^(INT|EXT)[\s.．]/.test(s.toUpperCase())) return 'scene_heading';
-  // 转场
-  if (/(切至|切出|淡入|淡出|叠化|溶至|黑场|淡入淡出|FADE|切|叠)[：:]?\s*(\.|。)?$/.test(s) && s.length <= 12) {
-    return 'transition';
-  }
-  // 括号提示
-  if (/^[（(].+[）)]$/.test(s)) return 'parenthetical';
-  // 镜头
-  if (/(特写|近景|中景|全景|远景|大特写|插入|主观|俯拍|仰拍|跟拍|摇摄|推镜)/.test(s) && s.length <= 30) {
-    return 'shot';
-  }
-  // 人物：全角/半角括号包裹的提示行不算
-  if (prev && (prev.type === 'action' || prev.type === 'scene_heading' || prev.type === 'transition' || prev.type === 'dialogue' || prev.type === 'shot')) {
-    // 短行、无句末标点 → 视作人物
-    if (s.length <= 12 && !/[。！？，、；：]/.test(s)) return 'character';
-  }
-  if (prev && prev.type === 'character') return 'dialogue';
-  return 'action';
-}
 
 /**
  * Final Draft 风格的「正在输入」识别：根据一行文本的形态给出可能的元素类型。

@@ -1,6 +1,6 @@
 import type { ElementType, ScriptProject } from '../model/types';
 import { newElement } from '../model/project';
-import { plain, escapeHtml } from '../utils/text';
+import { escapeHtml } from '../utils/text';
 import { uid } from '../utils/id';
 
 /* ------------------------------ 导出 ------------------------------ */
@@ -209,17 +209,4 @@ export function fromFdx(xml: string): { elements: ScriptProject['elements']; tit
   });
 
   return { elements, title };
-}
-
-/** 从 FDX 片段快速取纯文本（用于导入预览） */
-export function fdxToPlain(xml: string): string {
-  const doc = new DOMParser().parseFromString(xml, 'application/xml');
-  const out: string[] = [];
-  Array.from(doc.querySelectorAll('Paragraph')).forEach((p) => {
-    const t = (p.getAttribute('Type') || '').toLowerCase();
-    if (t === 'title page' || p.closest('TitlePage')) return;
-    const txt = plain(textOf(p));
-    out.push(txt);
-  });
-  return out.join('\n\n');
 }

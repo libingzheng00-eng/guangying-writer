@@ -11,7 +11,7 @@ import type {
   ScriptSettings,
   TitlePage,
 } from '../model/types';
-import { cloneProject, createProject, defaultActs, newElement, deriveScenes } from '../model/project';
+import { cloneProject, createProject, newElement, deriveScenes } from '../model/project';
 import { dualAfterEnter } from '../model/flow';
 import { plain, cnNum } from '../utils/text';
 import { uid } from '../utils/id';
@@ -68,6 +68,8 @@ interface StoreState {
   fontColor: string;
   /** 应用外观（app 级设置，不写入 .zhsp） */
   appTheme: AppTheme;
+  /** 导出期间的临时显示状态，不写入工程、自动保存或撤销栈。 */
+  pdfExportMode: 'creative' | 'print' | null;
   past: ScriptProject[];
   future: ScriptProject[];
 
@@ -78,6 +80,7 @@ interface StoreState {
   writingSelectedIds: string[];
 
   setView: (v: ViewMode) => void;
+  setPdfExportMode: (mode: 'creative' | 'print' | null) => void;
   setSidebar: (s: SidebarMode) => void;
   toggleSidebar: () => void;
   notify: (text: string, kind?: Toast['kind']) => void;
@@ -130,7 +133,7 @@ interface StoreState {
   setScenePos: (elementId: string, x: number, y: number) => void;
 
   /* 自由画布：节拍卡 / 灵感卡 */
-  addBeat: (x: number, y: number, text?: string, kind?: Beat['kind']) => string;
+  addBeat: (x: number, y: number, text?: string, kind?: Beat['kind'], material?: Pick<Beat, 'title' | 'img'>) => string;
   updateBeat: (id: string, patch: Partial<Beat>) => void;
   /** resize 节拍卡到指定尺寸，coalesce 合并连续 resize；非法值由 clampSize 兜底 */
   resizeBeat: (id: string, w: number, h: number) => void;
@@ -209,6 +212,7 @@ export const useStore = create<StoreState>((set, get) => ({
   zoom: 1,
   fontColor: loadFontColor(),
   appTheme: loadAppTheme(),
+  pdfExportMode: null,
   past: [],
   future: [],
   selectedIds: [],
@@ -216,6 +220,7 @@ export const useStore = create<StoreState>((set, get) => ({
   writingSelectedIds: [],
 
   setView: (v) => set({ view: v }),
+  setPdfExportMode: (pdfExportMode) => set({ pdfExportMode }),
   setSidebar: (s) => set({ sidebar: s, sidebarOpen: true }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   notify: (text, kind = 'info') => set({ toast: { text, kind, ts: Date.now() } }),
@@ -587,11 +592,12 @@ export const useStore = create<StoreState>((set, get) => ({
     );
   },
 
-  addBeat: (x, y, text = '', kind) => {
+  addBeat: (x, y, text = '', kind, material) => {
     const id = uid('bt');
     get().mutate((p) => {
       const color = kind === 'sound' ? '#ccb887' : '#fff7d6';
-      const beat: Beat = { id, text, color, x, y };
+      // 图片读取成功后一次写入完整卡片；一次撤销不能留下无图的空卡。
+      const beat: Beat = { id, text, color, x, y, ...material };
       if (kind) beat.kind = kind;
       p.beats.push(beat);
     });
@@ -847,14 +853,7 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 }));
 
-/** 便捷：当前元素 */
-export function useActiveElement(): ScriptElement | null {
-  return useStore((s) => s.project.elements.find((e) => e.id === s.activeId) || null);
-}
 
-export function defaultActsList() {
-  return defaultActs();
-}
 
 /**
  * 把第 from 个场景（连同其后续元素）整体移动到第 to 个场景的位置，直接修改 p.elements。
