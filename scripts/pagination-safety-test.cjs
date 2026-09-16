@@ -73,6 +73,24 @@ const esbuild = require('esbuild');
   const keptWithMore = run([['action', 2], ['scene_heading', 1], ['character', 1], ['dialogue', 4]]);
   assert.equal(keptWithMore.pageOf['element-1'], keptWithMore.pageOf['element-3'], '场次跟随预算也计入对白 MORE 提示');
 
+  // 短对白不得串联为整批 keep-with-next：一页剩余空间应继续容纳完整的说话单元。
+  const shortPairs = Array.from({ length: 4 }, () => [['character', 1], ['dialogue', 1]]).flat();
+  const shortConversation = run([['action', 9], ...shortPairs], { capacity: 20, margin: 0 });
+  assert.equal(shortConversation.pages.length, 1, '完整短对白能放下时不得提前分页');
+  const crowdedConversation = run([['action', 9], ...shortPairs], { capacity: 20, margin: 1 });
+  assert.equal(crowdedConversation.pageOf['element-1'], 0, '第一页有空位必须放入第一组短对白');
+  assert.equal(crowdedConversation.pageOf['element-3'], 0, '不能将后续短对白整批推到第二页');
+  assert.equal(crowdedConversation.pageOf['element-5'], 1, '只在容不下下一完整单元时换页');
+  for (let i = 1; i < 9; i += 2) {
+    assert.equal(crowdedConversation.pageOf[`element-${i}`], crowdedConversation.pageOf[`element-${i + 1}`], '每组人物和一行对白仍在同一页');
+  }
+  const parentheticalConversation = run([
+    ['action', 8], ['character', 1], ['parenthetical', 1], ['dialogue', 1],
+    ['character', 1], ['dialogue', 1], ['character', 1], ['dialogue', 1],
+  ], { capacity: 20, margin: 1 });
+  assert.equal(parentheticalConversation.pageOf['element-1'], 0);
+  assert.equal(parentheticalConversation.pageOf['element-3'], 0, '人物、括号和短对白保持同页，不绑定下一人物');
+
   const dualProject = createProject();
   dualProject.titlePage.show = false;
   dualProject.elements = [

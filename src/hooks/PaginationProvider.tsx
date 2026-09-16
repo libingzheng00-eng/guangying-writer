@@ -147,6 +147,10 @@ export function paginateMeasured(
         remaining -= taken;
         // 人物/括号自身也有跟随约束，避免场次带上人物后，人物又单独移到下一页。
         if (taken === linesFor(next)) remaining = Math.max(remaining, next.keep);
+        // 核心分页契约：完整的动作/对白已结束一个跟随单元。
+        // 一行短对白也足以跟住人物，不能为凑满“两行”继续吞下一人物，
+        // 否则交替的短对白会被串成整页不可分组，造成大片空白和过早翻页。
+        if (taken === linesFor(next) && next.keep === 0) break;
       }
       const keepHeight = keepLines * lineHeightPx;
       if (curH + keepHeight > contentHeightPx && keepHeight <= contentHeightPx) flush();

@@ -26,6 +26,7 @@
 - 图片拖入必须接管正文上的文件 drop，不能将图片插入正文元素；关闭声音卡不能隐藏图片。读取失败不创建空卡，读取成功后一次撤销能完整移除新卡；滚动后落点与画布右边缘必须实测。专项脚本：`scripts/image-drop-electron.cjs`（独立临时用户目录，真实 Electron 文件拖放测试）。
 - **PDF 红线（用户明确纠正）**：创作版必须所见即所得，按写作画布的实际位置保留正文、图片、声音卡；第五场旁边的参考图仍在第五场旁边。禁止统一移动到文末、生成独立素材附页或另行配对。创作版采用数字画布尺寸，不强制 A4；超长画布切页不可切断卡片或重排其与正文的位置关系。
 - **纯文本打印版**独立按 A4 分页，保留剧本格式且不包含素材卡。导出不得改变工程纸型、卡片坐标、正文内容或撤销栈。
+- **导出回归红线（alpha.18.9）**：人物/括号跟随约束在一组完整短对白结束后停止，不能为了凑两行把后续多组对白整批挪页。图文 HTML 不得拼入巨型 `data:` 页面地址；多 MB 图片必须通过短地址的隔离加载路径导出，失败信息不能包含剧本文本或内嵌图片数据。`pdf-transport-test.cjs` 与实际 `pdf-layout-electron.cjs` 大图用例共同保护。
 - 两种导出均等字体与排版就绪；创作版还须等图片解码。缺少 MIME 但可解码的图片也必须保留；损坏图片至少保留原位卡片标题和备注，不得静默丢卡。专项脚本：`scripts/pdf-layout-electron.cjs`，需实际输出 PDF 后检查第五场图文位置和 A4 纸型。
 
 ## 四、故事板与自由板
@@ -64,6 +65,7 @@ node scripts/zhsp-compat-test.cjs
 node scripts/history-test.cjs
 node scripts/input-performance-test.cjs
 node scripts/pagination-safety-test.cjs
+node scripts/pdf-transport-test.cjs
 node scripts/outline-reorder-test.cjs
 node scripts/scene-notes-test.cjs
 node scripts/storyboard-drop-test.cjs

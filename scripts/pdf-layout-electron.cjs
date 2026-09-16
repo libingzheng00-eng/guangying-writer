@@ -1,5 +1,6 @@
 /** 真实导出回归：合成七场剧本，第五场旁放参考图和声音卡。全程独立用户目录。 */
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
+const { randomBytes } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -26,7 +27,7 @@ ipcMain.handle('pdf:export', async (_event, opts) => {
   lastOptions = opts;
   try {
     const data = await renderPdf(win, opts);
-    const file = path.join(out, opts.mode === 'creative' ? 'creative.pdf' : outputs.length < 2 ? 'print-a4.pdf' : outputs.length < 3 ? 'long-a4.pdf' : 'dual-a4.pdf');
+    const file = path.join(out, opts.mode === 'creative' ? 'creative.pdf' : outputs.length < 2 ? 'print-a4.pdf' : outputs.length < 3 ? 'long-a4.pdf' : outputs.length < 4 ? 'dual-a4.pdf' : 'short-a4.pdf');
     fs.writeFileSync(file, data);
     outputs.push(file);
     return file;
@@ -128,6 +129,32 @@ app.whenReady().then(async () => {
     assert.equal(outputs.length,4,errors.join('\n') || '双列A4导出失败');
     fs.writeFileSync(path.join(out,'expected-dual-lines.json'),JSON.stringify([...leftMarkers,...rightMarkers]));
     console.log('PASS 长双列实际PDF已生成，需提取逐行标记核对170行完整性');
+    // 真实大图负载回归：旧 data: 整页地址在多 MB 时会 ERR_INVALID_URL。
+    // 使用纯随机合成像素，不读取用户图片或剧本；新路径必须能打印并保留图片。
+    const largeImage = nativeImage.createFromBitmap(randomBytes(1024 * 1024 * 4), { width: 1024, height: 1024 }).toDataURL();
+    const largeHtml = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"><style>@page{size:900px 1000px;margin:0}body{margin:0}.export-sheet{display:flow-root;width:900px;height:999px}</style></head><body><section class="export-sheet"><p>LARGE_IMAGE_EXPORT</p><img src="${largeImage}" width="800" height="800"><p>IMAGE_END_MARKER</p></section></body></html>`;
+    assert.ok(largeHtml.length > 2 * 1024 * 1024, '大图用例必须超过2MB');
+    const oldProbe = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: `pdf-old-url-${Date.now()}` } });
+    try {
+      await oldProbe.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(largeHtml));
+      console.log('NOTE 当前运行时旧 data URL 未被拒绝，仍继续验证新加载路径');
+    } catch (error) {
+      console.log('REPRO 旧大图 data URL 失败:', error.code || 'load failure');
+    } finally { oldProbe.destroy(); }
+    const largePdf = await renderPdf(win, { mode: 'creative', html: largeHtml, pageSize: { width: 238125, height: 264584 } });
+    fs.writeFileSync(path.join(out, 'large-image.pdf'), largePdf);
+    console.log(`PASS 大图实际PDF已生成 (${largeHtml.length} HTML chars, ${largePdf.length} PDF bytes)`);
+    // 多组一行短对白：不能把整串对白强行绑定在一起，产生大片空白。
+    project.elements = [{ id: 'scene-5', type: 'scene_heading', text: '内景 短对白分页测试 日' }];
+    for (let i = 1; i <= 28; i++) project.elements.push(
+      { id: `short-c-${i}`, type: 'character', text: `QA_ROLE_${i}` },
+      { id: `short-d-${i}`, type: 'dialogue', text: `SHORT_DIALOGUE_${String(i).padStart(3, '0')}` },
+    );
+    await loadProject();
+    win.webContents.send('menu:action', 'file:exportPrintPdf');
+    for(let i=0;i<400 && outputs.length<5 && !errors.length;i++) await pause(50);
+    assert.equal(outputs.length, 5, errors.join('\n') || '短对白A4导出失败');
+    console.log('PASS 短对白分页实际PDF已生成，须逐页检查密度和人物对白配对');
     console.log(`RESULT ${out}`);
     proof.destroy();app.exit(0);
   } catch(e) {

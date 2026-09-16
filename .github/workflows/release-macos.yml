@@ -33,6 +33,7 @@ jobs:
           node scripts/history-test.cjs
           node scripts/input-performance-test.cjs
           node scripts/pagination-safety-test.cjs
+          node scripts/pdf-transport-test.cjs
           node scripts/studio-theme-test.cjs
           node scripts/appearance-test.cjs
           node scripts/outline-reorder-test.cjs
