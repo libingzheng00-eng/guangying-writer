@@ -1,8 +1,10 @@
 # 光影写手 — 开发者说明文档
 
+> 当前源码版本（2026-09-16）：`v1.3.0-alpha.18.9`，修正短对白提前分页及大图 PDF 的 `ERR_INVALID_URL`。不改正文、字体行距、卡片坐标或存储格式；当前运行中的旧应用不会自动更新。验收记录见 [RELEASE_ALPHA_18_9.md](RELEASE_ALPHA_18_9.md)，最新下载以 GitHub Releases 实际附件为准。
+
 > 开源许可证：[MIT](LICENSE)。稳定版本会发布在 GitHub 的 **Releases** 页面；请从 Releases 下载最新版 DMG 或 ZIP，不要从源码页面下载自动生成的源码压缩包。
 
-> 当前源码版本（2026-09-10）：`v1.3.0-alpha.18.8`，保留上一版输入性能优化，精简自由板卡片：场号标题同排、操作图标化、隐藏重复标签、整卡淡染色；连接、缩放、删除确认和撤销保持原有行为。安装附件的可用状态以 Releases 为准；本地提交或 Push 分支不会自动发布安装包。它仍是测试版，而非 Apple 公证的稳定版。详见 [MIGRATION.md](MIGRATION.md)、[DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md) 与 [CORE_FEATURES.md](CORE_FEATURES.md)。首次启动模板必须保持为空白，仓库和发布包禁止包含用户剧本。
+> 继承 `v1.3.0-alpha.18.8` 的输入性能优化和自由板卡片精简：场号标题同排、操作图标化、隐藏重复标签、整卡淡染色；连接、缩放、删除确认和撤销保持原有行为。安装附件的可用状态以 Releases 为准；本地提交或 Push 分支不会自动发布安装包。它仍是测试版，而非 Apple 公证的稳定版。详见 [MIGRATION.md](MIGRATION.md)、[DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md) 与 [CORE_FEATURES.md](CORE_FEATURES.md)。首次启动模板必须保持为空白，仓库和发布包禁止包含用户剧本。
 
 ### PDF 导出怎么选
 
