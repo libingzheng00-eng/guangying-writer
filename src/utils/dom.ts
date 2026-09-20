@@ -26,24 +26,19 @@ export function domLength(root: HTMLElement): number {
   return atoms(root).reduce((n, a) => n + a.len, 0);
 }
 
+/** Already-decoded DOM text: never decode entities a second time while copying. */
+export function domText(root: HTMLElement): string {
+  return atoms(root).map(a => a.isBr ? '\n' : a.node.nodeValue || '').join('');
+}
+
 export function offsetOf(root: HTMLElement, container: Node, offset: number): number {
-  if (container.nodeType === Node.TEXT_NODE) {
-    let acc = 0;
-    for (const a of atoms(root)) {
-      if (a.node === container) return acc + Math.min(offset, a.len);
-      acc += a.len;
-    }
-    return acc;
-  }
-  let acc = 0;
-  for (const a of atoms(root)) {
-    const parent = a.node.parentNode;
-    if (!parent) continue;
-    const idx = Array.prototype.indexOf.call(parent.childNodes, a.node);
-    if (container === parent && idx >= offset) return acc;
-    acc += a.len;
-  }
-  return acc;
+  if (!root.contains(container)) return -1;
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  range.setEnd(container, offset);
+  const prefix = document.createElement('div');
+  prefix.appendChild(range.cloneContents());
+  return domLength(prefix);
 }
 
 /** 当前光标在 root 中的文本偏移，不在 root 内返回 -1 */
@@ -91,6 +86,16 @@ export function setCaret(root: HTMLElement, offset: number | 'start' | 'end') {
   if (!sel) return;
   sel.removeAllRanges();
   sel.addRange(range);
+}
+
+/** UTF-16 text offsets, with BR counted once. Never inserts markup into the script. */
+export function makeTextRange(root: HTMLElement, start: number, end: number): Range {
+  const a = locate(root, Math.max(0, start));
+  const b = locate(root, Math.max(start, end));
+  const range = document.createRange();
+  range.setStart(a.node, a.offset);
+  range.setEnd(b.node, b.offset);
+  return range;
 }
 
 /** 在光标位置把 innerHTML 切成两半 */

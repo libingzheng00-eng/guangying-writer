@@ -105,6 +105,8 @@ interface StoreState {
   insertAfter: (id: string | null, type?: ElementType, text?: string) => string;
   /** 在光标处把一个元素拆成两个（回车） */
   splitBlock: (id: string, before: string, after: string, nextType: ElementType) => string;
+  /** Atomic cut/paste or selected-range replacement; never coalesces with typing. */
+  replaceWritingRange: (ids: string[], before: string, after: string, inserted: string, nextType?: ElementType) => string | null;
   setType: (id: string, type: ElementType) => void;
   setText: (id: string, text: string) => void;
   removeElement: (id: string) => void;
@@ -392,6 +394,35 @@ export const useStore = create<StoreState>((set, get) => ({
     });
     get().requestFocus(nid, 'start');
     return nid;
+  },
+
+  replaceWritingRange: (ids, before, after, inserted, nextType) => {
+    const elements = get().project.elements;
+    const first = elements.find(e => e.id === ids[0]);
+    const existingIds = new Set(elements.map(e => e.id));
+    if (!first || !ids.length || ids.some(id => !existingIds.has(id))) return null;
+    const removed = new Set(ids.slice(1));
+    const nextId = nextType ? uid('el') : first.id;
+    get().mutate(p => {
+      p.elements = p.elements.filter(e => !removed.has(e.id));
+      const index = p.elements.findIndex(e => e.id === first.id);
+      const current = p.elements[index];
+      current.text = before + inserted + (nextType ? '' : after);
+      if (nextType) {
+        const next: ScriptElement = { id: nextId, type: nextType, text: after };
+        const dual = dualAfterEnter(current, nextType);
+        if (dual.dual) {
+          next.dual = dual.dual;
+          next.dualGroup = current.dualGroup || uid('dg');
+          current.dualGroup = next.dualGroup;
+        }
+        p.elements.splice(index + 1, 0, next);
+      }
+      p.sceneMeta = p.sceneMeta.filter(meta => !removed.has(meta.elementId));
+      p.beats.forEach(beat => { if (beat.sceneId && removed.has(beat.sceneId)) delete beat.sceneId; });
+      p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removed);
+    });
+    return nextId;
   },
 
   setType: (id, type) => {

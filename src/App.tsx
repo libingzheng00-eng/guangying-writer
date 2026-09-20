@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from './store/store';
 import { PaginationProvider } from './hooks/PaginationProvider';
 import { Editor } from './components/Editor';
+import { FindPanel } from './components/FindPanel';
 import { CardsView } from './components/CardsView';
 import { BoardView } from './components/BoardView';
 import { PreviewView } from './components/PreviewView';
@@ -31,6 +32,12 @@ export default function App() {
   // 只订阅窗口标题真正需要的字段；避免每次打字都让整个 App 树重新渲染。
   const projectName = useStore((s) => s.project.name);
   const [dialog, setDialog] = useState<null | 'settings' | 'title'>(null);
+  const [findRequest, setFindRequest] = useState(0);
+  useEffect(() => {
+    const open = () => setFindRequest(value => value + 1);
+    window.addEventListener('guangying:find', open);
+    return () => window.removeEventListener('guangying:find', open);
+  }, []);
   const commands = useCommands();
   // 与工作台共用纯色背景；仅改变显示，不改变稿纸或素材的坐标。
   const writeBg = appTheme === 'day'
@@ -123,10 +130,12 @@ export default function App() {
           setDialog('settings');
           break;
         case 'edit:undo':
-          st.undo();
+          if (document.activeElement?.closest('.find-panel')) document.execCommand('undo');
+          else st.undo();
           break;
         case 'edit:redo':
-          st.redo();
+          if (document.activeElement?.closest('.find-panel')) document.execCommand('redo');
+          else st.redo();
           break;
         case 'edit:find':
           commands.openFind();
@@ -157,6 +166,7 @@ export default function App() {
     const off = onMenuAction(run);
     if (!isElectron()) {
       const onKey = (e: KeyboardEvent) => {
+        if (e.defaultPrevented || e.isComposing) return;
         const meta = e.metaKey || e.ctrlKey;
         if (!meta) return;
         const map: Record<string, string> = {
@@ -177,6 +187,7 @@ export default function App() {
           '8': 'element:act',
         };
         const key = e.key.toLowerCase();
+        if (key === 'z' && (e.target as HTMLElement).closest('.find-panel')) return;
         if (map[key]) {
           e.preventDefault();
           run(map[key]);
@@ -207,6 +218,7 @@ export default function App() {
           </main>
         </div>
         <StatusBar />
+        {findRequest > 0 && view === 'write' ? <FindPanel request={findRequest} onClose={() => setFindRequest(0)} /> : null}
         {dialog === 'settings' ? <SettingsDialog onClose={() => setDialog(null)} /> : null}
         {dialog === 'title' ? <TitlePageDialog onClose={() => setDialog(null)} /> : null}
         {toast ? <Toast text={toast.text} kind={toast.kind} ts={toast.ts} /> : null}

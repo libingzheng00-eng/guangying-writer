@@ -4,7 +4,8 @@ import { usePagination } from '../hooks/PaginationProvider';
 import { EditableBlock } from './ScriptBlock';
 import { ProgressBar } from './ProgressBar';
 import { caretOffset, splitHtml, domLength, setCaret } from '../utils/dom';
-import { isBlank, plain, stripSceneNumber } from '../utils/text';
+import { isBlank, plain, stripSceneNumber, escapeHtml } from '../utils/text';
+import { readWritingSelection } from '../utils/writingSelection';
 import { nextTypeOnEnter, nextTypeOnTab, groupDual, recognizeType, shouldShowContdSuffix, CONTD_SUFFIX } from '../model/flow';
 import { characterNames, sceneHeadings, deriveScenes } from '../model/project';
 import { COMMON_SHOTS, COMMON_TRANSITIONS, fontStackOf } from '../model/elements';
@@ -241,6 +242,15 @@ export function Editor() {
 
       if (e.key === 'Enter' && !e.shiftKey && !meta) {
         e.preventDefault();
+        const selected = readWritingSelection(contentRef.current);
+        if (selected && !selected.collapsed) {
+          const current = useStore.getState().project.elements.find(item => item.id === selected.ids[0]);
+          if (!current) return;
+          const id = useStore.getState().replaceWritingRange(selected.ids, selected.before, selected.after, '', nextTypeOnEnter(current, false));
+          setSuggest(null);
+          if (id) requestFocus(id, 'start');
+          return;
+        }
         const off = caretOffset(node);
         const at = off < 0 ? domLength(node) : off;
         const { before, after } = splitHtml(node, at);
@@ -417,19 +427,35 @@ export function Editor() {
   );
 
   const handlePaste = useCallback(
-    (el: ScriptElement, e: React.ClipboardEvent<HTMLDivElement>) => {
+    (_el: ScriptElement, e: React.ClipboardEvent<HTMLDivElement>) => {
+      if (selectMode || composingRef.current) return;
       const text = e.clipboardData.getData('text/plain');
-      if (!text) return;
+      const selected = readWritingSelection(contentRef.current);
+      if (!selected || !text) return;
       e.preventDefault();
-      const html = plain(text)
-        .split('\n')
-        .map((l) => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
-        .join('<br>');
-      document.execCommand('insertHTML', false, html);
-      setText(el.id, (e.currentTarget as HTMLDivElement).innerHTML);
+      // Clipboard text is literal: `<...>` must not be stripped as HTML.
+      // One store transaction, not native DOM undo plus a second input transaction.
+      const value = text.replace(/\r\n?/g, '\n');
+      const id = useStore.getState().replaceWritingRange(selected.ids, selected.before, selected.after, escapeHtml(value).replace(/\n/g, '<br>'));
+      setSuggest(null);
+      if (id) requestFocus(id, selected.start + value.length);
     },
-    [setText],
+    [selectMode, requestFocus],
   );
+
+  const handleClipboard = (event: React.ClipboardEvent, cut: boolean) => {
+    if (selectMode || composingRef.current || !(event.target as HTMLElement).closest('.sc-el--editable')) return;
+    const selected = readWritingSelection(contentRef.current);
+    if (!selected || selected.collapsed) return;
+    event.preventDefault();
+    event.clipboardData.setData('text/plain', selected.text);
+    event.clipboardData.setData('text/html', selected.html);
+    if (cut) {
+      const id = useStore.getState().replaceWritingRange(selected.ids, selected.before, selected.after, '');
+      setSuggest(null);
+      if (id) requestFocus(id, selected.start);
+    }
+  };
 
   /* 首次进入自动聚焦 */
   useEffect(() => {
@@ -506,7 +532,7 @@ export function Editor() {
   };
 
   return (
-    <div className="editor" ref={scrollRef} onKeyDownCapture={(e) => {
+    <div className="editor" ref={scrollRef} onCopy={(e) => handleClipboard(e, false)} onCut={(e) => handleClipboard(e, true)} onKeyDownCapture={(e) => {
       if (!selectMode || (e.target as HTMLElement).closest('input:not([type="checkbox"]), textarea')) return;
       if (e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault(); e.stopPropagation(); deleteWritingSelection();
