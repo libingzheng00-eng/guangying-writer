@@ -29,6 +29,9 @@ jobs:
           node scripts/core-guard.cjs
           node scripts/render-test.cjs
           node scripts/writing-test.cjs
+          node scripts/editing-test.cjs
+          node scripts/search-test.cjs
+          node scripts/search-ui-test.cjs
           node scripts/zhsp-compat-test.cjs
           node scripts/history-test.cjs
           node scripts/input-performance-test.cjs

@@ -32,6 +32,7 @@ function checkFile(base, relative, prohibited) {
   // Existence alone is a routing check; CI below must actually execute these tests.
   for (const file of ['CORE_FEATURES.md', 'DEVELOPER_HANDOFF.md', 'AGENTS.md',
     'scripts/render-test.cjs', 'scripts/writing-test.cjs', 'scripts/history-test.cjs',
+    'scripts/editing-test.cjs', 'scripts/editing-electron.cjs', 'scripts/search-test.cjs', 'scripts/search-ui-test.cjs', 'scripts/search-electron.cjs',
     'scripts/zhsp-compat-test.cjs', 'scripts/pagination-safety-test.cjs', 'scripts/image-drop-electron.cjs', 'scripts/pdf-layout-electron.cjs']) {
     if (!fs.existsSync(path.join(root, file))) fail(`缺少核心契约或回归入口: ${file}`);
   }

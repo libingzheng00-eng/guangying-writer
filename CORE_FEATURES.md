@@ -14,6 +14,9 @@
 - 九类元素的 `Tab` / `Shift+Tab` 循环必须闭环：只改当前段落类型，永远不跳到文件名、缩放或其他界面控件，也不自动新建段落。
 - 固定正向顺序为：动作 → 人物 → 括号提示 → 对白 → 转场 → 镜头 → 场次标题 → 常规文本 → 备忘 → 动作；Shift+Tab 反向。`⌘/Ctrl+Shift+N` 在备忘与该段上次非备忘类型间往返，不能篡改正文。
 - 回车节奏：场次标题后为动作；动作后仍为动作；人物后为对白；对白后为人物。
+- **编辑事务红线（alpha.18.10）**：段中回车必须把尾部移动到下一段，原段不可残留副本；加粗、斜体和软换行处光标偏移同样正确。聚焦中的正文也必须响应撤销/重做与结构变更，不能用“正在聚焦”跳过 DOM 同步；正常输入与组合输入时，内容一致则不得重写 DOM。
+- 复制只读取选中文字，不制造历史；剪切、粘贴与跨段选区替换必须是单次可撤销事务，不与前后打字合并，不允许模型已撤销但屏幕仍留旧字。纯文本粘贴须保留 `< > &` 等字面字符与换行，不当作 HTML 执行。不得混用原生插入与 store 更新造成二次写入。专项：`editing-test.cjs`、隔离运行的 `editing-electron.cjs`。
+- 全文查找使用独立面板，可按 ⌘/Ctrl+F 打开、Enter/Shift+Enter 定位上下处、Esc 关闭；覆盖正文九类元素与备忘，支持大小写选项。高亮只能是浏览器绘制，不写入正文 HTML、工程、撤销栈或 PDF；未打开查找时不得运行全文匹配。专项：`search-test.cjs` / `search-ui-test.cjs` / `search-electron.cjs`。
 - 智能识别、自动补全、双列对白、场号、同一人物再次说话的 `(CONT'D)` 视觉提示保持正常。
 - 写作多选模式下：普通点击可选择段落；Shift 点击正文或复选框可按正文顺序连续选择；删除只删除选中段落；普通写作模式绝不能被这套逻辑干扰。
 - `⌘/Ctrl+Z` 撤销与 `⌘/Ctrl+Shift+Z` 重做须支持多步恢复正文、卡片、关系线；输入及同一卡片连续移动/缩放可按既有规则合并，不得跨不相关操作误合并，批量删除必须一次完整撤回。
@@ -61,6 +64,9 @@ npm run build
 node scripts/core-guard.cjs
 node scripts/render-test.cjs
 node scripts/writing-test.cjs
+node scripts/editing-test.cjs
+node scripts/search-test.cjs
+node scripts/search-ui-test.cjs
 node scripts/zhsp-compat-test.cjs
 node scripts/history-test.cjs
 node scripts/input-performance-test.cjs
@@ -83,6 +89,7 @@ node scripts/progress-bands-test.cjs
 | 行为契约 | 关键实现位置 | 回归入口 |
 | --- | --- | --- |
 | Tab 焦点闭环、备忘往返、正文 Shift 多选 | `src/model/flow.ts`、`Editor.tsx`、`ScriptBlock.tsx` | writing / render / 实机连续 Tab |
+| 回车移动尾部、剪切粘贴原子撤销、只读全文查找 | `Editor.tsx`、`ScriptBlock.tsx`、`store.ts`、`src/utils/dom.ts`、`FindPanel.tsx`、`search.ts` | editing / search / search-ui / editing-electron / search-electron |
 | 拖入图片、原位卡片创作 PDF、A4 纯文本 | `Editor.tsx`、`src/io/creativePdf.ts`、`useCommands.ts`、`PreviewView.tsx`、`PaginationProvider.tsx`、`electron/pdf.js` | image-drop-electron / pdf-layout-electron / pagination-safety / PDF 渲染检查 |
 | 选择、归幕、删除、撤销重做 | `store.ts`、`selection.ts`、`board.ts`、`BoardView.tsx`、`CardsView.tsx` | history / writing / render / 实机拖放 |
 | 大纲整场拖动、场景故事信息同步编辑 | `outline.ts`、`Sidebar.tsx`、`BoardView.tsx`、`CardsView.tsx` | outline-reorder / scene-notes / 实机拖放与输入 |

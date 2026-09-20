@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ScriptElement, ScriptSettings } from '../model/types';
 import { ELEMENT_META } from '../model/elements';
 import { isBlank } from '../utils/text';
-import { setCaret } from '../utils/dom';
+import { setCaret, offsetOf, makeTextRange } from '../utils/dom';
 import { useStore } from '../store/store';
 
 export interface BlockStyleOptions {
@@ -125,11 +125,21 @@ export function EditableBlock(props: EditableBlockProps) {
   const localRef = useRef<HTMLDivElement | null>(null);
   const empty = isBlank(el.text);
 
-  // 仅在非聚焦状态同步外部的文本变更，避免打字时光标被重置
-  useEffect(() => {
+  // 核心红线：聚焦不能阻止撤销/剪切/回车分段回写。正常输入的 DOM 已与
+  // state 相同，不触碰它；仅外部不同值同步，并恢复当前文本选区，避免光标跳动。
+  useLayoutEffect(() => {
     const node = localRef.current;
     if (!node) return;
-    if (node.innerHTML !== el.text && document.activeElement !== node) node.innerHTML = el.text;
+    if (node.innerHTML === el.text) return;
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    const saved = document.activeElement === node && range && node.contains(range.startContainer) && node.contains(range.endContainer)
+      ? [offsetOf(node, range.startContainer, range.startOffset), offsetOf(node, range.endContainer, range.endOffset)] : null;
+    node.innerHTML = el.text;
+    if (saved && selection) {
+      selection.removeAllRanges();
+      selection.addRange(makeTextRange(node, saved[0], saved[1]));
+    }
   }, [el.text]);
 
   useEffect(() => {

@@ -218,16 +218,9 @@ export function useCommands() {
   }, [store]);
 
   const openFind = useCallback(() => {
-    const term = window.prompt('查找内容');
-    if (!term) return;
-    const { project, requestFocus, notify } = store.getState();
-    const idx = project.elements.findIndex((e) => e.text.replace(/<[^>]+>/g, '').includes(term));
-    if (idx < 0) {
-      notify('没有找到', 'info');
-      return;
-    }
-    requestFocus(project.elements[idx].id, 'end');
+    if (store.getState().pdfExportMode) return;
     store.getState().setView('write');
+    window.dispatchEvent(new Event('guangying:find'));
   }, [store]);
 
   return { save, open, importAny, exportPdf, exportAs, newFile, setElementType, insertScene, makeDual, openFind, sceneHeadings };

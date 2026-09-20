@@ -156,6 +156,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
       <div className="spacer" />
 
       <div className="toolbar__group toolbar__file-actions">
+        <button className="icon-btn" title="查找正文 ⌘/Ctrl+F" onClick={commands.openFind}>查找</button>
         <button className="icon-btn" title="撤销 ⌘Z" onClick={undo}>
           ↶
         </button>
