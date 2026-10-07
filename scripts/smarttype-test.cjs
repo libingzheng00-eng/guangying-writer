@@ -32,7 +32,7 @@ const { JSDOM } = require('jsdom');
   const project = { elements: rows };
   const before = JSON.stringify(project);
   const catalog = buildSmartTypeCatalog(project);
-  const query = (text, type = 'scene_heading', cat = catalog, offset = text.length) => getSmartTypeSuggestions(el('editing', text, type), offset, cat);
+  const query = (text, type = 'scene_heading', cat = catalog, offset = text.length, options) => getSmartTypeSuggestions(el('editing', text, type), offset, cat, options);
   const result = (text, label, type = 'scene_heading', cat = catalog) => {
     const answer = query(text, type, cat);
     const item = answer?.items.find(item => item.label === label);
@@ -89,10 +89,10 @@ const { JSDOM } = require('jsdom');
   check('complete known time 夜 does not become 夜晚 on Enter', query('内景 工作室 夜'), null);
   check('complete known location does not fall back to a longer whole heading', query('内景 工作室'), null);
   const exactPeople = buildSmartTypeCatalog({ elements: [el('short-name', 'AL', 'character'), el('long-name', 'ALICE', 'character'), el('ch-short', '测试', 'character'), el('ch-long', '测试角色', 'character'), el('role-short', 'TEST ROLE', 'character'), el('role-long', 'TEST ROLE TWO', 'character')] });
-  check('complete AL does not become ALICE on Enter', query('AL', 'character', exactPeople), null);
-  check('complete 测试 does not become 测试角色 on Enter', query('测试', 'character', exactPeople), null);
-  check('case-insensitive complete name preserves typed case instead of expanding', query('test role', 'character', exactPeople), null);
-  check('complete qualified name does not become longer character name', query('AL (V.O.)', 'character', exactPeople), null);
+  check('complete AL remains first instead of implicitly expanding into ALICE', query('AL', 'character', exactPeople).items.map(item => item.value), ['AL', 'ALICE']);
+  check('complete 测试 keeps the longer same-prefix name discoverable', query('测试', 'character', exactPeople).items.map(item => item.value), ['测试', '测试角色']);
+  check('case-insensitive exact name precedes longer names', query('test role', 'character', exactPeople).items.map(item => item.label), ['TEST ROLE', 'TEST ROLE TWO']);
+  check('qualified exact and longer names both preserve the original qualifier', query('AL (V.O.)', 'character', exactPeople).items.map(item => item.value), ['AL (V.O.)', 'ALICE (V.O.)']);
   check('same-moment time prefix completes only last field', result('内景 工作室 同样时', '同样时刻').text, '内景 工作室 同样时刻');
   check('unknown location with trailing space remains safe to type manually', query('内景 新地点 '), null);
   check('new hyphenated location is not fragmented into guessed fields', query('内-新-未知地点'), null);
@@ -102,6 +102,63 @@ const { JSDOM } = require('jsdom');
   check('Chinese shots remain available', result('特', '特写 -', 'shot').text, '特写 -');
   check('typed custom shots remain available', result('航', '航拍 -', 'shot').text, '航拍 -');
   for (const type of ['action', 'dialogue', 'parenthetical', 'general', 'note', 'act']) check(`${type} has no automatic completion`, query('测', type), null);
+  const intentCatalog = buildSmartTypeCatalog({ elements: [
+    el('intent-name-short', '合成小明', 'character'), el('intent-name-long', '合成小明妈妈', 'character'),
+    el('intent-matching-shot-name', '特写', 'character'),
+    el('intent-shot', '特写 -', 'shot'), el('intent-scene', '内景 合成办公室 日'),
+    el('intent-transition', '淡出。', 'transition'),
+  ] });
+  const intent = (text, type = 'action', cat = intentCatalog, offset = text.length) => query(text, type, cat, offset, { allowCrossType: true });
+  const intentBefore = JSON.stringify(intentCatalog);
+  const describe = answer => answer?.items.map(item => [item.label, item.targetType, item.typeLabel]);
+  for (const type of ['action', 'character', 'parenthetical', 'dialogue', 'transition', 'shot', 'scene_heading', 'general', 'note', 'act']) {
+    check(`${type} opt-in new paragraph can suggest an existing character`, describe(intent('合成小明', type)), [
+      ['合成小明', 'character', '人物'], ['合成小明妈妈', 'character', '人物'],
+    ]);
+  }
+  check('cross-type options remain off by default for old prose', query('合成小明', 'action', intentCatalog), null);
+  check('cross-type exact-only name is available to confirm the target type', describe(intent('合成小明妈妈', 'dialogue')), [['合成小明妈妈', 'character', '人物']]);
+  check('cross-type blank paragraph does not open the entire vocabulary', intent(''), null);
+  check('cross-type whitespace paragraph does not open the entire vocabulary', intent('  '), null);
+  check('cross-type single Chinese shot prefix carries a clean shot target', describe(intent('远')), [['远景', 'shot', '镜头']]);
+  check('cross-type shot label and value omit only the trailing template separator', intent('特').items.find(item => item.targetType === 'shot'), { label: '特写', value: '特写', targetType: 'shot', typeLabel: '镜头' });
+  check('existing same-type shot completion keeps its template separator', query('特', 'shot', intentCatalog).items[0].value, '特写 -');
+  check('cross-type custom shot description remains actual content', intent('合成特', 'action', { ...intentCatalog, shots: ['合成特写 - 手指'] }).items[0].value, '合成特写 - 手指');
+  check('cross-type transition prefix carries a transition target', describe(intent('淡')), [['淡入：', 'transition', '转场'], ['淡出。', 'transition', '转场']]);
+  check('cross-type intro prefix carries a setting target and separator', intent('外').items[0], { label: '外景', value: '外景', targetType: 'scene_heading', typeLabel: '场次标题', separator: ' ' });
+  check('ordinary 特别 sentence does not get converted into a shot intent', intent('特别'), null);
+  check('an existing name followed by prose does not match a character intent', intent('合成小明走进房间'), null);
+  check('equal text in two types remains explicitly distinguishable', describe(intent('特写')), [['特写', 'character', '人物'], ['特写', 'shot', '镜头']]);
+  check('current-type prefixes precede other-type prefixes', describe(intent('特', 'shot'))?.slice(0, 2), [['特写', 'shot', '镜头'], ['特写', 'character', '人物']]);
+  const ranking = { ...intentCatalog, characters: ['特', '特写乙'], shots: ['特写甲', ...intentCatalog.shots] };
+  check('an exact other-type match precedes preferred current-type prefixes', describe(intent('特', 'shot', ranking))?.slice(0, 3), [['特', 'character', '人物'], ['特写甲', 'shot', '镜头'], ['特写', 'shot', '镜头']]);
+  check('cross-type matching remains case-insensitive', intent('ext').items[0].value, 'EXT.');
+  const fieldIntent = intent('内景 合', 'dialogue');
+  check('cross-type established location remains a field suggestion', [fieldIntent.kind, fieldIntent.start, fieldIntent.end, fieldIntent.items[0].targetType], ['location', 3, 4, 'scene_heading']);
+  check('cross-type location replacement does not overwrite setting prefix', '内景 合'.slice(0, fieldIntent.start) + fieldIntent.items[0].value, '内景 合成办公室');
+  const timeIntent = intent('内景 合成办公室 清', 'note');
+  check('cross-type established time matches only the trailing field', [timeIntent.kind, timeIntent.start, timeIntent.items[0].value, timeIntent.items[0].targetType], ['time', 9, '清晨', 'scene_heading']);
+  check('cross-type known full time does not expand into longer time', intent('内景 合成办公室 夜'), null);
+  check('cross-type complete known heading waits for explicit type confirmation', describe(intent('内景 合成办公室 日')), [['内景 合成办公室 日', 'scene_heading', '场次标题']]);
+  check('complete known heading confirmation is an intent rather than a time completion', intent('内景 合成办公室 日').kind, 'intent');
+  const completeNumberedIntent = intent('12. 内景 合成办公室 日');
+  check('complete numbered heading intent does not replace its scene-number prefix', [completeNumberedIntent.start, completeNumberedIntent.end, completeNumberedIntent.items[0].value], [4, 14, '内景 合成办公室 日']);
+  check('ordinary same-type complete heading remains untouched', query('内景 合成办公室 日', 'scene_heading', intentCatalog), null);
+  const longerHeading = buildSmartTypeCatalog({ elements: [el('longer-time-heading', '内景 合成办公室 夜晚')] });
+  check('complete time 夜 cannot expand to 夜晚 through a whole-heading fallback', intent('内景 合成办公室 夜', 'action', longerHeading), null);
+  check('complete known location cannot gain a time through a whole-heading fallback', intent('内景 合成办公室', 'action', longerHeading), null);
+  check('exact complete 夜晚 heading still explicitly confirms its paragraph type', describe(intent('内景 合成办公室 夜晚', 'action', longerHeading)), [['内景 合成办公室 夜晚', 'scene_heading', '场次标题']]);
+  check('numbered complete time cannot expand through a longer whole heading', intent('12. 内景 合成办公室 夜', 'action', longerHeading), null);
+  check('short setting prefixes are not crowded by complete heading templates', intent('内').items.every(item => item.targetType !== 'scene_heading' || !item.value.includes('合成办公室')), true);
+  check('cross-type unfamiliar location is not treated as a whole-line intent', intent('内景 陌生地点 特'), null);
+  const numberedIntent = intent('12. 内景 合', 'action');
+  check('cross-type numbered heading preserves scene number offsets', [numberedIntent.kind, numberedIntent.start, numberedIntent.end], ['location', 7, 8]);
+  check('cross-type qualifier preserves bracket-specific field replacement', [intent('合成小明 （旁', 'character').kind, intent('合成小明 （旁', 'character').items[0].value], ['extension', '旁白）']);
+  check('cross-type middle caret is never destructive', intent('合成小明', 'action', intentCatalog, 1), null);
+  check('cross-type soft line break never becomes whole-line intent', intent('合成\n小明'), null);
+  const manyIntent = { ...intentCatalog, characters: Array.from({ length: 20 }, (_, i) => `合成角色${i}`) };
+  check('cross-type candidates remain bounded to eight', intent('合成', 'action', manyIntent).items.length, 8);
+  check('cross-type querying does not mutate the catalog', JSON.stringify(intentCatalog), intentBefore);
   check('middle-of-line caret never offers destructive completion', query('测试角色', 'character', catalog, 1), null);
   check('negative caret is ignored', query('测', 'character', catalog, -1), null);
   check('NaN caret is ignored', query('测', 'character', catalog, NaN), null);
@@ -117,11 +174,14 @@ const { JSDOM } = require('jsdom');
   global.document = dom.window.document;
   const literal = buildSmartTypeCatalog({ elements: [el('literal', '&lt;测试&amp;角色&gt;', 'character')] });
   check('HTML entities project to literal candidate text', literal.characters, ['<测试&角色>']);
+  check('cross-type candidates remain literal, never HTML payloads', intent('&lt;测', 'action', literal, 2).items[0].value, '<测试&角色>');
   const formatted = getSmartTypeSuggestions(el('editing', '<b>测</b>', 'character'), 1, catalog);
   check('inline formatting does not corrupt text offsets', [formatted.start, formatted.end, formatted.query], [0, 1, '测']);
   const emoji = buildSmartTypeCatalog({ elements: [el('emoji', '🎬测试角色', 'character')] });
   const emojiResult = getSmartTypeSuggestions(el('editing', '&#x1F3AC;测', 'character'), 3, emoji);
   check('decoded numeric entity obeys UTF16 offsets', [emojiResult.start, emojiResult.end], [0, 3]);
+  const emojiIntent = intent('  &#x1F3AC;测', 'dialogue', emoji, 5);
+  check('cross-type entity/emoji offsets retain leading whitespace and UTF16 units', [emojiIntent.start, emojiIntent.end, emojiIntent.query], [2, 5, '🎬测']);
   const originalCreate = document.createElement.bind(document);
   let projections = 0;
   document.createElement = (name, ...args) => { if (name === 'template') projections++; return originalCreate(name, ...args); };

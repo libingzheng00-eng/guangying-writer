@@ -47,6 +47,19 @@ function check(name, value) {
   console.log(`PASS ${name}`);
 }
 const count = () => run('document.querySelectorAll(".writing-material-card--image").length');
+async function bodySnapshot() {
+  // Compare complete saved model elements AND rendered paragraph order/content.
+  // The flow wrapper also owns transient page-break-line decorations, so its
+  // whole innerHTML is not a valid invariant for "picture never edits text".
+  saved = null;
+  win.webContents.send('menu:action', 'file:save');
+  for (let i = 0; !saved && i < 80; i++) await pause(50);
+  assert.ok(saved, 'Synthetic body snapshot must use the real saved project');
+  return {
+    elements: JSON.parse(saved).project.elements,
+    visible: await run(`[...document.querySelectorAll('.script-flow .sc-el')].map(e=>({id:e.dataset.id,type:e.dataset.type,html:e.innerHTML,text:e.textContent}))`),
+  };
+}
 async function drop(files, x, y) {
   const data = { items: [], files, dragOperationsMask: 1 };
   for (const type of ['dragEnter', 'dragOver', 'drop']) {
@@ -82,12 +95,14 @@ app.whenReady().then(async () => {
     for(let i=1;i<=11;i++) await tab(false,(startIndex+i)%9);
     for(let i=1;i<=11;i++) await tab(true,(startIndex+11-i)%9);
     check('真实 Electron 连按11次Tab再反向11次，焦点始终留在原正文', true);
-    const bodyBefore = await run('document.querySelector(".script-flow").innerHTML');
+    const bodyBefore = await bodySnapshot();
     const target = await run(`(() => { const b = document.querySelector('.script-flow [contenteditable]').getBoundingClientRect(); return {x: b.x + 80, y: b.y + b.height / 2}; })()`);
     await drop([photo], target.x, target.y);
     await until('document.querySelector(".writing-material-card__image")?.naturalWidth > 0');
     check('本地 PNG 落在正文上生成一张已解码图片卡', await count() === 1);
-    check('图片没有插入或替换正文', await run('document.querySelector(".script-flow").innerHTML') === bodyBefore);
+    const bodyAfter = await bodySnapshot();
+    assert.deepEqual(bodyAfter, bodyBefore, 'Drop must preserve every model element and visible paragraph id/type/HTML/text/order');
+    check('图片没有插入或替换正文（完整模型与可见段落深比较）', true);
     await run(`document.querySelector('button[title="撤销 ⌘Z"]').click()`);
     await until('document.querySelectorAll(".writing-material-card--image").length === 0');
     check('一次撤销整张新图片卡，不残留空卡', await count() === 0);
@@ -114,6 +129,7 @@ app.whenReady().then(async () => {
     await run(`(() => { const src=document.querySelector('.writing-material-card__image').src; const bytes=Uint8Array.from(atob(src.split(',')[1]), c=>c.charCodeAt(0)); const dt=new DataTransfer(); dt.items.add(new File([bytes], 'no-mime.PNG')); document.querySelector('.editor__scroll').dispatchEvent(new DragEvent('drop', {bubbles:true,cancelable:true,dataTransfer:dt,clientX:700,clientY:400})); })()`);
     await until('document.querySelectorAll(".writing-material-card--image").length === 5');
     check('有效 PNG 缺少 MIME 仍能拖入', await count() === 5);
+    saved = null; // Snapshot saves above must not satisfy this fresh save wait.
     win.webContents.send('menu:action', 'file:save');
     for (let i=0; !saved && i<30; i++) await pause(100);
     const project=JSON.parse(saved).project;
@@ -137,6 +153,37 @@ app.whenReady().then(async () => {
     await until('!!document.querySelector(".preview[data-ready=true]")');
     check('A4 纯文本预览不混入图片附页', await run('document.querySelectorAll(".preview__material-page").length') === 0);
     await screenshot('image-drop-preview.png');
+    // A second, non-empty fixture protects actual screenplay content, rich HTML,
+    // metadata and ordered paragraph identities, not just blank-start behavior.
+    const populated = {
+      id: 'image-drop-populated-qa', name: '合成图文保护验收', createdAt: 1, updatedAt: 1,
+      titlePage: { show: false }, settings: {}, sceneMeta: [], boardLinks: [], acts: [], beats: [], revisions: [],
+      elements: [
+        { id: 'qa-drop-scene', type: 'scene_heading', text: '内景 合成测试房间 日' },
+        { id: 'qa-drop-action', type: 'action', text: '<b>PICTURE_DROP_BODY</b> 合成动作<br>保留换行', omit: false },
+        { id: 'qa-drop-character', type: 'character', text: '合成角色' },
+        { id: 'qa-drop-dialogue', type: 'dialogue', text: 'DIALOGUE_CONTENT_MUST_STAY' },
+        { id: 'qa-drop-note', type: 'note', text: '仅测试使用的备忘。' },
+      ],
+    };
+    win = await createFixtureWindow({ out, renderer, previous: win, project: populated, theme: 'day',
+      preload: path.join(root, 'electron/preload.js') });
+    await until('!!document.querySelector(".editor__scroll[data-ready=true]") && !!document.querySelector("[data-id=qa-drop-action]")');
+    win.webContents.debugger.attach('1.3');
+    const populatedBefore = await bodySnapshot();
+    const populatedTarget = await run(`(() => { const b=document.querySelector('.script-flow [data-id="qa-drop-action"]').getBoundingClientRect();return {x:b.x+60,y:b.y+b.height/2}; })()`);
+    await drop([photo], populatedTarget.x, populatedTarget.y);
+    await until('document.querySelector(".writing-material-card__image")?.naturalWidth > 0');
+    assert.deepEqual(await bodySnapshot(), populatedBefore, 'Non-empty drop cannot edit any model field or visible paragraph');
+    check('非空合成正文拖入图片后文字/类型/富文本/段落顺序/元数据完全不变', await count() === 1);
+    win.webContents.send('menu:action', 'edit:undo');
+    await until('document.querySelectorAll(".writing-material-card--image").length === 0');
+    assert.deepEqual(await bodySnapshot(), populatedBefore, 'Undo of image insertion must not undo existing screenplay content');
+    win.webContents.send('menu:action', 'edit:redo');
+    await until('document.querySelector(".writing-material-card__image")?.naturalWidth > 0');
+    assert.deepEqual(await bodySnapshot(), populatedBefore, 'Redo of image insertion must preserve screenplay content');
+    check('非空正文图片插入的一步撤销/重做不改变任何正文元素', await count() === 1);
+    await screenshot('image-drop-populated.png');
     fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify({checks, renderer}, null, 2));
     console.log(`RESULT ${out}`);
     app.exit(0);

@@ -17,6 +17,7 @@ if (manifest.name !== 'guangying-native-acceptance-qa') {
 const entries = Object.freeze({
   manual: 'native-acceptance-shell.cjs',
   editing: 'editing-electron.cjs',
+  smarttype: 'smarttype-electron.cjs',
   input: 'input-electron.cjs',
   pdf: 'pdf-layout-electron.cjs',
   search: 'search-electron.cjs',
@@ -24,7 +25,7 @@ const entries = Object.freeze({
 });
 const mode = process.env.GUANGYING_QA_MODE || 'manual';
 if (!Object.prototype.hasOwnProperty.call(entries, mode)) {
-  throw new Error('Unknown native QA mode. Allowed: manual, editing, input, pdf, search, image.');
+  throw new Error('Unknown native QA mode. Allowed: manual, editing, smarttype, input, pdf, search, image.');
 }
 
 // Do not trust external path overrides; all modes test the candidate built from

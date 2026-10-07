@@ -1,4 +1,4 @@
-import type { ScriptElement, ScriptProject } from './types';
+import type { ElementType, ScriptElement, ScriptProject } from './types';
 import { COMMON_SHOTS, COMMON_TRANSITIONS } from './elements';
 import { stripSceneNumber } from '../utils/text';
 import { searchText } from './search';
@@ -17,7 +17,7 @@ export interface SmartTypeCatalog {
 }
 
 export type SmartTypeKind = 'character' | 'extension' | 'intro' | 'location' | 'time'
-  | 'scene_heading' | 'transition' | 'shot';
+  | 'scene_heading' | 'transition' | 'shot' | 'intent';
 
 export interface SmartTypeItem {
   label: string;
@@ -27,6 +27,10 @@ export interface SmartTypeItem {
   caret?: number;
   /** Append on field acceptance if not already present. Never used by Enter. */
   separator?: string;
+  /** Explicitly accepted intent only; querying never changes the paragraph type. */
+  targetType?: ElementType;
+  /** A compact label to distinguish equal text offered by different word classes. */
+  typeLabel?: string;
 }
 
 /** Item alias kept explicit for Editor consumers. */
@@ -182,16 +186,94 @@ function candidates(
   const normalized = key(query);
   const values = unique(pool);
   const exact = normalized ? values.find(value => key(value) === normalized) : undefined;
-  // A complete, known field must not be silently expanded on Enter (夜 → 夜晚, AL → ALICE).
-  // The only exception is an unfinished qualifier whose matching closing bracket is still missing.
-  if (exact && !options.closing) return null;
-  const items = (exact ? [exact] : values.filter(value => key(value).startsWith(normalized) && key(value) !== normalized))
+  const prefixes = values.filter(value => key(value).startsWith(normalized) && key(value) !== normalized);
+  // Complete times/locations still close their menu. Character names are different:
+  // 小明 must keep 小明妈妈 discoverable, with the exact name selected first so Enter
+  // never silently expands it. An exact-only name does not need another popup.
+  if (exact && !options.closing && (kind !== 'character' || !prefixes.length)) return null;
+  const items = (exact ? [exact, ...(kind === 'character' ? prefixes : [])] : prefixes)
     .slice(0, 8).map(value => ({
       label: value,
       value: value + (options.closing || '') + (options.suffix || ''),
       ...(options.separator ? { separator: options.separator } : {}),
     }));
   return items.length ? { kind, query, start, end, items } : null;
+}
+
+const TYPE_LABELS: Partial<Record<ElementType, string>> = {
+  character: '人物', scene_heading: '场次标题', transition: '转场', shot: '镜头',
+};
+
+function withTargetType(suggestion: SmartTypeSuggestions | null, targetType: ElementType): SmartTypeSuggestions | null {
+  return suggestion ? { ...suggestion, items: suggestion.items.map(item => ({
+    ...item, targetType, typeLabel: TYPE_LABELS[targetType],
+  })) } : null;
+}
+
+/** This mode is deliberately opt-in. The Editor owns the empty-paragraph session
+ * and must turn it off for existing prose, paste, type cycling and selection edits.
+ * Values remain plain text; the same replacement offsets/escaping apply as fields.
+ */
+function intentSuggestions(element: ScriptElement, text: string, catalog: SmartTypeCatalog): SmartTypeSuggestions | null {
+  const start = text.match(/^\s*/)?.[0].length || 0;
+  const query = text.slice(start).trim();
+  if (!query) return null;
+
+  // Once a setting and separator establish a location/time slot, complete that
+  // field first; never let unrelated whole-line words replace its prefix/number.
+  const sceneStart = headingStart(text);
+  const intro = INTRO.exec(text.slice(sceneStart));
+  if ((intro && LEADING_DELIMITERS.test(text.slice(sceneStart + intro[0].length))) || sceneStart > start) {
+    const field = withTargetType(sceneSuggestions(text, catalog), 'scene_heading');
+    if (field) return field;
+    // A fully typed known heading has no incomplete field, but in an empty-line
+    // intent session its type still needs explicit confirmation (including IME).
+    // Never add whole-heading candidates to a short 内/外 setting prefix menu.
+    const headingQuery = text.slice(sceneStart).trim();
+    const normalizedHeading = key(headingQuery);
+    const locationStart = intro ? sceneStart + intro[0].length +
+      (text.slice(sceneStart + intro[0].length).match(LEADING_DELIMITERS)?.[0].length || 0) : text.length;
+    const completeField = !!intro && (trailingTime(text, locationStart, catalog.times) !== null ||
+      catalog.locations.some(location => key(location) === key(text.slice(locationStart))));
+    // A known complete 夜 or location closes field completion for good reason:
+    // do not reopen it via a longer whole heading (夜 → 夜晚, 工作室 → 工作室 日).
+    // Exact full headings still let the author explicitly confirm their type.
+    const headings = catalog.headings.filter(value => key(value) === normalizedHeading ||
+      (!completeField && key(value).startsWith(normalizedHeading)))
+      .sort((a, b) => Number(key(b) === normalizedHeading) - Number(key(a) === normalizedHeading));
+    return headings.length ? { kind: 'intent', query: headingQuery, start: sceneStart, end: text.length,
+      items: headings.slice(0, 8).map(value => ({ label: value, value,
+        targetType: 'scene_heading', typeLabel: TYPE_LABELS.scene_heading })) } : null;
+  }
+  // Existing character qualifier fields keep their bracket-aware completion.
+  if (element.type === 'character' && /[（(]/.test(text)) {
+    return withTargetType(characterSuggestions(text, catalog), 'character');
+  }
+
+  const normalized = key(query);
+  const pools: { targetType: ElementType; values: readonly string[]; separator?: string }[] = [
+    { targetType: 'character', values: catalog.characters },
+    { targetType: 'scene_heading', values: catalog.intros, separator: ' ' },
+    { targetType: 'transition', values: catalog.transitions },
+    // The intent is the word 特写, not a prefilled description template 特写 -.
+    // Existing same-type shot completion and custom description text stay intact.
+    { targetType: 'shot', values: catalog.shots.map(value => value.replace(/\s+-\s*$/, '')) },
+  ];
+  const seen = new Set<string>();
+  const items: SmartTypeItem[] = [];
+  for (const pool of pools) for (const value of pool.values) {
+    const candidateKey = key(value);
+    const identity = `${pool.targetType}:${candidateKey}`;
+    if (!candidateKey.startsWith(normalized) || seen.has(identity)) continue;
+    seen.add(identity);
+    items.push({ label: value, value, targetType: pool.targetType,
+      typeLabel: TYPE_LABELS[pool.targetType], ...(pool.separator ? { separator: pool.separator } : {}) });
+  }
+  items.sort((a, b) => {
+    const exactOrder = Number(key(b.label) === normalized) - Number(key(a.label) === normalized);
+    return exactOrder || Number(b.targetType === element.type) - Number(a.targetType === element.type);
+  });
+  return items.length ? { kind: 'intent', query, start, end: text.length, items: items.slice(0, 8) } : null;
 }
 
 function characterSuggestions(text: string, catalog: SmartTypeCatalog): SmartTypeSuggestions | null {
@@ -252,9 +334,11 @@ export function getSmartTypeSuggestions(
   element: ScriptElement,
   caretOffset: number,
   catalog: SmartTypeCatalog,
+  options: { allowCrossType?: boolean } = {},
 ): SmartTypeSuggestions | null {
   const text = elementText(element);
   if (caretOffset !== text.length || text.includes('\n')) return null;
+  if (options.allowCrossType) return intentSuggestions(element, text, catalog);
   if (element.type === 'character') return characterSuggestions(text, catalog);
   if (element.type === 'scene_heading') return sceneSuggestions(text, catalog);
   const start = text.match(/^\s*/)?.[0].length || 0;

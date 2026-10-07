@@ -1,8 +1,8 @@
 # 光影写手源码维护手册
 
-更新：2026-10-07。适用于当前 `1.3.0-alpha.18.11` 源码。版本号不代表打包、推送或公开发布已经完成；实际安装附件以对应 GitHub Release 为准。
+更新：2026-10-08。适用于当前 `1.3.0-alpha.18.12` 源码。版本号不代表推送、main合并或公开发布已经完成；实际安装附件以对应 GitHub Release 为准。
 
-这是当前维护入口；历史版本记录保留在 `CHANGELOG.md` / `DEVELOPER_HANDOFF.md`，不要把旧日志中的状态当作当前交付事实。行为契约以 [CORE_FEATURES.md](CORE_FEATURES.md) 为准，历史/剪贴板证据见 [EDITING_QA_20261007.md](EDITING_QA_20261007.md)，后续智能引号证据与边界见 [SMART_QUOTES_QA_20261007.md](SMART_QUOTES_QA_20261007.md)。
+这是当前维护入口；历史版本记录保留在 `CHANGELOG.md` / `DEVELOPER_HANDOFF.md`，不要把旧日志中的状态当作当前交付事实。行为契约以 [CORE_FEATURES.md](CORE_FEATURES.md) 为准，本轮SmartType与交付证据见 [SMARTTYPE_QA_20261008.md](SMARTTYPE_QA_20261008.md) / [RELEASE_ALPHA_18_12.md](RELEASE_ALPHA_18_12.md)，历史/剪贴板及智能引号边界见 [EDITING_QA_20261007.md](EDITING_QA_20261007.md) / [SMART_QUOTES_QA_20261007.md](SMART_QUOTES_QA_20261007.md)。
 
 ## 1. 开工与交付规则
 
@@ -67,6 +67,7 @@ store：不可变修改 → 历史事务 → project + version + dirty
 | 状态、历史、不可变写入 | `src/store/store.ts` | 原生 DOM 历史、实际文件 I/O |
 | 元素/场景/人物派生 | `src/model/project.ts` | 卡片 UI 状态、直接改正文 |
 | 编辑事件、选区操作 | `Editor.tsx`、`ScriptBlock.tsx` | 另建历史栈、绕过事务写 DOM |
+| SmartType候选与明确接受 | `src/model/smarttype.ts`、`Editor.tsx`、`store.commitSmartType` | 首字擅自改类型、确认顺便切段、逐次setText/setType制造两次撤销 |
 | 智能双引号输入投影 | `src/utils/smartQuotes.ts` | 全文标点校正、HTML 属性替换、重整粘贴/手动引号 |
 | 统一撤销入口、临时光标书签 | `src/utils/editHistory.ts` | 记录用户内容到外部、序列化焦点 |
 | 剪贴板投影/安全内部格式 | `writingSelection.ts`、`writingClipboard.ts` | 复制 ID、素材、关系和修订元数据 |
@@ -113,6 +114,16 @@ store：不可变修改 → 历史事务 → project + version + dirty
 少量未提交的 UI 草稿（自由板标题/关系备注、角色改名、查找框）使用 `data-native-edit-history` 标记并只执行本地原生历史，不顺便撤销正文。其他绑定模型的输入仍归工程事务。
 
 工具栏保留正文焦点。仅操作前焦点属于正文时恢复光标；不能从卡片或对话框抢焦点。书签按不可变快照弱引用记录，Enter 撤销回原段、重做回恢复的新段，不把书签写入项目。
+
+### SmartType接受事务（2026-10-08契约）
+
+新空段的直接输入会话可推荐人物/镜头/转场/场次，不要求先选类型；目录仅来源于内置词库和当前工程。候选查询不改工程，完整姓名与长前缀同时可选、exact优先。已有正文、粘贴、拆行的非空尾文及双列不进入新跨类型模式；没有匹配候选才保留原保守识别回退。
+
+有候选时Enter只确认并留本段，再按一次Enter按原类型规则切段；鼠标/右箭头同样只确认。同类型空格补字段保留，跨类型意图候选不抢空格。接受后用段ID/epoch/HTML/类型记录瞬时抑制，未新输入不得自动重弹相同候选；Esc同时清候选、会话和旧场次前缀，取消后不能经旧识别器暗改类型。Tab/Shift+Tab只做九类循环且保原光标，Shift+Enter不改变。中文组合期、`keyCode=229`、修饰键、非折叠或段中选区不能接受。
+
+Editor接受前核对DOM/光标、原HTML/类型、documentEpoch和候选目录身份；来源改名、类型变更、排序、删除、撤销、活动段排除及文档边界变化使旧目录/候选失效。缓存和会话不持久化。`store.commitSmartType(id, expectedText, expectedType, html, targetType, expectedEpoch)` 再次校验模型与epoch，只允许明确的四类目标转换，拒绝双列跨类型。它调用一次通用不可变事务，同时提交text/type，不能替换成独立setText再setType；撤销/重做同进同退。无变化或拒绝不清redo、不增dirty/version/历史，仍切断打字合并窗口。保焦用稳定ID的requestFocus，不能对可能已被场号包装替换的旧DOM补写。
+
+此契约经用户明确批准，覆盖旧“仅当前字段推荐、Enter确认立即下一段”的要求；历史日志与旧验收不能作为回退依据。专项模型/UI检查之外，固定原生`smarttype`模式必须验证确认/二次Enter、Esc、菜单点击、连续正反Tab、撤销重做及组合事件。真实macOS中文输入法需另外验收，不能把合成CDP事件写成系统输入法已通过。
 
 ## 5. 剪贴板契约
 
@@ -167,7 +178,7 @@ store：不可变修改 → 历史事务 → project + version + dirty
 | --- | --- | --- |
 | 文字/历史/快捷键 | editing、smartquotes、history、input、clipboard-format、clipboard-ui、writing-range-integrity、native-draft-history | 连续 Undo/Redo、段中 Enter、剪贴板、中文 IME、原生菜单 |
 | 保存/打开/异步素材 | file-commands、autosave-path、autosave-recovery、project-save、project-save-ipc、zhsp-compat | 独立用户目录保存、取消/失败、保存中编辑/切稿、恢复点失败、关闭提示、重启恢复 |
-| 自动补全 | smarttype、smarttype-ui、writing | 9 次以上 Tab 正反循环、候选/Esc/IME/光标非段尾 |
+| 自动补全 | smarttype、smarttype-ui、writing、smarttype-electron | 空段跨类型/两次Enter、9 次以上 Tab 正反循环、候选/Esc/IME/光标非段尾、目录变化与单次撤销 |
 | 查找 | search、search-ui | 格式/软换行/emoji 命中、定位、高亮不入导出 |
 | 自由板 | board-workspace-model/UI、board-polish、scene-notes | 拖动、缩放、磁吸、连线备注、多选、Delete、撤销 |
 | 大纲/故事板/幕 | outline-reorder、storyboard-drop、storyboard-acts | 多场双向排序、归幕/未归幕、折叠/空幕、多选和撤销 |
@@ -176,7 +187,9 @@ store：不可变修改 → 历史事务 → project + version + dirty
 
 `smoke` 使用唯一临时壳 manifest 与临时 userData，不改仓库 `package.json.main`。本轮分层结果见 [RELIABILITY_QA_20261007.md](RELIABILITY_QA_20261007.md)；脚本存在、语法/VM检查或源码37套检查本身不能证明实机通过，真实输入法/文件对话框等待验边界单独列出。
 
-新增 `native-acceptance-launcher.cjs` 只接受固定 QA manifest 和 manual/editing/input/pdf/search/image 白名单模式；manual壳加载当前候选主进程，使用独立临时userData和合成工程。其余夹具由 `native-fixture-window.cjs` 在React挂载前加载合成种子；恢复检查使用同入口/partition且不重新种子化。销毁测试自有窗口只用于夹具清理，不能冒充真实关闭确认验收。CDP输入法事件、内存DataTransfer复制/粘贴和自动文件drop，分别不能代替原生中文输入法、系统剪贴板和Finder手势。不要直接运行旧安装包测试用户窗口；老 `capture/integration` 仍须逐项审查入口/目录。
+`native-acceptance-launcher.cjs` 只接受固定 QA manifest 和 manual/editing/smarttype/input/pdf/search/image 白名单模式；新增 `smarttype` 固定映射到 `scripts/smarttype-electron.cjs`，不允许外部任意入口/renderer路径。manual壳加载当前候选主进程，使用独立临时userData和合成工程。其余夹具由 `native-fixture-window.cjs` 在React挂载前加载合成种子；恢复检查使用同入口/partition且不重新种子化。销毁测试自有窗口只用于夹具清理，不能冒充真实关闭确认验收。CDP输入法事件、内存DataTransfer复制/粘贴和自动文件drop，分别不能代替原生中文输入法、系统剪贴板和Finder手势。不要直接运行旧安装包测试用户窗口；老 `capture/integration` 仍须逐项审查入口/目录。
+
+2026-10-08本轮最终37套源码退出0（SmartType模型132、UI511），675项发布安全断言单独通过；六组真实Electron SmartType/editing/input/search/image/PDF退出0。图片实际保存模型和可见正文快照严格等值；PDF原位图/声卡、A4及长段250/双列170标签完整各一次。包白名单、独立空白启动、DMG与桌面包全树核验通过；逐页目视范围、真实IME/跨机等未验收边界见 `SMARTTYPE_QA_20261008.md`，不以旧绿灯代替本轮结果。
 
 ## 8. 构建、打包与发布
 
