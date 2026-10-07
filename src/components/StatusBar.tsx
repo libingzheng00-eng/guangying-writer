@@ -2,6 +2,18 @@ import { useMemo } from 'react';
 import { useStore } from '../store/store';
 import { computeStats } from '../model/stats';
 import { ELEMENT_META } from '../model/elements';
+import { useRecoveryStatus } from '../app/recoveryStatus';
+
+function RecoveryIndicator() {
+  const { phase, lastSuccess, error } = useRecoveryStatus();
+  const time = lastSuccess ? new Date(lastSuccess).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
+  const label = phase === 'error' ? '恢复点失败' : phase === 'saved' ? `恢复点 ${time}` : phase === 'pending' ? '恢复点待更新' : '恢复点尚未建立';
+  return <span className={`statusbar__recovery${phase === 'error' ? ' is-error' : ''}`}
+    role={phase === 'error' ? 'alert' : undefined}
+    title={error ?? `${time ? `最近自动恢复点：${time}。` : ''}自动恢复点不等于工程文件已保存；请用保存/另存为写入 .zhsp。`}>
+    {label}
+  </span>;
+}
 
 /**
  * 底部状态栏：仅保留「写作统计 + 当前元素类型 + 修订模式 + 缩放」，
@@ -31,6 +43,7 @@ export function StatusBar() {
       <span className="sep" />
       <span>{stats.characterCount} 人</span>
       <div className="spacer" />
+      <RecoveryIndicator />
       {activeEl ? <span className="statusbar__type">{ELEMENT_META[activeEl.type].label}</span> : null}
       {project.settings.revisionMode ? <span className="badge">修订模式</span> : null}
       <span className="zoom">

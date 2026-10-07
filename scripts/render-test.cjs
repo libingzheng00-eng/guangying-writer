@@ -204,7 +204,7 @@ process.on('exit', cleanTemporaryBundle);
     switches[label] = clickByText(label);
   });
 
-  setTimeout(() => {
+  setTimeout(async () => {
     // 自由板为最后一个视图，此时 React 已完成渲染
     const board = switches['自由板']
       ? {
@@ -213,31 +213,56 @@ process.on('exit', cleanTemporaryBundle);
           sceneCards: qa('.bcard--scene').length,
           beatCards: qa('.bcard--beat').length,
           zoomCtl: !!q('.zoom-ctl'),
-          linkSelects: qa('.bcard__link').length,
-          // alpha.16：自由板工具栏必须存在三分区和全部颜色控制；否则背景层级回退时会再次整条消失。
+          linkSelects: qa('.board__context select[aria-label="关联到场景"]').length,
+          // 工作区方案：三分区常驻，颜色/关联只在选中相应卡片后显示。
           subTabs: qa('.board__subtabs [role="tab"]').length,
           colorControls: qa('.board__color-bar button[aria-label^="卡片颜色"]').length,
+          contextHiddenInitially: !q('.board__context'),
           // Item 6a：所有自由板卡片（scene / image / beat / sound）都应有 resize 手柄
           allBcardsHaveResize: qa('.bcard').length > 0 && qa('.bcard__resize').length >= qa('.bcard').length,
           imagePreserved: !!q('.bcard[data-id="qa-image-1"] img[alt="城市远景"]'),
-          soundPreserved: q('.bcard[data-id="qa-sound-1"] input')?.value === '雨夜环境声',
+          soundPreserved: q('.bcard[data-id="qa-sound-1"] span.bcard__media-title')?.textContent === '雨夜环境声'
+            && q('.bcard[data-id="qa-sound-1"] textarea.bcard__edit')?.value === '雨声渐强，远处列车经过。',
         }
       : null;
 
-    // 新功能回归：两张卡建立关系线；备注控件和目标页数必须可见。
-    const connectors = qa('.bcard__connect');
-    if (connectors.length > 1) {
-      connectors[0].click();
+    // 通过实际新入口选择卡片、显示上下文、进入连接模式、点两端并编辑说明。
+    // jsdom检验事件与渲染状态；不代表真实鼠标或原生输入法验收。
+    const flushBoard = () => new Promise((resolve) => setTimeout(resolve, 30));
+    const pressBoardCard = async (id) => {
+      const card = q(`[data-card][data-id="${id}"]`);
+      if (!card) return false;
+      (card.querySelector('.bcard__head') || card).dispatchEvent(new w.MouseEvent('mousedown', { button: 0, clientX: 50, clientY: 50, bubbles: true, cancelable: true }));
+      await flushBoard();
+      w.dispatchEvent(new w.MouseEvent('mouseup', { button: 0, clientX: 50, clientY: 50, bubbles: true, cancelable: true }));
+      await flushBoard();
+      return true;
+    };
+    await pressBoardCard('qa-beat-1');
+    if (board) {
+      board.colorControls = qa('.board__context .board__color-bar button[aria-label^="卡片颜色"]').length;
+      board.linkSelects = qa('.board__context select[aria-label="关联到场景"]').length;
     }
-    setTimeout(() => {
-      const nextConnector = qa('.bcard__connect').find((node) => !node.classList.contains('is-active'));
-      if (nextConnector) nextConnector.click();
-      setTimeout(() => {
-      const relationInput = q('.board-link-note input');
-      if (relationInput) {
-        relationInput.value = '人物关系';
-        relationInput.dispatchEvent(new w.Event('input', { bubbles: true }));
-      }
+    const connectTool = q('.board__dock button[aria-label="连接两张卡片"]');
+    const selectTool = q('.board__dock button[aria-label="选择卡片"]');
+    if (connectTool) connectTool.click();
+    await flushBoard();
+    await pressBoardCard('qa-scene-1');
+    await pressBoardCard('qa-beat-1');
+    const boardRelationCreated = qa('.board-link__hit[data-link-id]').length === 1;
+    const relationLabel = q('.board-link__label');
+    if (relationLabel) relationLabel.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    await flushBoard();
+    const relationInput = q('.board-link__input[aria-label="关系说明"]');
+    const relationEditorOpened = !!relationInput;
+    if (relationInput) {
+      Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set.call(relationInput, '人物关系');
+      relationInput.dispatchEvent(new w.Event('input', { bubbles: true }));
+      await flushBoard();
+      relationInput.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      await flushBoard();
+    }
+    const boardRelationNoteEditable = relationEditorOpened && !q('.board-link__input') && q('.board-link__label')?.textContent.trim() === '人物关系';
       const featureChecks = {
         tabFocusLoopClosed,
         // 兼容：alpha.1 旧选择器也接受，便于在不同 commit 之间跑回归
@@ -258,8 +283,11 @@ process.on('exit', cleanTemporaryBundle);
         allBcardsHaveResize: !!(board && board.allBcardsHaveResize),
         boardSubTabsVisible: !!(board && board.subTabs === 3),
         boardColorControlsVisible: !!(board && board.colorControls === 8),
-        boardRelationCreated: qa('.board-links line').length >= 1,
-        boardRelationNoteEditable: !!relationInput,
+        boardContextHiddenInitially: !!board?.contextHiddenInitially,
+        boardAssociationAvailable: !!(board && board.linkSelects === 1),
+        boardModeToolsAvailable: !!connectTool && !!selectTool,
+        boardRelationCreated,
+        boardRelationNoteEditable,
       };
       clickByText('统计');
       setTimeout(() => {
@@ -298,8 +326,6 @@ process.on('exit', cleanTemporaryBundle);
           }, 400);
         }, 250);
       }, 250);
-      }, 150);
-    }, 250);
     return;
   }, 1200);
 }, 1200);

@@ -3,21 +3,42 @@ import { useStore } from '../store/store';
 import { usePagination } from '../hooks/PaginationProvider';
 import { EditableBlock } from './ScriptBlock';
 import { ProgressBar } from './ProgressBar';
-import { caretOffset, splitHtml, domLength, setCaret } from '../utils/dom';
+import { caretOffset, splitHtml, domLength, domText, makeTextRange, setCaret, offsetOf } from '../utils/dom';
+import { applySmartDoubleQuotes } from '../utils/smartQuotes';
 import { isBlank, plain, stripSceneNumber, escapeHtml } from '../utils/text';
 import { readWritingSelection } from '../utils/writingSelection';
-import { nextTypeOnEnter, nextTypeOnTab, groupDual, recognizeType, shouldShowContdSuffix, CONTD_SUFFIX } from '../model/flow';
-import { characterNames, sceneHeadings, deriveScenes } from '../model/project';
-import { COMMON_SHOTS, COMMON_TRANSITIONS, fontStackOf } from '../model/elements';
+import { WRITING_CLIPBOARD_MIME, encodeWritingClipboard, decodeWritingClipboard, replaceClipboardRange, type ClipboardFocus } from '../utils/writingClipboard';
+import { nextTypeOnEnter, nextTypeOnTab, groupDual, recognizeType, deriveWritingElements, CONTD_SUFFIX } from '../model/flow';
+import { deriveScenes } from '../model/project';
+import { fontStackOf } from '../model/elements';
+import { createSmartTypeCatalogReader, getSmartTypeSuggestions, type SmartTypeSuggestion } from '../model/smarttype';
+import { searchText } from '../model/search';
 import type { ScriptElement, ElementType } from '../model/types';
 
 interface SuggestState {
   id: string;
-  items: string[];
+  type: ElementType;
+  sourceText: string;
+  start: number;
+  end: number;
+  kind: string;
+  items: SmartTypeSuggestion[];
   active: number;
   top: number;
   left: number;
 }
+
+/** A two-column DOM range can have a different order from the model. Never
+ * normalize it into a broader deletion; reject and offer explicit block select.
+ */
+function writableRange(ids: readonly string[]): boolean {
+  const elements = useStore.getState().project.elements;
+  const start = elements.findIndex(element => element.id === ids[0]);
+  return ids.length > 0 && new Set(ids).size === ids.length && start >= 0 &&
+    ids.every((id, offset) => elements[start + offset]?.id === id);
+}
+
+const RANGE_RESELECT_MESSAGE = '当前选区与正文顺序不一致，请分栏选择或使用“多选段落”。';
 
 export function Editor() {
   const project = useStore((s) => s.project);
@@ -28,7 +49,6 @@ export function Editor() {
   const setType = useStore((s) => s.setType);
   const splitBlock = useStore((s) => s.splitBlock);
   const insertAfter = useStore((s) => s.insertAfter);
-  const removeElement = useStore((s) => s.removeElement);
   const mergeIntoPrevious = useStore((s) => s.mergeIntoPrevious);
   const requestFocus = useStore((s) => s.requestFocus);
   const addBeat = useStore((s) => s.addBeat);
@@ -38,13 +58,23 @@ export function Editor() {
   const notify = useStore((s) => s.notify);
   const pdfExportMode = useStore((s) => s.pdfExportMode);
   const version = useStore((s) => s.version);
+  const documentEpoch = useStore((s) => s.documentEpoch);
   const { breaks, lineHeightPx, contentWidthPx, readyKey } = usePagination();
 
   const refs = useRef(new Map<string, HTMLDivElement>());
   const composingRef = useRef(false);
+  const quoteCompositionRef = useRef<{ id: string; epoch: number; html: string; start: number; end: number } | null>(null);
+  // 只追踪“从空动作段开始”的内外景前缀，不重新猜测已有正文或用户手选的类型。
+  const sceneIntroInputRef = useRef(new Map<string, string>());
+  const compositionEmptyActionRef = useRef(new Set<string>());
   /** ⌘⇧N 备忘切换：记住每个元素上一次的非备忘类型，便于从 note 切回 */
   const noteMemoryRef = useRef(new Map<string, ElementType>());
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
+  const readSmartTypeCatalog = useMemo(() => createSmartTypeCatalogReader(), []);
+  const smartTypeCatalog = useMemo(
+    () => readSmartTypeCatalog(project, activeId || undefined, documentEpoch),
+    [readSmartTypeCatalog, project.elements, activeId, documentEpoch],
+  );
   const [showSoundCards, setShowSoundCards] = useState(true);
   const [isImageDropTarget, setIsImageDropTarget] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -93,6 +123,7 @@ export function Editor() {
   const breakSet = useMemo(() => new Set(breaks), [breaks]);
 
   const items = useMemo(() => groupDual(project.elements), [project.elements]);
+  const writingDerivation = useMemo(() => deriveWritingElements(project.elements), [project.elements]);
   // 多选模式下每个段落都会读取序号；预先建索引，避免长剧本渲染退化为 O(n²)。
   const elementIndex = useMemo(
     () => new Map(project.elements.map((element, index) => [element.id, index])),
@@ -122,66 +153,98 @@ export function Editor() {
   /* ------------------------- 自动续打 ------------------------- */
   const updateSuggest = useCallback(
     (el: ScriptElement) => {
-      const text = plain(el.text);
-      if (composingRef.current || !text.trim()) {
-        setSuggest(null);
-        return;
-      }
-      let pool: string[] = [];
-      if (el.type === 'character') pool = characterNames(project);
-      else if (el.type === 'scene_heading') pool = sceneHeadings(project);
-      else if (el.type === 'transition') pool = COMMON_TRANSITIONS;
-      else if (el.type === 'shot') pool = COMMON_SHOTS;
-      else {
-        setSuggest(null);
-        return;
-      }
-      const lower = text.trim();
-      const list = pool.filter((n) => n !== lower && n.startsWith(lower)).slice(0, 8);
-      if (!list.length) {
-        setSuggest(null);
-        return;
-      }
       const node = refs.current.get(el.id);
-      if (!node) {
+      const selection = window.getSelection();
+      const text = node ? domText(node) : '';
+      const caret = node ? caretOffset(node) : -1;
+      if (composingRef.current || selectMode || !node || document.activeElement !== node || !text.trim() || !selection?.isCollapsed || caret !== text.length) {
+        setSuggest(null);
+        return;
+      }
+      const matches = getSmartTypeSuggestions({ ...el, text: node.innerHTML }, caret, smartTypeCatalog);
+      if (!matches?.items.length) {
         setSuggest(null);
         return;
       }
       const nb = node.getBoundingClientRect();
-      // 建议框固定在正在编辑的输入行旁，而非以稿纸左上角为原点。
-      // 旧实现混用了两个坐标系，因此会漂到左侧很远的位置。
+      const range = selection.rangeCount ? selection.getRangeAt(0) : null;
+      const caretRect = range && typeof range.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : nb;
       const menuWidth = 250;
+      const menuHeight = Math.min(300, matches.items.length * 32 + 32);
+      const beside = nb.right + menuWidth + 18 <= window.innerWidth;
       setSuggest({
         id: el.id,
-        items: list,
+        type: el.type,
+        sourceText: text,
+        start: matches.start,
+        end: matches.end,
+        kind: matches.kind,
+        items: matches.items,
         active: 0,
-        top: Math.max(8, Math.min(window.innerHeight - 38, nb.top - 2)),
-        left: Math.max(8, Math.min(window.innerWidth - menuWidth - 8, nb.right + 10)),
+        top: Math.max(8, Math.min(window.innerHeight - menuHeight - 8, beside ? caretRect.top : caretRect.bottom + 6)),
+        left: Math.max(8, Math.min(window.innerWidth - menuWidth - 8, beside ? nb.right + 10 : caretRect.left)),
       });
     },
-    [project],
+    [smartTypeCatalog, selectMode],
   );
+
+  // 候选是瞬时 UI，不进入工程或历史。撤销、改类型、切工程和选区移动都必须使旧候选失效。
+  useEffect(() => {
+    setSuggest((s) => {
+      if (!s || selectMode) return null;
+      const current = project.elements.find((item) => item.id === s.id);
+      return current && current.type === s.type && searchText(current.text) === s.sourceText ? s : null;
+    });
+  }, [project.elements, project.id, selectMode]);
+  useEffect(() => {
+    if (!suggest) return;
+    const onSelection = () => {
+      const node = refs.current.get(suggest.id);
+      if (!node || document.activeElement !== node || !window.getSelection()?.isCollapsed || caretOffset(node) !== domLength(node)) setSuggest(null);
+    };
+    const dismiss = () => setSuggest(null);
+    document.addEventListener('selectionchange', onSelection);
+    window.addEventListener('resize', dismiss);
+    window.addEventListener('scroll', dismiss, true);
+    return () => {
+      document.removeEventListener('selectionchange', onSelection);
+      window.removeEventListener('resize', dismiss);
+      window.removeEventListener('scroll', dismiss, true);
+    };
+  }, [suggest]);
 
   const acceptSuggest = useCallback((advance = false, index?: number) => {
     const state = suggest;
-    if (!state) return;
-    const value = state.items[index ?? state.active];
-    if (!value) return;
+    if (!state || composingRef.current || selectMode) return false;
+    const item = state.items[index ?? state.active];
     const node = refs.current.get(state.id);
-    // contentEditable 在焦点内不会自动由外部 state 回写；先同步 DOM，鼠标点击也能立即看到结果。
-    if (node) node.innerHTML = value;
-    setSuggest(null);
-    if (advance) {
-      const current = useStore.getState().project.elements.find((item) => item.id === state.id);
-      if (current) {
-        splitBlock(state.id, value, '', nextTypeOnEnter({ ...current, text: value }, false));
-        return;
-      }
+    const current = useStore.getState().project.elements.find((el) => el.id === state.id);
+    if (!item || !node || !current || current.type !== state.type || document.activeElement !== node ||
+        !window.getSelection()?.isCollapsed || caretOffset(node) !== state.end || domText(node) !== state.sourceText) {
+      setSuggest(null);
+      return false;
     }
-    setText(state.id, value);
-    if (node) setCaret(node, 'end');
-    requestFocus(state.id, 'end');
-  }, [suggest, setText, splitBlock, requestFocus]);
+    // 只替换当前字段，保留其他文本与格式；候选永远作为文本节点插入，不能解释为 HTML。
+    const nextNode = node.cloneNode(true) as HTMLDivElement;
+    const range = makeTextRange(nextNode, state.start, state.end);
+    const value = item.value + (advance ? '' : item.separator || '');
+    range.deleteContents();
+    range.insertNode(document.createTextNode(value));
+    const html = nextNode.innerHTML;
+    setSuggest(null);
+    const nextType = advance ? nextTypeOnEnter({ ...current, text: html }, false) : undefined;
+    // 完成候选是一笔独立撤销；不能与之前或之后的普通打字合并。
+    const id = useStore.getState().replaceWritingRange([state.id], '', '', html, nextType);
+    if (!id) return false;
+    node.innerHTML = html;
+    const nextCaret = state.start + (item.caret ?? item.value.length) + (advance ? 0 : (item.separator || '').length);
+    if (!advance) {
+      setCaret(node, nextCaret);
+      updateSuggest({ ...current, text: html });
+    }
+    requestFocus(id, advance ? 'start' : nextCaret);
+    return true;
+  }, [suggest, selectMode, updateSuggest, requestFocus]);
 
   const moveFocus = useCallback(
     (dir: -1 | 1, caret: 'start' | 'end') => {
@@ -201,19 +264,22 @@ export function Editor() {
       // 输入法组合中不做任何拦截
       if (e.nativeEvent.isComposing || composingRef.current) return;
 
-      if (suggest && e.key === 'Enter' && suggest.items.length) {
+      const meta = e.metaKey || e.ctrlKey;
+      // Cursor navigation/selection changes create a typing-history boundary;
+      // repeated input events themselves must not split the current group.
+      if (/^(Arrow|Home|End|Page)/.test(e.key) || (meta && e.key.toLowerCase() === 'a')) useStore.getState().breakHistoryGroup();
+      const candidateKey = !meta && !e.altKey && !e.shiftKey;
+      const hasSuggest = suggest?.id === el.id && suggest.type === el.type && suggest.sourceText === domText(node) && window.getSelection()?.isCollapsed && caretOffset(node) === suggest.end;
+      if (suggest && !hasSuggest) setSuggest(null);
+      if (hasSuggest && candidateKey && e.key === 'Enter' && acceptSuggest(true)) {
         e.preventDefault();
-        // 场次 / 人物等自动补全用 Enter 确认后直接进入符合剧本节奏的下一元素。
-        acceptSuggest(true);
         return;
       }
-      if (suggest && e.key === ' ' && suggest.items.length) {
+      if (hasSuggest && candidateKey && (e.key === ' ' || e.key === 'ArrowRight') && acceptSuggest(false)) {
         e.preventDefault();
-        // 空格只确认候选，不生成新行。Tab 固定留给元素类型循环，避免写作时快捷键失效。
-        acceptSuggest(false);
         return;
       }
-      if (suggest && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      if (hasSuggest && candidateKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
         e.preventDefault();
         setSuggest((s) =>
           s ? { ...s, active: (s.active + (e.key === 'ArrowDown' ? 1 : -1) + s.items.length) % s.items.length } : s,
@@ -221,15 +287,16 @@ export function Editor() {
         return;
       }
       if (e.key === 'Escape') {
+        if (suggest) e.preventDefault();
         setSuggest(null);
-        node.blur();
         return;
       }
-
-      const meta = e.metaKey || e.ctrlKey;
+      // Shift/Alt + 方向键属于文本选择/按词移动，不允许候选或段落导航抢占。
+      if ((e.shiftKey || e.altKey) && e.key.startsWith('Arrow')) return;
 
       if (meta && ['b', 'i', 'u'].includes(e.key.toLowerCase())) {
         e.preventDefault();
+        useStore.getState().breakHistoryGroup();
         try {
           document.execCommand('styleWithCSS', false, 'false');
           document.execCommand(e.key.toLowerCase() === 'b' ? 'bold' : e.key.toLowerCase() === 'i' ? 'italic' : 'underline');
@@ -237,13 +304,15 @@ export function Editor() {
           /* ignore */
         }
         setText(el.id, node.innerHTML);
+        useStore.getState().breakHistoryGroup();
         return;
       }
 
-      if (e.key === 'Enter' && !e.shiftKey && !meta) {
+      if (e.key === 'Enter' && !e.shiftKey && !meta && !e.altKey) {
         e.preventDefault();
         const selected = readWritingSelection(contentRef.current);
         if (selected && !selected.collapsed) {
+          if (!writableRange(selected.ids)) { notify(RANGE_RESELECT_MESSAGE, 'error'); return; }
           const current = useStore.getState().project.elements.find(item => item.id === selected.ids[0]);
           if (!current) return;
           const id = useStore.getState().replaceWritingRange(selected.ids, selected.before, selected.after, '', nextTypeOnEnter(current, false));
@@ -267,6 +336,9 @@ export function Editor() {
 
       if (e.key === 'Tab') {
         e.preventDefault();
+        // 红线：无论候选是否可见，Tab 都只循环类型，并立即废弃旧类型的候选。
+        setSuggest(null);
+        sceneIntroInputRef.current.delete(el.id);
         const caret = caretOffset(node);
         const next = nextTypeOnTab(el.type, e.shiftKey);
         const keepDual = el.dual && ['character', 'parenthetical', 'dialogue'].includes(next);
@@ -286,6 +358,8 @@ export function Editor() {
       // ⌘/Ctrl+Shift+N：备忘切换。在「备忘」与上一次非备忘类型之间来回切换。
       if (meta && e.shiftKey && (e.key === 'N' || e.key === 'n')) {
         e.preventDefault();
+        setSuggest(null);
+        sceneIntroInputRef.current.delete(el.id);
         if (el.type === 'note') {
           const fallback = noteMemoryRef.current.get(el.id) || 'action';
           setType(el.id, fallback);
@@ -313,6 +387,18 @@ export function Editor() {
         return;
       }
 
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        const selected = readWritingSelection(contentRef.current);
+        if (selected && !selected.collapsed) {
+          e.preventDefault();
+          if (!writableRange(selected.ids)) { notify(RANGE_RESELECT_MESSAGE, 'error'); return; }
+          const id = useStore.getState().replaceWritingRange(selected.ids, selected.before, selected.after, '');
+          setSuggest(null);
+          if (id) requestFocus(id, selected.start);
+          return;
+        }
+      }
+
       if (e.key === 'Backspace') {
         const off = caretOffset(node);
         const sel = window.getSelection();
@@ -337,9 +423,9 @@ export function Editor() {
           const next = project.elements[idx + 1];
           if (next) {
             e.preventDefault();
-            const text = plain(el.text) + plain(next.text);
-            setText(el.id, text);
-            removeElement(next.id);
+            // One transaction, preserve inline markup/entities; no plain-text
+            // concatenation followed by a second independent delete history.
+            mergeIntoPrevious(next.id);
           }
         }
         return;
@@ -400,39 +486,87 @@ export function Editor() {
         }
       }
     },
-    [project, suggest, acceptSuggest, setText, setType, splitBlock, mergeIntoPrevious, removeElement, lineHeightPx, moveFocus],
+    [project, suggest, acceptSuggest, setText, setType, splitBlock, mergeIntoPrevious, lineHeightPx, moveFocus, notify],
   );
 
   const handleInput = useCallback(
-    (el: ScriptElement, html: string) => {
+    (el: ScriptElement, html: string, input?: InputEvent, composition?: { html: string; start: number; end: number; data: string }) => {
       markTyping();
       let value = html;
-      if (project.settings.smartQuotes && el.type === 'dialogue') {
-        value = value.replace(/"/g, (_match, i) => (i % 2 === 0 ? '“' : '”'));
+      if (composingRef.current || input?.isComposing) {
+        // 组合期只同步输入，不猜类型、不开候选、不重建场号包装；提交后再识别一次。
+        setText(el.id, value);
+        setSuggest(null);
+        return;
       }
-      // Final Draft 风格的智能识别：仅在「之前为空 + 新文本非空 + 识别命中」时改类型，避免误判后续编辑。
+      // 从空动作段逐字输入 INT./EXT./内景也应识别；I/IN 不能提前抢成“人物”。
+      // 会话只延续未被编辑/手动改类型的短前缀，绝不每次输入都猜已有正文。
       const previous = useStore.getState().project.elements.find((e) => e.id === el.id);
+      const node = refs.current.get(el.id);
+      // Red line: transform only known newly inserted text, in this typing
+      // transaction. Never walk/replace HTML quotes, pasted text, history or an
+      // active IME composition. Direction depends on text, never markup length.
+      if (previous?.type === 'dialogue' && useStore.getState().project.settings.smartQuotes && node &&
+          (composition || input?.inputType === 'insertText')) {
+        value = applySmartDoubleQuotes(composition?.html ?? previous.text, html, {
+          data: composition?.data ?? input?.data ?? null,
+          caret: caretOffset(node),
+          selection: composition ? { start: composition.start, end: composition.end } : undefined,
+        });
+      }
       const wasEmpty = previous ? isBlank(previous.text) : isBlank(el.text);
       const trimmedNew = plain(value).trim();
-      if (wasEmpty && trimmedNew && previous && previous.type !== 'note') {
-        const recognized = recognizeType(trimmedNew);
-        if (recognized && recognized !== previous.type) {
+      const introPrefixes = ['内景', '外景', '内/外景', '外/内景', '内外景', 'INT.', 'EXT.', 'INT./EXT.', 'I/E.'];
+      const possibleIntro = introPrefixes.some(prefix => prefix.toLowerCase().startsWith(trimmedNew.toLowerCase()));
+      const lastPrefix = sceneIntroInputRef.current.get(el.id);
+      const continuingIntro = previous?.type === 'action' && lastPrefix !== undefined &&
+        plain(previous.text).trim() === lastPrefix && trimmedNew.startsWith(lastPrefix);
+      const atEnd = !!node && window.getSelection()?.isCollapsed && caretOffset(node) === domLength(node);
+      let changedType = false;
+      if ((wasEmpty || continuingIntro || compositionEmptyActionRef.current.has(el.id)) && trimmedNew && previous?.type === 'action') {
+        const sceneIntro = previous.type === 'action' && atEnd &&
+          /^(?:内景|外景|内\/外景|外\/内景|内外景)(?:$|[\s·.．、:：\-—])|^(?:INT|EXT|INT\.\/EXT|I\/E)\.(?:$|[\s\-—])/i.test(trimmedNew);
+        const recognized = sceneIntro ? 'scene_heading' : recognizeType(trimmedNew);
+        const deferCharacter = previous.type === 'action' && atEnd && possibleIntro && recognized === 'character';
+        if (recognized && !deferCharacter && recognized !== previous.type) {
           setType(previous.id, recognized);
+          changedType = true;
         }
       }
+      if (previous?.type === 'action' && !changedType && atEnd && possibleIntro && (wasEmpty || continuingIntro)) {
+        sceneIntroInputRef.current.set(el.id, trimmedNew);
+      } else sceneIntroInputRef.current.delete(el.id);
       setText(el.id, value);
-      updateSuggest({ ...el, text: value });
+      const caret = node ? caretOffset(node) : -1;
+      if (changedType) requestFocus(el.id, caret < 0 ? 'end' : caret);
+      const latest = useStore.getState().project.elements.find((item) => item.id === el.id);
+      if (latest) updateSuggest({ ...latest, text: value });
     },
-    [project.settings.smartQuotes, markTyping, setText, setType, updateSuggest],
+    [project.settings.smartQuotes, markTyping, setText, setType, updateSuggest, requestFocus],
   );
 
   const handlePaste = useCallback(
     (_el: ScriptElement, e: React.ClipboardEvent<HTMLDivElement>) => {
-      if (selectMode || composingRef.current) return;
+      // No native paste while IME or block selection owns the editor: it could
+      // bypass our literal/typed paste path and create a second DOM-only edit.
+      if (selectMode || composingRef.current) { e.preventDefault(); return; }
       const text = e.clipboardData.getData('text/plain');
       const selected = readWritingSelection(contentRef.current);
-      if (!selected || !text) return;
+      if (!selected) return;
       e.preventDefault();
+      if (!writableRange(selected.ids)) { notify(RANGE_RESELECT_MESSAGE, 'error'); return; }
+      const internal = decodeWritingClipboard(e.clipboardData.getData(WRITING_CLIPBOARD_MIME));
+      if (internal) {
+        let result: ClipboardFocus | null = null;
+        useStore.getState().mutate(draft => { result = replaceClipboardRange(draft, selected.ids, selected.before, selected.after, internal); });
+        const focus = result as ClipboardFocus | null;
+        setSuggest(null);
+        if (focus) requestFocus(focus.focusId, focus.caret);
+        return;
+      }
+      // Empty/non-text clipboard must never inject arbitrary HTML into the
+      // contentEditable or silently remove a selected range.
+      if (!text) return;
       // Clipboard text is literal: `<...>` must not be stripped as HTML.
       // One store transaction, not native DOM undo plus a second input transaction.
       const value = text.replace(/\r\n?/g, '\n');
@@ -440,16 +574,20 @@ export function Editor() {
       setSuggest(null);
       if (id) requestFocus(id, selected.start + value.length);
     },
-    [selectMode, requestFocus],
+    [selectMode, requestFocus, notify],
   );
 
   const handleClipboard = (event: React.ClipboardEvent, cut: boolean) => {
-    if (selectMode || composingRef.current || !(event.target as HTMLElement).closest('.sc-el--editable')) return;
+    if (!(event.target as HTMLElement).closest('.sc-el--editable')) return;
+    if (selectMode || composingRef.current) { event.preventDefault(); return; }
     const selected = readWritingSelection(contentRef.current);
     if (!selected || selected.collapsed) return;
     event.preventDefault();
+    if (cut && !writableRange(selected.ids)) { notify(RANGE_RESELECT_MESSAGE, 'error'); return; }
     event.clipboardData.setData('text/plain', selected.text);
     event.clipboardData.setData('text/html', selected.html);
+    const payload = encodeWritingClipboard(selected.fragments as Array<{ type: ElementType; html: string }>);
+    if (payload) event.clipboardData.setData(WRITING_CLIPBOARD_MIME, payload);
     if (cut) {
       const id = useStore.getState().replaceWritingRange(selected.ids, selected.before, selected.after, '');
       setSuggest(null);
@@ -503,7 +641,7 @@ export function Editor() {
     const x = Math.max(16, Math.min(maxX, Math.round(event.clientX - bounds.left - 145)));
     const viewport = scrollRef.current!.getBoundingClientRect();
     const y = Math.max(16, Math.min(viewport.bottom - bounds.top - 100, Math.round(event.clientY - bounds.top - 22)));
-    const projectAtDrop = useStore.getState().project.id;
+    const documentAtDrop = useStore.getState().documentEpoch;
     for (const [index, image] of images.entries()) {
       try {
         const img = await new Promise<string>((resolve, reject) => {
@@ -520,12 +658,12 @@ export function Editor() {
           reader.readAsDataURL(image);
         });
         // 读取期间切换工程时，不能把上一份工程的图片写进新工程。
-        if (useStore.getState().project.id !== projectAtDrop) return;
+        if (useStore.getState().documentEpoch !== documentAtDrop) return;
         addBeat(Math.min(maxX, x + index * 20), y, '', 'image', {
           title: image.name.replace(/\.[^.]+$/, '') || '图片素材', img,
         });
       } catch {
-        if (useStore.getState().project.id !== projectAtDrop) return;
+        if (useStore.getState().documentEpoch !== documentAtDrop) return;
         notify(`无法读取图片“${image.name}”，请尝试有效的 PNG、JPEG 或 WebP 文件。`, 'error');
       }
     }
@@ -569,7 +707,7 @@ export function Editor() {
           {items.map((item, i) => {
             const list = Array.isArray(item) ? item : [item];
             const firstEl = list[0];
-            const isBreak = list.some((e) => breakSet.has(project.elements.indexOf(e)));
+            const isBreak = list.some((e) => breakSet.has(writingDerivation.indexByElement.get(e) ?? -1));
             return (
               <React.Fragment key={firstEl.id}>
                 {isBreak && i > 0 ? <div className="page-break-line" /> : null}
@@ -600,7 +738,7 @@ export function Editor() {
           {suggest.items.map((s, i) => (
             <button
               type="button"
-              key={s}
+              key={s.label}
               className={`smarttype__item ${i === suggest.active ? 'is-active' : ''}`}
               role="option"
               aria-selected={i === suggest.active}
@@ -609,9 +747,10 @@ export function Editor() {
                 acceptSuggest(false, i);
               }}
             >
-              {s}
+              {s.label}
             </button>
           ))}
+          <div className="smarttype__hint">↑↓ 选择 · → / 空格补全 · Enter 下一段</div>
         </div>
       ) : null}
     </div>
@@ -619,7 +758,7 @@ export function Editor() {
 
   function renderBlock(el: ScriptElement, half: boolean) {
     const isScene = el.type === 'scene_heading';
-    const contdSuffix = el.type === 'character' && shouldShowContdSuffix(project, el) ? CONTD_SUFFIX : undefined;
+    const contdSuffix = settings.contdCharacter !== false && writingDerivation.contdCharacters.has(el) ? CONTD_SUFFIX : undefined;
     return (
       <div key={el.id} className={selectMode ? 'writing-select-row' : undefined}>
       {selectMode && <input type="checkbox" aria-label={`选择第 ${(elementIndex.get(el.id) ?? 0) + 1} 段`} checked={writingIds.includes(el.id)} onChange={() => {}} onClick={(e) => {
@@ -647,30 +786,60 @@ export function Editor() {
           if (n) refs.current.set(el.id, n);
           else refs.current.delete(el.id);
         }}
-        onInput={(html) => handleInput(el, html)}
+        onInput={(html, input) => handleInput(el, html, input)}
         onKeyDown={(e) => handleKeyDown(el, e)}
         onFocus={() => {
+          useStore.getState().breakHistoryGroup();
           setActive(el.id);
           if (suggest && suggest.id !== el.id) setSuggest(null);
         }}
         onClick={selectMode ? (e) => {
           e.preventDefault();
           selectWritingElement(el.id, e.shiftKey);
-        } : undefined}
+        } : () => {
+          useStore.getState().breakHistoryGroup();
+          const latest = useStore.getState().project.elements.find((item) => item.id === el.id);
+          if (latest) updateSuggest(latest);
+        }}
         onPaste={(e) => handlePaste(el, e)}
         onCompositionStart={() => {
+          useStore.getState().breakHistoryGroup();
           composingRef.current = true;
+          const current = useStore.getState().project.elements.find((item) => item.id === el.id);
+          quoteCompositionRef.current = null;
+          const node = refs.current.get(el.id);
+          const selection = window.getSelection();
+          const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+          if (current?.type === 'dialogue' && node && range &&
+              node.contains(range.startContainer) && node.contains(range.endContainer)) {
+            quoteCompositionRef.current = {
+              id: el.id, epoch: useStore.getState().documentEpoch, html: node.innerHTML,
+              start: offsetOf(node, range.startContainer, range.startOffset),
+              end: offsetOf(node, range.endContainer, range.endOffset),
+            };
+          }
+          if (current?.type === 'action' && isBlank(current.text)) compositionEmptyActionRef.current.add(el.id);
+          else compositionEmptyActionRef.current.delete(el.id);
+          setSuggest(null);
         }}
-        onCompositionEnd={() => {
+        onCompositionEnd={(event) => {
           composingRef.current = false;
           const node = refs.current.get(el.id);
+          const quote = quoteCompositionRef.current;
+          quoteCompositionRef.current = null;
           if (node) {
-            setText(el.id, node.innerHTML);
-            updateSuggest({ ...el, text: node.innerHTML });
+            handleInput(el, node.innerHTML, undefined,
+              quote?.id === el.id && quote.epoch === useStore.getState().documentEpoch
+                ? { html: quote.html, start: quote.start, end: quote.end, data: event.data } : undefined);
           }
+          compositionEmptyActionRef.current.delete(el.id);
+          useStore.getState().breakHistoryGroup();
         }}
         onBlur={() => {
-          setTimeout(() => setSuggest(null), 120);
+          useStore.getState().breakHistoryGroup();
+          sceneIntroInputRef.current.delete(el.id);
+          compositionEmptyActionRef.current.delete(el.id);
+          setSuggest((s) => s?.id === el.id ? null : s);
           if (el.type === 'scene_heading' && project.settings.autoNumberScenes) {
             const stripped = stripSceneNumber(plain(el.text));
             if (stripped !== plain(el.text)) setText(el.id, stripped);

@@ -350,12 +350,14 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <label>自定义颜色</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input
+                data-native-edit-history
                 type="color"
                 value={resolvedFontColor}
                 onChange={(e) => setFontColor(e.target.value)}
                 style={{ width: 56, height: 28, padding: 0, border: 'none', background: 'none' }}
               />
               <input
+                data-native-edit-history
                 value={resolvedFontColor}
                 style={{ width: 110 }}
                 onChange={(e) => {

@@ -14,11 +14,13 @@ import type {
 import { cloneProject, createProject, newElement, deriveScenes } from '../model/project';
 import { dualAfterEnter } from '../model/flow';
 import { moveStoryboardScenes, type StoryboardPlacement } from '../model/storyboard';
+import { searchText } from '../model/search';
 import { plain, cnNum } from '../utils/text';
 import { uid } from '../utils/id';
 import { DEFAULT_FONT_COLOR, normalizeFontColor } from '../model/appearance';
 import { clampTargetPages } from '../model/progress';
 import { clampSize } from '../model/board';
+import { boardBeatPosition, type BoardCardPosition } from '../model/boardWorkspace';
 import {
   toggleSel,
   selRange,
@@ -45,6 +47,12 @@ export interface Toast {
   ts: number;
 }
 
+/** 保存调用开始时的不可变工程快照；仅用于异步保存结果归属，不写入工程。 */
+export interface SaveSnapshot {
+  project: ScriptProject;
+  documentEpoch: number;
+}
+
 interface MutateOptions {
   history?: boolean;
   /** 相同 key 的连续修改会合并为一条撤销记录 */
@@ -63,6 +71,8 @@ interface StoreState {
   focus: FocusRequest | null;
   toast: Toast | null;
   version: number;
+  /** 每次打开/恢复/新建递增，防止相同工程 ID 的旧异步保存结果串到新会话。 */
+  documentEpoch: number;
   pageCount: number;
   zoom: number;
   /** 写作字体颜色（auto 随日夜主题；app 级设置，不写入 .zhsp） */
@@ -92,9 +102,11 @@ interface StoreState {
 
   loadProject: (p: ScriptProject, filePath?: string | null) => void;
   newProject: () => void;
-  markSaved: (path: string) => void;
+  markSaved: (path: string, saved?: SaveSnapshot) => boolean;
 
   mutate: (fn: (p: ScriptProject) => void, opts?: MutateOptions) => void;
+  /** 光标移动/失焦等界面边界只结束输入合并，不改变工程、版本或历史栈。 */
+  breakHistoryGroup: () => void;
   undo: () => void;
   redo: () => void;
 
@@ -135,10 +147,20 @@ interface StoreState {
 
   /* 自由画布：场景卡坐标 */
   setScenePos: (elementId: string, x: number, y: number) => void;
+  /** 自由板新建空场景：正文与坐标一次提交，保持当前视图与写作焦点；非法坐标不操作。 */
+  addBoardScene: (x: number, y: number) => string | null;
+  /** 一次自由板拖动提交，可移动多张卡；不写入素材的写作 / PDF 坐标，也不合并其他手势。 */
+  moveBoardCards: (positions: BoardCardPosition[]) => void;
+  /** 调用方提供当前可见卡片 ID；批量改色为一次独立撤销事务。 */
+  setBoardCardColors: (ids: string[], color: string) => void;
+  /** 一次自由板缩放提交；保留既有类型尺寸限制，不与前后缩放或文本编辑合并。 */
+  resizeBoardCard: (id: string, w: number, h: number) => void;
 
   /* 自由画布：节拍卡 / 灵感卡 */
   addBeat: (x: number, y: number, text?: string, kind?: Beat['kind'], material?: Pick<Beat, 'title' | 'img'>) => string;
   updateBeat: (id: string, patch: Partial<Beat>) => void;
+  /** 自由板标题编辑确认后独立提交；不与正文输入或其他已完成的标题编辑合并。 */
+  commitBoardCardTitle: (beatId: string, title: string) => void;
   /** resize 节拍卡到指定尺寸，coalesce 合并连续 resize；非法值由 clampSize 兜底 */
   resizeBeat: (id: string, w: number, h: number) => void;
   moveBeat: (id: string, x: number, y: number) => void;
@@ -146,6 +168,8 @@ interface StoreState {
   linkBeat: (id: string, sceneId?: string) => void;
   addBoardLink: (from: string, to: string) => void;
   updateBoardLink: (id: string, patch: Partial<BoardLink>) => void;
+  /** 自由板关系备注编辑确认后独立提交；旧即时更新 API 保持兼容。 */
+  commitBoardLinkNote: (linkId: string, note: string) => void;
   deleteBoardLink: (id: string) => void;
 
   /* 多选 / 框选（自由板） */
@@ -198,7 +222,37 @@ function loadAppTheme(): AppTheme {
     return value === 'day' ? 'day' : 'night';
   } catch { return 'night'; }
 }
-let lastCoalesce: { key: string; ts: number } | null = null;
+const COALESCE_IDLE_MS = 1500;
+const TEXT_GROUP_MAX_MS = 5000;
+let lastCoalesce: { key: string; ts: number; startedAt: number } | null = null;
+
+type BoardCardTarget = { kind: 'scene' | 'beat'; id: string };
+
+/** 新自由板事务验证真实卡片；保留旧选择器使用无前缀 ID 的兼容能力。 */
+function boardCardTarget(project: ScriptProject, raw: string): BoardCardTarget | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  const isScene = raw.startsWith('scene:');
+  const isBeat = raw.startsWith('beat:');
+  const id = isScene ? raw.slice(6) : isBeat ? raw.slice(5) : raw;
+  if (!isBeat && project.elements.some((element) => element.id === id && element.type === 'scene_heading')) {
+    return { kind: 'scene', id };
+  }
+  if (!isScene && project.beats.some((beat) => beat.id === id)) return { kind: 'beat', id };
+  return null;
+}
+
+/** A restored snapshot may remove the focused paragraph or selected cards.
+ * Keep surviving interface IDs without sending a new focus request.
+ */
+function historySelection(state: StoreState, project: ScriptProject) {
+  const elements = new Set(project.elements.map((element) => element.id));
+  return {
+    activeId: state.activeId && elements.has(state.activeId) ? state.activeId : null,
+    focus: state.focus && elements.has(state.focus.id) ? state.focus : null,
+    selectedIds: state.selectedIds.filter((id) => boardCardTarget(project, id)),
+    writingSelectedIds: state.writingSelectedIds.filter((id) => elements.has(id)),
+  };
+}
 
 /** Both immutable text edits and generic mutations use the same history boundary.
  * `next` must be a new project owned by the caller; never mutate a saved snapshot.
@@ -209,10 +263,16 @@ function projectChange(state: StoreState, next: ScriptProject, opts?: MutateOpti
   next.updatedAt = now;
   let shouldPush = history;
   if (history && opts?.coalesce) {
-    if (lastCoalesce && lastCoalesce.key === opts.coalesce && now - lastCoalesce.ts < 1500) {
+    let startedAt = now;
+    // 连续输入既按停笔分组，也有绝对时长上限；不能每个字刷新后无限合并。
+    // 其他既有 move/resize key 仍沿用原来的空闲时间合并语义。
+    if (lastCoalesce && lastCoalesce.key === opts.coalesce &&
+        now - lastCoalesce.ts < COALESCE_IDLE_MS &&
+        (!opts.coalesce.startsWith('text:') || now - lastCoalesce.startedAt < TEXT_GROUP_MAX_MS)) {
       shouldPush = false;
+      startedAt = lastCoalesce.startedAt;
     }
-    lastCoalesce = { key: opts.coalesce, ts: now };
+    lastCoalesce = { key: opts.coalesce, ts: now, startedAt };
   } else {
     // 非历史更新也是操作边界；不得合并前后的编辑 / resize。
     lastCoalesce = null;
@@ -238,6 +298,7 @@ export const useStore = create<StoreState>((set, get) => ({
   focus: null,
   toast: null,
   version: 0,
+  documentEpoch: 0,
   pageCount: 0,
   zoom: 1,
   fontColor: loadFontColor(),
@@ -272,7 +333,7 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   loadProject: (p, filePath = null) => {
-    // 工程切换必须切断上一工程的 resize 合并窗口，避免两个工程的操作串成一条撤销记录。
+    // 启动恢复/打开工程建立独立历史，避免撤销上一文件内容却沿用当前文件路径。
     lastCoalesce = null;
     // 规范化幕标题：把「第2幕」这类阿拉伯数字写法统一为「第二幕」，避免格式不统一
     p.acts.forEach((a) => {
@@ -283,10 +344,12 @@ export const useStore = create<StoreState>((set, get) => ({
       project: p,
       filePath,
       dirty: false,
-      past: [...s.past, s.project].slice(-HISTORY_LIMIT),
+      past: [],
       future: [],
       activeId: p.elements[0]?.id ?? null,
+      focus: null,
       version: s.version + 1,
+      documentEpoch: s.documentEpoch + 1,
       pageCount: 0,
       selectedIds: [],
       writingSelectionMode: false,
@@ -302,10 +365,12 @@ export const useStore = create<StoreState>((set, get) => ({
       project: p,
       filePath: null,
       dirty: false,
-      past: [...s.past, s.project].slice(-HISTORY_LIMIT),
+      past: [],
       future: [],
       activeId: p.elements[0]?.id ?? null,
+      focus: null,
       version: s.version + 1,
+      documentEpoch: s.documentEpoch + 1,
       pageCount: 0,
       selectedIds: [],
       writingSelectionMode: false,
@@ -313,7 +378,13 @@ export const useStore = create<StoreState>((set, get) => ({
     }));
   },
 
-  markSaved: (path) => set({ filePath: path, dirty: false }),
+  markSaved: (path, saved) => {
+    const state = get();
+    if (saved && state.documentEpoch !== saved.documentEpoch) return false;
+    // 同一工程仍可绑定另存为路径；保存等待期间的后续修改不能被误标为已保存。
+    set({ filePath: path, dirty: saved ? state.project !== saved.project : false });
+    return true;
+  },
 
   mutate: (fn, opts) => {
     const { project } = get();
@@ -328,37 +399,43 @@ export const useStore = create<StoreState>((set, get) => ({
     set(projectChange(get(), next, opts));
   },
 
+  breakHistoryGroup: () => { lastCoalesce = null; },
+
   undo: () => {
-    const { past, project, future } = get();
+    const state = get();
+    const { past, project, future } = state;
+    lastCoalesce = null;
     if (!past.length) {
       get().notify('没有可撤销的操作');
       return;
     }
     const prev = past[past.length - 1];
-    lastCoalesce = null;
     set({
       project: prev,
       past: past.slice(0, -1),
       future: [project, ...future].slice(0, HISTORY_LIMIT),
       dirty: true,
-      version: get().version + 1,
+      version: state.version + 1,
+      ...historySelection(state, prev),
     });
   },
 
   redo: () => {
-    const { past, project, future } = get();
+    const state = get();
+    const { past, project, future } = state;
+    lastCoalesce = null;
     if (!future.length) {
       get().notify('没有可重做的操作');
       return;
     }
     const next = future[0];
-    lastCoalesce = null;
     set({
       project: next,
       past: [...past, project].slice(-HISTORY_LIMIT),
       future: future.slice(1),
       dirty: true,
-      version: get().version + 1,
+      version: state.version + 1,
+      ...historySelection(state, next),
     });
   },
 
@@ -397,11 +474,21 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   replaceWritingRange: (ids, before, after, inserted, nextType) => {
-    const elements = get().project.elements;
-    const first = elements.find(e => e.id === ids[0]);
-    const existingIds = new Set(elements.map(e => e.id));
-    if (!first || !ids.length || ids.some(id => !existingIds.has(id))) return null;
+    const { project } = get();
+    const elements = project.elements;
+    const start = Array.isArray(ids) && ids.length ? elements.findIndex(e => e.id === ids[0]) : -1;
+    if (start < 0 || new Set(ids).size !== ids.length ||
+        ids.some((id, offset) => elements[start + offset]?.id !== id)) {
+      lastCoalesce = null;
+      return null;
+    }
+    const first = elements[start];
     const removed = new Set(ids.slice(1));
+    // 素材使用规范 SceneMeta.id；旧工程也可能关联场次元素 ID 或用其作为线端点。
+    const removedAssociations = new Set([
+      ...removed,
+      ...project.sceneMeta.filter(meta => removed.has(meta.elementId)).map(meta => meta.id),
+    ]);
     const nextId = nextType ? uid('el') : first.id;
     get().mutate(p => {
       p.elements = p.elements.filter(e => !removed.has(e.id));
@@ -419,8 +506,8 @@ export const useStore = create<StoreState>((set, get) => ({
         p.elements.splice(index + 1, 0, next);
       }
       p.sceneMeta = p.sceneMeta.filter(meta => !removed.has(meta.elementId));
-      p.beats.forEach(beat => { if (beat.sceneId && removed.has(beat.sceneId)) delete beat.sceneId; });
-      p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removed);
+      p.beats.forEach(beat => { if (beat.sceneId && removedAssociations.has(beat.sceneId)) delete beat.sceneId; });
+      p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removedAssociations);
     });
     return nextId;
   },
@@ -479,12 +566,19 @@ export const useStore = create<StoreState>((set, get) => ({
     const idx = project.elements.findIndex((e) => e.id === id);
     if (idx <= 0) return null;
     const prev = project.elements[idx - 1];
-    const offset = plain(prev.text).length;
+    const offset = searchText(prev.text).length;
+    const removedAssociations = new Set([
+      id,
+      ...project.sceneMeta.filter(meta => meta.elementId === id).map(meta => meta.id),
+    ]);
     get().mutate((p) => {
       const a = p.elements[idx - 1];
       const b = p.elements[idx];
       a.text = a.text + b.text;
       p.elements.splice(idx, 1);
+      p.sceneMeta = p.sceneMeta.filter(meta => meta.elementId !== id);
+      p.beats.forEach(beat => { if (beat.sceneId && removedAssociations.has(beat.sceneId)) delete beat.sceneId; });
+      p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removedAssociations);
     });
     get().requestFocus(prev.id, offset);
     return { id: prev.id, offset };
@@ -635,6 +729,109 @@ export const useStore = create<StoreState>((set, get) => ({
     );
   },
 
+  moveBoardCards: (positions) => {
+    const project = get().project;
+    if (!Array.isArray(positions)) {
+      lastCoalesce = null;
+      return;
+    }
+    const movements = new Map<string, BoardCardPosition & { target: BoardCardTarget }>();
+    for (const position of positions) {
+      const target = position && boardCardTarget(project, position.id);
+      if (!target || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+        lastCoalesce = null;
+        return;
+      }
+      // 同一卡片只采用最后一个落点；原位批次不因中间重复项制造历史。
+      movements.set(`${target.kind}:${target.id}`, { ...position, target });
+    }
+    get().mutate((p) => {
+      for (const position of movements.values()) {
+        const { target } = position;
+        if (target.kind === 'scene') {
+          let meta = p.sceneMeta.find((item) => item.elementId === target.id);
+          if (!meta) {
+            meta = { id: uid('sc'), elementId: target.id, title: '', synopsis: '', color: '#cfe4ff' };
+            p.sceneMeta.push(meta);
+          }
+          meta.x = position.x;
+          meta.y = position.y;
+        } else {
+          const beat = p.beats.find((item) => item.id === target.id)!;
+          const current = boardBeatPosition(beat);
+          // 原位拖动不为旧工程凭空增加 boardX/boardY，也不清空 redo。
+          if (current.x === position.x && current.y === position.y) continue;
+          beat.boardX = position.x;
+          beat.boardY = position.y;
+        }
+      }
+    });
+  },
+
+  addBoardScene: (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      lastCoalesce = null;
+      return null;
+    }
+    const heading = newElement('scene_heading');
+    const action = newElement('action');
+    get().mutate((p) => {
+      // 与 addSceneAfter 的空场布局相同；最后一场的完整正文保留在新场之前。
+      p.elements.push(heading, action);
+      p.sceneMeta.push({ id: uid('sc'), elementId: heading.id, title: '', synopsis: '', color: '#cfe4ff', x, y });
+    });
+    return heading.id;
+  },
+
+  setBoardCardColors: (ids, color) => {
+    const project = get().project;
+    if (!Array.isArray(ids) || typeof color !== 'string' || !color || ids.some((id) => !boardCardTarget(project, id))) {
+      lastCoalesce = null;
+      return;
+    }
+    get().mutate((p) => {
+      for (const id of new Set(ids)) {
+        const target = boardCardTarget(p, id)!;
+        if (target.kind === 'scene') {
+          let meta = p.sceneMeta.find((item) => item.elementId === target.id);
+          if (!meta) {
+            if (color === '#cfe4ff') continue;
+            meta = { id: uid('sc'), elementId: target.id, title: '', synopsis: '', color: '#cfe4ff' };
+            p.sceneMeta.push(meta);
+          }
+          meta.color = color;
+        } else {
+          p.beats.find((item) => item.id === target.id)!.color = color;
+        }
+      }
+    });
+  },
+
+  resizeBoardCard: (id, w, h) => {
+    const target = boardCardTarget(get().project, id);
+    if (!target) {
+      lastCoalesce = null;
+      return;
+    }
+    get().mutate((p) => {
+      if (target.kind === 'scene') {
+        let meta = p.sceneMeta.find((item) => item.elementId === target.id);
+        if (!meta) {
+          meta = { id: uid('sc'), elementId: target.id, title: '', synopsis: '', color: '#cfe4ff' };
+          p.sceneMeta.push(meta);
+        }
+        const next = clampSize('scene', w, h);
+        meta.w = next.w;
+        meta.h = next.h;
+      } else {
+        const beat = p.beats.find((item) => item.id === target.id)!;
+        const next = clampSize(beat.kind, w, h);
+        beat.w = next.w;
+        beat.h = next.h;
+      }
+    });
+  },
+
   addBeat: (x, y, text = '', kind, material) => {
     const id = uid('bt');
     get().mutate((p) => {
@@ -655,6 +852,14 @@ export const useStore = create<StoreState>((set, get) => ({
       },
       { coalesce: `beat:${id}` },
     );
+  },
+
+  commitBoardCardTitle: (beatId, title) => {
+    get().mutate((p) => {
+      const beat = p.beats.find((item) => item.id === beatId);
+      if (!beat || typeof title !== 'string' || (beat.title ?? '') === title) return;
+      beat.title = title;
+    });
   },
 
   /**
@@ -720,6 +925,14 @@ export const useStore = create<StoreState>((set, get) => ({
     );
   },
 
+  commitBoardLinkNote: (linkId, note) => {
+    get().mutate((p) => {
+      const link = (p.boardLinks || []).find((item) => item.id === linkId);
+      if (!link || typeof note !== 'string' || (link.note ?? '') === note) return;
+      link.note = note;
+    });
+  },
+
   deleteBoardLink: (id) => {
     get().mutate((p) => {
       p.boardLinks = (p.boardLinks || []).filter((link) => link.id !== id);
@@ -783,6 +996,12 @@ export const useStore = create<StoreState>((set, get) => ({
 
     const selectedScenes = new Set(selected.sceneIds);
     const selectedBeats = new Set(selected.beatIds);
+    // Beat.sceneId 使用 SceneMeta.id；旧工程也可能保存场景标题元素 ID。
+    // 删除元数据前收齐两种关联值，解除幸存素材对已删除场景的引用。
+    const removedSceneAssociations = new Set([
+      ...selected.sceneIds,
+      ...project.sceneMeta.filter((meta) => selectedScenes.has(meta.elementId)).map((meta) => meta.id),
+    ]);
     const removedElementIds = new Set<string>();
     scenes.forEach((scene) => {
       if (!selectedScenes.has(scene.elementId)) return;
@@ -798,7 +1017,7 @@ export const useStore = create<StoreState>((set, get) => ({
       p.beats = p.beats
         .filter((beat) => !selectedBeats.has(beat.id))
         .map((beat) => {
-          if (beat.sceneId && selectedScenes.has(beat.sceneId)) {
+          if (beat.sceneId && removedSceneAssociations.has(beat.sceneId)) {
             const next = { ...beat };
             delete next.sceneId;
             return next;
@@ -807,7 +1026,7 @@ export const useStore = create<StoreState>((set, get) => ({
         });
       const removedEndpoints = new Set([...removedElementIds, ...selected.sceneIds, ...selected.beatIds]);
       p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removedEndpoints);
-    }, { history: true, coalesce: 'board-bulk-delete' });
+    });
     const remaining = get().project.elements;
     const currentActive = get().activeId;
     set({

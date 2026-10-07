@@ -7,7 +7,10 @@
 - `.zhsp` 必须向后兼容；新增字段必须可选，旧工程打开、保存、重开后不能丢失已知内容。
 - 首次启动模板保持空白；仓库、测试、发布包不得含用户剧本、自动保存、导出稿或真实人物资料。
 - 保存、另存为、打开、导入文本/FDX，导出 PDF/FDX/文本/Markdown/HTML 都必须可用。
+- 保存使用不可变快照和文档epoch校验：保存中有新输入仍dirty，切稿后旧结果不绑定新稿；重复保存不得并发。新建/打开重置文档历史，保存不清历史。打开替换前必须确认丢弃未保存修改，包括对话框等待时的新输入；取消/过期结果保留工程及历史。FDX/TXT/MD导入后第一次保存选新zhsp路径，不能覆盖源文件为另一格式；异步图片不得落入后来打开的同ID文档。另存为后的新路径须写入自动保存，不推迟已挂起的正文保存。专项：file-commands / autosave-path / history / zhsp-compat。
 - 自动保存和重启恢复必须保留正文、卡片和文件关联；手动保存继续写入兼容 `.zhsp`。当前 `guangying:autosave` 兼容同一数据目录中的旧 `mojiang:autosave`；这不等于跨应用数据目录已自动迁移。更改应用名称/标识/数据目录前必须单独设计迁移并验证，不得使旧草稿“消失”。
+- **自动恢复与关闭红线（2026-10-07）**：自动恢复只保存一份最新快照，不等于成功保存磁盘 `.zhsp`，也不能清 dirty 或撤销历史。保持约900ms停笔调度，连续修改最长约30秒触发一次写入；文件关联变化不得推迟已挂起任务。恢复点状态独立于工程，容量/读取/写入失败必须明确提示，不伪装成功。坏载荷必须先保留原始字符串再允许替换；保留失败或保留槽已含另一份坏载荷时，不得覆盖原载荷。恢复可用工程后保守标 dirty；未确认工程草稿、dirty、保存进行中或恢复写入失败均须保护关闭，默认继续写作。该保护不能被自动化脚本移除来制造绿灯。专项：autosave-recovery / autosave-path / file-commands / 实际关闭与恢复。
+- **工程落盘红线（2026-10-07）**：`.zhsp` 在目标同目录独占创建临时文件，写入与文件 fsync 完成后再 rename；已有工程先生成一份上一版备份，不能先截断或删除原稿。保存队列、目标/备份身份校验及失败清理只作用于本次创建的临时文件。保留普通 POSIX mode，不承诺保留 ACL/xattr，不声称跨进程锁或任意文件系统断电保证。rename 已完成但目录同步失败时，须报告耐久性警告而非假报“未保存”；备份为同目录 `<文件名>.guangying-backup`，不是无限历史。专项：project-save / project-save-ipc / file-commands；取消/失败不清 dirty，不把异常中的工程或路径内容回显。
 
 ## 二、写作是第一优先级
 
@@ -16,11 +19,15 @@
 - 回车节奏：场次标题后为动作；动作后仍为动作；人物后为对白；对白后为人物。
 - **编辑事务红线（alpha.18.10）**：段中回车必须把尾部移动到下一段，原段不可残留副本；加粗、斜体和软换行处光标偏移同样正确。聚焦中的正文也必须响应撤销/重做与结构变更，不能用“正在聚焦”跳过 DOM 同步；正常输入与组合输入时，内容一致则不得重写 DOM。
 - 复制只读取选中文字，不制造历史；剪切、粘贴与跨段选区替换必须是单次可撤销事务，不与前后打字合并，不允许模型已撤销但屏幕仍留旧字。纯文本粘贴须保留 `< > &` 等字面字符与换行，不当作 HTML 执行。不得混用原生插入与 store 更新造成二次写入。专项：`editing-test.cjs`、隔离运行的 `editing-electron.cjs`。
+- **撤销/剪贴板路由红线（2026-10-07）**：键盘、工具栏、原生菜单与beforeinput必须共用 `runEditHistory`；正文禁止原生DOM undo，明确标记的未提交UI草稿不得顺带撤销工程。持续同段输入合并有1500ms停顿阈值和5000ms绝对组上限，保留120事务上限；光标移动、IME、格式/结构修改须分组。复制/无变化不清redo。Enter撤销和重做须恢复相应原段/新段与光标。内部多段剪贴板保留类型和基础格式、单片段保留目标类型，载荷仅type/html，不带ID/双列/图片/关系；非法载荷回退字面文本、空载荷不删选区。组合期不得绕过统一路径原生剪切/粘贴；双列视觉与正文顺序不一致的跨栏范围必须拒绝并提示，不能放松连续范围校验误删中间内容。专项：clipboard-format / clipboard-ui / history / editing / writing-range-integrity / native-draft-history。
 - 全文查找使用独立面板，可按 ⌘/Ctrl+F 打开、Enter/Shift+Enter 定位上下处、Esc 关闭；覆盖正文九类元素与备忘，支持大小写选项。高亮只能是浏览器绘制，不写入正文 HTML、工程、撤销栈或 PDF；未打开查找时不得运行全文匹配。专项：`search-test.cjs` / `search-ui-test.cjs` / `search-electron.cjs`。
 - 智能识别、自动补全、双列对白、场号、同一人物再次说话的 `(CONT'D)` 视觉提示保持正常。
+- **智能双引号红线（2026-10-07）**：保持既有“对白 + smartQuotes 开启”的范围，只转换可确认的本次新输入 ASCII 双引号，不按 HTML 字符偏移奇偶配向、不全文改写。反斜杠转义原样保留；已有未闭合开引号时优先闭合（包括引文以冒号/括号/破折号结尾），否则依据段首、空白、冒号/开括号等开启上下文；词内、尺寸或无法确认的孤立引号保留原字符。手动弯引号、已有直引号、单引号、粘贴/历史/替换输入不重整，标签与属性不参与方向判断。DOM UTF-16 偏移与 BR=1 的光标口径保持一致；格式和未选正文不得改变。IME 中间态不重建节点，完成时仅根据原选区、最终 data 与 documentEpoch 校验处理新增部分；转换沿用本次输入事务，不额外制造撤销步骤。只做保守单层自动配向，不自动嵌套或补配对，不改双列范围安全逻辑。专项：`smartquotes-test.cjs`，真实输入法另验。
+- **快捷输入红线（2026-10-07）**：人物、人物扩展、内外景/地点/时段、转场及镜头按当前字段匹配；候选文字不能解释为 HTML，不能覆盖其他字段。空格/右箭头补全当前字段并留在本段，Enter 补全后按既有回车节奏进入下一段；Esc 只收起候选、保留正文焦点。Tab 永远只做九类循环、清除旧类型候选，并保留原光标偏移。修饰键、段中光标、非折叠选区、中文组合期不得误接受候选；单次补全独立可撤销。完整匹配不能被强制扩为更长名称或时段。只从空动作段开始识别 INT./EXT./内景前缀，不能改写已有正文或用户手选类型；组合提交前不改类型。专项：`smarttype-test.cjs` / `smarttype-ui-test.cjs`，另需实机按键。
 - 写作多选模式下：普通点击可选择段落；Shift 点击正文或复选框可按正文顺序连续选择；删除只删除选中段落；普通写作模式绝不能被这套逻辑干扰。
 - `⌘/Ctrl+Z` 撤销与 `⌘/Ctrl+Shift+Z` 重做须支持多步恢复正文、卡片、关系线；输入及同一卡片连续移动/缩放可按既有规则合并，不得跨不相关操作误合并，批量删除必须一次完整撤回。
-- 输入性能：`setText` 仅不可变更新当前段落与元素列表，不能按每个字 JSON 复制/比较整个含图工程；未改对象可共享引用，但严禁直接修改当前工程或撤销快照。它与通用 `mutate` 必须共用同一历史提交规则。无变化/无效 ID 保留 redo、dirty、version 并切断合并窗口。自动保存保持约 900ms 停笔后保存最新正文/路径，订阅不能导致 App 整树随字重渲染。专项：`input-performance-test.cjs`；实际组合输入与重载恢复：`input-electron.cjs`。
+- 输入性能：`setText` 仅不可变更新当前段落与元素列表，不能按每个字 JSON 复制/比较整个含图工程；未改对象可共享引用，但严禁直接修改当前工程或撤销快照。它与通用 `mutate` 必须共用同一历史提交规则。无变化/无效 ID 保留 redo、dirty、version 并切断合并窗口。自动保存保持约 900ms 停笔后保存最新正文/路径，连续修改增加约30秒截止点；订阅不能导致 App 整树随字重渲染。专项：`input-performance-test.cjs` / `autosave-recovery-test.cjs`；实际组合输入与重载恢复：`input-electron.cjs`。
+- **写作派生缓存红线（2026-10-07）**：元素索引和同人物续说提示按不可变元素数组共用只读派生；快捷输入目录按人物/场景/镜头/转场实际来源字段复用，动作/对白变化不得重复解析这些来源。改名、类型变更、删除、排序、活动段排除、撤销与文档边界仍须正确失效，设置开关即时生效。缓存不写入 `.zhsp`、自动恢复或历史，不改变 Tab、候选接受、CONT'D 规则；只减少重复推导，不重写分页、隐藏测量、字体等待或 PDF 排版。专项：writing-derivation / smarttype / writing / pagination-safety。
 
 ## 三、创作素材与 PDF 导出
 
@@ -41,15 +48,20 @@
 - 幕可折叠、自由命名，显示场数和当前排版涉及页数（同组同页去重，跨幕共页各计一次，标题页不计）。提供复选框、Shift 可见卡片范围选、⌘/Ctrl 增减选，以及单卡/多卡“移至”菜单。选择不影响正文编辑或自由板选择。
 - 删除幕需明确说明保留场景，将所属场景解除归幕；不删正文、素材、关系线，不移动正文位置，单次撤销可恢复幕与归属。允许删除全部幕，显式 `acts: []` 保存重开后保持零幕；仅缺失字段的旧工程补默认幕。新场景默认未归幕。
 - 自由板支持场景卡、卡片连接线、可编辑关系备注、卡片缩放与尺寸持久化。
-- 自由板卡片操作可显示为图标，但连接与整场删除必须有明确提示和无障碍名称；删除确认/撤销不能取消。隐藏缩放文字不等于隐藏手柄，18px拖动区域保留。整卡淡色、标题同行仅为外观，不得改写工程坐标/尺寸/颜色。
+- 自由板采用紧凑单行标题和内容优先卡片；常驻连接/删除按钮由底部工具、键盘和明确右键菜单替代。灵感/声音标题普通点击可选择或拖动、双击/F2/Enter 编辑；Esc 取消标题草稿。颜色及单素材的场景关联只在选中卡片附近显示，不能丢失这些能力。隐藏缩放文字不等于隐藏手柄，18px拖动区域保留；渲染默认值不得覆盖已保存尺寸。
 - 自由板支持 ⌘/Ctrl 多选、Shift 范围选、框选、批量删除；删除需同时清理孤儿关系线，但不能误删未选卡片的关系。
 - 场景卡的“删除整场”必须存在，并在可撤销的单次操作中处理正文、场景元数据、关系线与关联卡的解除关联。
-- 自由板筛选后，连线须两端均可见；Shift 选区、批量改色与删除只影响当前可见卡片。删除涉及整场正文必须先确认，取消不能改选区或撤销栈。网格仅为可关闭的屏幕参考，不吸附、不写回卡片坐标；已保存卡片尺寸不可被新默认值覆盖。专项：`board-polish-test.cjs`。
+- 自由板筛选后，连线须两端均可见；Shift 选区、批量改色与删除只影响当前可见卡片。删除涉及整场正文必须先确认，取消不能改选区或撤销栈。专项：`board-polish-test.cjs`。
+- **自由板交互红线（2026-10-07，第2稿）**：普通点击仅选择/编辑；L 或底部“连线”显式进入连接模式，点 A/B 后退出，Esc 取消，不自连、不重复连接。点线仅选线并清空卡片选区，点卡清空线选区；Delete 只删除当前选中对象。关系说明居中加粗，双击/F2/Enter 编辑，Enter/失焦提交、Esc 回滚；组合输入期间不得提交。所有文字框、关联选择器和嵌套 contenteditable 中，L/空格/Delete 均不能触发画布命令。
+- **板面与写作坐标隔离**：自由板素材只写可选 `Beat.boardX/boardY`；缺失时显示回退到原 `x/y`，打开/切板/开网格不能凭空补字段。写作素材和创作 PDF 继续用原 `x/y`，自由板移动不得牵动它们。整场删除须解除规范 `SceneMeta.id` 及旧场次元素 ID 两种素材关联，保留未选场景关联。
+- 标题/关系备注每次完成编辑用独立提交入口；不可与此前正文输入或另一次确认误合并撤销。自由板不能因焦点产生原生scrollLeft/scrollTop导航，pan/zoom是唯一画布位移；附近工具必须在窗口改变后仍留在可见画布内。
+- 网格显示和磁吸为独立开关，磁吸默认关闭；开启/关闭不得自动排布旧卡。磁吸仅在拖动时作用于28单位网格、按屏幕像素容差，Alt 暂停。组拖动保持相对位置；拖动/缩放过程中仅预览，释放后整组一次写入、一次完整撤销，连续两次独立手势不可误合并；Esc/窗口失焦取消不写工程。空白拖动框选，空格拖动/中键平移；缩放只改变视图。专项：`board-workspace-model-test.cjs` / `board-workspace-ui-test.cjs`，另需真实浏览器鼠标验收。
 
 ## 五、结构、统计与界面
 
 - 目标页数、单一打字机指针进度、按场景篇幅的色带与精确跳转保持可用。
 - 场景色带未完成目标时必须按实际占目标比例留白，禁止 flex-grow、最小宽度或内边距把短场景撑满；超目标才按当前篇幅归一，提示仍保留目标比例。`progress-bands-test.cjs` 同时保护纯计算及样式契约。
+- 进度栏可见轨道可收细，鼠标点击盒仍为30px、外栏仍为76px，两行网格保持30px/18px；绘制伪元素不得拦截跳页、遮挡提示或改变56px打字机指针的锚点。场景条变薄不能更改比例、场号及跳转语义。
 - 写作工具栏在多选时原位替换格式工具，退出即恢复；全选、删除、撤销、完成入口保持可用，不能因按钮挤压折字或更改工具栏高度而影响正文/素材/PDF坐标。窄屏导航可改为等价选择器，但不能删除视图入口。专项：`writing-controls-test.cjs`。
 - 统计页角色改名必须同步正文人物元素。
 - 统计分析仅使用 `model/reports.ts` 的只读投影与 `styles/reports.css` 的统计页限定样式，不得替换编辑器、底栏、分页或导出共用计算。总量、幕/场景、人物及 CSV 排除省略场景、省略段落与备忘；词字数不是电影时长。正文涉及页数按当前排版有效元素所在页去重，各场涉及页数不能相加。人物只代表人物元素，括号版本合并统计但保留原有精确名称改名入口；拒绝空名/重名时输入须恢复，撤销仍可恢复正文。地点不明时标为未识别。专项：`node scripts/reports-test.cjs`。
@@ -61,15 +73,28 @@
 ```bash
 npm run typecheck
 npm run build
+npm run test:core
+```
+
+`test:core` 当前统一运行37套源码专项，runner与两条CI必须同步更新；这不等于原生验收通过。单项定位可运行：
+
+```bash
 node scripts/core-guard.cjs
 node scripts/render-test.cjs
 node scripts/writing-test.cjs
 node scripts/editing-test.cjs
+node scripts/smartquotes-test.cjs
+node scripts/smarttype-test.cjs
+node scripts/smarttype-ui-test.cjs
 node scripts/search-test.cjs
 node scripts/search-ui-test.cjs
 node scripts/zhsp-compat-test.cjs
 node scripts/history-test.cjs
 node scripts/input-performance-test.cjs
+node scripts/autosave-recovery-test.cjs
+node scripts/project-save-test.cjs
+node scripts/project-save-ipc-test.cjs
+node scripts/writing-derivation-test.cjs
 node scripts/pagination-safety-test.cjs
 node scripts/pdf-transport-test.cjs
 node scripts/outline-reorder-test.cjs
@@ -78,6 +103,8 @@ node scripts/storyboard-drop-test.cjs
 node scripts/storyboard-acts-test.cjs
 node scripts/reports-test.cjs
 node scripts/board-polish-test.cjs
+node scripts/board-workspace-model-test.cjs
+node scripts/board-workspace-ui-test.cjs
 node scripts/writing-controls-test.cjs
 node scripts/progress-bands-test.cjs
 ```
@@ -89,11 +116,16 @@ node scripts/progress-bands-test.cjs
 | 行为契约 | 关键实现位置 | 回归入口 |
 | --- | --- | --- |
 | Tab 焦点闭环、备忘往返、正文 Shift 多选 | `src/model/flow.ts`、`Editor.tsx`、`ScriptBlock.tsx` | writing / render / 实机连续 Tab |
+| 分字段快捷输入、候选生命周期、Tab 光标位置与补全撤销 | `src/model/smarttype.ts`、`Editor.tsx`、`ScriptBlock.tsx` | smarttype / smarttype-ui / 实机候选与连续 Tab |
 | 回车移动尾部、剪切粘贴原子撤销、只读全文查找 | `Editor.tsx`、`ScriptBlock.tsx`、`store.ts`、`src/utils/dom.ts`、`FindPanel.tsx`、`search.ts` | editing / search / search-ui / editing-electron / search-electron |
 | 拖入图片、原位卡片创作 PDF、A4 纯文本 | `Editor.tsx`、`src/io/creativePdf.ts`、`useCommands.ts`、`PreviewView.tsx`、`PaginationProvider.tsx`、`electron/pdf.js` | image-drop-electron / pdf-layout-electron / pagination-safety / PDF 渲染检查 |
 | 选择、归幕、删除、撤销重做 | `store.ts`、`selection.ts`、`board.ts`、`BoardView.tsx`、`CardsView.tsx` | history / writing / render / 实机拖放 |
+| 自由板独立坐标、组拖动磁吸、显式连线与线/卡互斥删除 | `boardWorkspace.ts`、`BoardView.tsx`、`store.ts`、`zhsp.ts` | board-workspace-model / board-workspace-ui / board-polish / 真实鼠标 |
 | 大纲整场拖动、场景故事信息同步编辑 | `outline.ts`、`Sidebar.tsx`、`BoardView.tsx`、`CardsView.tsx` | outline-reorder / scene-notes / 实机拖放与输入 |
 | 工程兼容、空白启动、保存恢复 | `src/io/zhsp.ts`、`src/model/sample.ts`、`src/App.tsx`、`electron/main.js` | zhsp-compat / core-guard / 隔离用户目录启动保存重开 |
+| 单快照恢复、坏载荷保护、恢复失败与关闭提示 | `src/app/autosaveStorage.ts`、`autosaveSubscription.ts`、`recoveryStatus.ts`、`src/App.tsx`、`StatusBar.tsx`、`electron/main.js` | autosave-recovery / autosave-path / 真机关闭与恢复 |
+| 工程临时落盘、上一版备份、原子替换与 IPC 结果 | `electron/projectSave.js`、`electron/main.js`、`src/app/useCommands.ts` | project-save / project-save-ipc / file-commands / 独立临时工程实测 |
+| 只读元素/续说派生与快捷输入目录复用 | `src/model/flow.ts`、`src/model/smarttype.ts`、`Editor.tsx`、`PaginationProvider.tsx` | writing-derivation / smarttype / writing / 长稿与原生输入 |
 | 场景进度与跳转、角色改名同步 | `ProgressBar.tsx`、`progress.ts`、`ReportsView.tsx`、`store.ts` | writing / render / history / 实机跳转 |
 
 表中未写完整路径的组件位于 `src/components/`，模型位于 `src/model/`，`store.ts` 位于 `src/store/`，`useCommands.ts` 位于 `src/app/`。测试入口名称对应 `scripts/` 中同名 `*-test.cjs` 或 `*-electron.cjs` 文件。

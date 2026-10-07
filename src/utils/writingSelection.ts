@@ -30,7 +30,8 @@ export function readWritingSelection(flow: HTMLElement | null) {
     before: splitHtml(first, start).before,
     after: splitHtml(last, end).after,
     text: fragments.map(domText).join('\n'),
-    // Keep rich copy for external editors; our existing paste policy stays plain text.
+    fragments: fragments.map((fragment, index) => ({ type: nodes[index].dataset.type!, html: fragment.innerHTML })),
+    // External editors receive HTML/plain projections, never UI or element IDs.
     html: fragments.map(fragment => `<div>${fragment.innerHTML}</div>`).join(''),
   };
 }

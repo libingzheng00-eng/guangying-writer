@@ -70,7 +70,7 @@ function NavigatorPanel() {
 
   return (
     <div className="panel">
-      <input className="panel__search" placeholder="搜索场景…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      <input data-native-edit-history className="panel__search" placeholder="搜索场景…" value={filter} onChange={(e) => setFilter(e.target.value)} />
       <div className="panel__list">
         {list.map((s) => (
           <div className={`nav-item ${s.omit ? 'is-omit' : ''}`} key={s.id}>

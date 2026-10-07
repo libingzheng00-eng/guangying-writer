@@ -34,12 +34,13 @@ let root;
     export { useStore } from './src/store/store';
     export { createProject } from './src/model/project';
     export * from './src/utils/dom';
+    export { runEditHistory, ownsNativeHistory } from './src/utils/editHistory';
   `, resolveDir: repo, loader: 'ts' }, bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', loader: { '.png': 'dataurl', '.css': 'empty' }, logLevel: 'silent' });
   const bundle = new Module(path.join(repo, '.editing-test-memory.cjs'), module);
   bundle.filename = path.join(repo, '.editing-test-memory.cjs');
   bundle.paths = Module._nodeModulePaths(repo);
   bundle._compile(built.outputFiles[0].text, bundle.filename);
-  const { Editor, useStore, createProject, setCaret, caretOffset, domLength, offsetOf, splitHtml } = bundle.exports;
+  const { Editor, useStore, createProject, setCaret, caretOffset, domLength, offsetOf, splitHtml, runEditHistory, ownsNativeHistory } = bundle.exports;
   const state = () => useStore.getState();
   root = createRoot(document.getElementById('root'));
   await act(async () => root.render(React.createElement(Editor)));
@@ -245,6 +246,129 @@ let root;
   await act(async () => state().undo());
   check('rich split one undo preserves exact original markup', texts()[0], '<b>甲乙</b><br><i>丙丁</i>戊');
   sync('rich split undo DOM synchronized');
+
+  // Native beforeinput is not equivalent to a browser's DOM-only undo stack.
+  await reset('起点');
+  await typeHtml('起点添加');
+  const nativeUndo = new w.InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'historyUndo' });
+  await dispatch(nativeUndo);
+  check('native historyUndo default prevented', nativeUndo.defaultPrevented);
+  check('native historyUndo restores model once', texts()[0], '起点');
+  sync('native historyUndo restores focused DOM');
+  check('native historyUndo keeps writing focus', document.activeElement, block('editing-a'));
+  const nativeRedo = new w.InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'historyRedo' });
+  await dispatch(nativeRedo);
+  check('native historyRedo default prevented', nativeRedo.defaultPrevented);
+  check('native historyRedo restores exact text', texts()[0], '起点添加');
+  const imeUndo = new w.InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'historyUndo', isComposing: true });
+  await dispatch(imeUndo);
+  check('IME composing history is not intercepted', imeUndo.defaultPrevented, false);
+  check('IME composing history does not undo model', texts()[0], '起点添加');
+
+  await reset('甲乙丙丁');
+  await typeHtml('甲乙丙丁输入');
+  await dispatch(new w.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+  await typeHtml('甲乙丙丁再次');
+  check('cursor navigation ends old typing group', state().past.length, 2);
+  await act(async () => runEditHistory('undo'));
+  check('routed undo only removes new typing group', texts()[0], '甲乙丙丁输入');
+  await act(async () => runEditHistory('undo'));
+  check('routed second undo reaches original', texts()[0], '甲乙丙丁');
+  const copyFuture = state().future.length;
+  await select(0, 2); await clipboard('copy');
+  check('copy between repeated undos/redos preserves redo stack', state().future.length, copyFuture);
+  await act(async () => { runEditHistory('redo'); runEditHistory('redo'); });
+  check('routed repeated redo restores final text', texts()[0], '甲乙丙丁再次');
+  sync('routed repeated redo synchronizes all DOM');
+
+  await reset('甲乙');
+  await select(0, 1);
+  const beforeEmpty = { text: texts(), version: state().version, past: state().past.length };
+  const emptyPaste = await clipboard('paste', '');
+  check('empty clipboard default is blocked', emptyPaste.prevented);
+  check('empty clipboard does not delete selection or record history', { text: texts(), version: state().version, past: state().past.length }, beforeEmpty);
+
+  await reset('<b>甲</b>');
+  await act(async () => state().setText('editing-b', '<i>乙&amp;丙</i>'));
+  await act(async () => state().breakHistoryGroup());
+  useStore.setState({ past: [], future: [] });
+  await act(async () => { block('editing-a').focus(); setCaret(block('editing-a'), 'end'); });
+  await dispatch(new w.KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true }));
+  check('forward Delete joins rich paragraphs preserving markup/entities', texts(), ['<b>甲</b><i>乙&amp;丙</i>']);
+  check('forward Delete is exactly one transaction', state().past.length, 1);
+  await act(async () => runEditHistory('undo'));
+  check('forward Delete one undo restores both original elements', texts(), ['<b>甲</b>', '<i>乙&amp;丙</i>']);
+  sync('forward Delete undo DOM matches model');
+
+  await reset('甲乙丙丁');
+  await select(2, 3, 'editing-b');
+  const selectedDelete = new w.KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true });
+  await dispatch(selectedDelete);
+  check('selected cross-paragraph Backspace prevents native DOM deletion', selectedDelete.defaultPrevented);
+  check('selected cross-paragraph Backspace is one transaction', state().past.length, 1);
+  await act(async () => runEditHistory('undo'));
+  check('selected cross-paragraph undo restores exact two paragraphs', texts(), ['甲乙丙丁', '保留的第二段。']);
+  sync('selected deletion undo DOM synchronized');
+
+  await reset('一二三四');
+  await act(async () => setCaret(block('editing-a'), 2));
+  await dispatch(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  const insertedId = state().project.elements[1].id;
+  const insertedNode = block(insertedId); insertedNode.tabIndex = 0;
+  await act(async () => { insertedNode.focus(); setCaret(insertedNode, 'start'); });
+  await act(async () => runEditHistory('undo'));
+  check('undo split removes new paragraph exactly', texts(), ['一二三四', '保留的第二段。']);
+  check('undo split restores writing focus instead of body', document.activeElement, block('editing-a'));
+  check('first split undo returns caret to the former seam, not paragraph end', caretOffset(block('editing-a')), 2);
+  await typeHtml('一二三四继续');
+  check('typing immediately after structural undo succeeds', texts()[0], '一二三四继续');
+  check('new typing after undo clears future', state().future.length, 0);
+
+  await reset('合成组合输入前的正文');
+  await select(0, 2);
+  const beforeCompositionClipboard = state();
+  await dispatch(new w.CompositionEvent('compositionstart', { bubbles: true }));
+  const composingPaste = await clipboard('paste', '<script>合成非法原生载荷</script>');
+  const composingCut = await clipboard('cut', '合成剪贴板占位');
+  check('IME composition blocks native paste and native cut defaults', [composingPaste.prevented, composingCut.prevented], [true, true]);
+  check('IME clipboard cannot bypass model/history routing', [state().project, state().past, state().future, state().version], [beforeCompositionClipboard.project, beforeCompositionClipboard.past, beforeCompositionClipboard.future, beforeCompositionClipboard.version]);
+  await dispatch(new w.CompositionEvent('compositionend', { bubbles: true }));
+
+  const dual = createProject('合成双列顺序边界'); dual.titlePage.show = false;
+  dual.elements = [
+    { id: 'editing-a', type: 'character', text: '合成左人物', dual: 'left', dualGroup: 'synthetic-group' },
+    { id: 'dual-l', type: 'dialogue', text: '合成左对白', dual: 'left', dualGroup: 'synthetic-group' },
+    { id: 'dual-r', type: 'character', text: '合成右人物', dual: 'right', dualGroup: 'synthetic-group' },
+    { id: 'dual-r-dialogue', type: 'dialogue', text: '改为左列的合成对白', dual: 'left', dualGroup: 'synthetic-group' },
+    { id: 'editing-b', type: 'action', text: '合成未选尾段' },
+  ];
+  await act(async () => { state().loadProject(dual); useStore.setState({ activeId: 'editing-a', focus: null }); });
+  for (const n of document.querySelectorAll('.script-flow [contenteditable]')) n.tabIndex = 0;
+  check('dual boundary fixture really has visual/model order mismatch', [...document.querySelectorAll('.script-flow .sc-el--editable')].map(n => n.dataset.id), ['editing-a', 'dual-l', 'dual-r-dialogue', 'dual-r', 'editing-b']);
+  const beforeDualRange = state();
+  for (const command of ['cut', 'paste', 'Backspace', 'Enter']) {
+    await select(0, domLength(block('dual-r')), 'dual-r');
+    if (command === 'cut' || command === 'paste') {
+      const outcome = await clipboard(command, '合成粘贴文本');
+      check(`unordered dual ${command} blocks native mutation`, outcome.prevented);
+    } else {
+      const event = new w.KeyboardEvent('keydown', { key: command, bubbles: true, cancelable: true });
+      await dispatch(event);
+      check(`unordered dual ${command} blocks native mutation`, event.defaultPrevented);
+    }
+    check(`unordered dual ${command} preserves project and both history stacks`, [state().project, state().past, state().future, state().dirty, state().version], [beforeDualRange.project, beforeDualRange.past, beforeDualRange.future, beforeDualRange.dirty, beforeDualRange.version]);
+    check(`unordered dual ${command} explains a safe alternative`, state().toast.text.includes('多选段落'));
+  }
+
+  const draft = document.createElement('input'); draft.setAttribute('data-native-edit-history', ''); document.body.append(draft); draft.focus();
+  const projectBeforeDraft = state().project, pastBeforeDraft = state().past.length;
+  const nativeCommands = [], savedExec = document.execCommand;
+  document.execCommand = command => { nativeCommands.push(command); return true; };
+  check('explicit local draft owns native history', ownsNativeHistory(draft));
+  runEditHistory('undo'); runEditHistory('redo');
+  check('local draft menu routes only to native commands', nativeCommands, ['undo', 'redo']);
+  check('local draft history never changes project or project stack', [state().project === projectBeforeDraft, state().past.length], [true, pastBeforeDraft]);
+  document.execCommand = savedExec; draft.remove();
   await act(async () => root.unmount()); root = null;
   console.log(JSON.stringify({ assertions, failures }, null, 2));
   if (failures.length) process.exitCode = 1;

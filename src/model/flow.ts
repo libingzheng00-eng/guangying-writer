@@ -230,6 +230,50 @@ export function shouldShowContdSuffix(
   return false;
 }
 
+export interface WritingElementDerivation {
+  /** Same first-reference semantics as Array.indexOf, not a last-ID-wins index. */
+  indexByElement: ReadonlyMap<ScriptElement, number>;
+  /** Eligible continuation characters before applying the display setting. */
+  contdCharacters: ReadonlySet<ScriptElement>;
+}
+
+// Store/history changes replace the elements array; cache only this immutable
+// boundary. A WeakMap shares the result between visible and measurement renderers
+// without retaining old document arrays or writing derived data to the project.
+const writingDerivationCache = new WeakMap<ScriptElement[], WritingElementDerivation>();
+
+/** Linear equivalent of per-character shouldShowContdSuffix + per-row indexOf.
+ * Keep the legacy helper above as the independent behavior oracle. All element
+ * kinds (including notes/omits) count toward its 60-position lookback. A previous
+ * empty/dual character still interrupts the chain, just as the original scan.
+ */
+export function deriveWritingElements(elements: ScriptElement[]): WritingElementDerivation {
+  const cached = writingDerivationCache.get(elements);
+  if (cached) return cached;
+  const indexByElement = new Map<ScriptElement, number>();
+  const contdCharacters = new Set<ScriptElement>();
+  let previous: { index: number; name: string } | null = null;
+  elements.forEach((element, index) => {
+    const firstOccurrence = !indexByElement.has(element);
+    if (firstOccurrence) indexByElement.set(element, index);
+    if (element.type === 'scene_heading' || element.type === 'act') {
+      previous = null;
+      return;
+    }
+    if (element.type !== 'character') return;
+    const text = String(element.text == null ? '' : element.text);
+    const name = plain(text).replace(/[（(][^）)]*[）)]/g, '').replace(/[:：]\s*$/, '').trim();
+    if (firstOccurrence && !element.dual && !/CONT\s*['’]?\s*D\)?/i.test(text) && name &&
+        previous && index - previous.index <= 60 && previous.name === name) {
+      contdCharacters.add(element);
+    }
+    previous = { index, name };
+  });
+  const derived = { indexByElement, contdCharacters };
+  writingDerivationCache.set(elements, derived);
+  return derived;
+}
+
 /** 续说后缀字符串，固定 `(CONT'D)` 与 v1.2.9 保持一致；纯视觉，不写入正文 */
 export const CONTD_SUFFIX = "(CONT'D)";
 

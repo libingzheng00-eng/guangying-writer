@@ -1,10 +1,11 @@
 /** Real Chromium editor/history regression, synthetic project in isolated userData.
  * Run only through an independent QA application, NOT a user's running application.
- * Native Enter, IME and menu IPC are exercised. Cut/copy/paste ClipboardEvents
+ * Chromium Enter, CDP composition and menu IPC are exercised. Cut/copy/paste ClipboardEvents
  * carry an in-memory DataTransfer: this script never reads/writes the system clipboard.
  * Thus it does not claim to test external-application clipboard integration.
  */
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, ipcMain } = require('electron');
+const { createFixtureWindow } = require('./native-fixture-window.cjs');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -53,20 +54,17 @@ async function expectModelAndDOM(expected, label) {
 }
 app.whenReady().then(async () => {
   try {
-    win = new BrowserWindow({ width: 1440, height: 960, show: true, webPreferences: {
-      preload: path.join(root, 'electron/preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
-    } });
     const errors = [];
-    win.webContents.on('console-message', (_event, level, message) => { if (level >= 3) errors.push(message); });
-    await win.loadFile(renderer);
-    await until(`!!document.querySelector('.script-flow [contenteditable]')`);
     const project = { id: 'editing-qa', name: '合成编辑测试', createdAt: 1, updatedAt: 1, titlePage: { show: false },
       settings: {}, acts: [], sceneMeta: [], boardLinks: [], revisions: [], beats: [],
       elements: [{ id: 'editing-a', type: 'action', text: '前半段后半段' }, { id: 'editing-b', type: 'action', text: '保留段落' }] };
     async function fixture(text) {
       project.elements[0].text = text;
-      await run(`localStorage.setItem('guangying:autosave',${JSON.stringify(JSON.stringify({ project, filePath: null }))})`);
-      await win.loadFile(renderer);
+      win = await createFixtureWindow({ out, renderer, project, previous: win,
+        preload: path.join(root, 'electron/preload.js'), onCreated: candidate => {
+          candidate.webContents.on('console-message', (_event, level, message) => { if (level >= 3) errors.push(message); });
+        },
+      });
       await until(`!!document.querySelector('.editor__scroll[data-ready=true]') && !!document.querySelector(${JSON.stringify(q)})`);
       win.focus();
     }

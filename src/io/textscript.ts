@@ -1,6 +1,6 @@
 import type { ElementType, ScriptProject } from '../model/types';
 import { newElement } from '../model/project';
-import { plain, toLines } from '../utils/text';
+import { escapeHtml, plain, toLines } from '../utils/text';
 
 const SCENE_RE = /^(\d+[.、．]\s*|[第]\s*[0-9一二三四五六七八九十百]+\s*[场鏡镜]\s*[.、．:-]?\s*)?(内景|外景|内外景|内\/外景|外\/内景|INT|EXT|int|ext|I\/E)[\s.．、:：-]/;
 const TRANSITION_RE = /^(切至|切出|切入|淡入|淡出|叠化|溶至|黑场|白场|淡入淡出|字幕|FADE|CUT TO)[\s]?[：:]?[\s]?[.。]?$/;
@@ -34,22 +34,22 @@ export function fromPlainText(text: string): ScriptProject['elements'] {
     }
     if (SCENE_RE.test(s) && s.length <= 40) {
       flushAction();
-      out.push(newElement('scene_heading', s.replace(/<[^>]+>/g, '')));
+      out.push(newElement('scene_heading', escapeLine(s)));
       continue;
     }
     if (TRANSITION_RE.test(s) && s.length <= 16) {
       flushAction();
-      out.push(newElement('transition', s));
+      out.push(newElement('transition', escapeLine(s)));
       continue;
     }
     if (SHOT_RE.test(s) && s.length <= 40) {
       flushAction();
-      out.push(newElement('shot', s));
+      out.push(newElement('shot', escapeLine(s)));
       continue;
     }
     if (/^[（(].+[）)]$/.test(s)) {
       flushAction();
-      out.push(newElement('parenthetical', s));
+      out.push(newElement('parenthetical', escapeLine(s)));
       continue;
     }
 
@@ -59,7 +59,7 @@ export function fromPlainText(text: string): ScriptProject['elements'] {
     if (prevAllowsCharacter && s.length <= 14 && !/[。！？，、；：”’]/.test(s) && next && !/^[（(]/.test(next)) {
       // 短行 + 下一行有内容 → 视作人物
       flushAction();
-      out.push(newElement('character', s));
+      out.push(newElement('character', escapeLine(s)));
       continue;
     }
     if (prev && (prev.type === 'character' || prev.type === 'parenthetical' || (prev.type === 'dialogue' && out[out.length - 2]?.type === 'character'))) {
@@ -78,7 +78,8 @@ export function fromPlainText(text: string): ScriptProject['elements'] {
 }
 
 function escapeLine(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Imports are literal text; only the importer itself may add markup such as BR.
+  return escapeHtml(s);
 }
 
 /* ------------------------------ 导出 ------------------------------ */
@@ -190,16 +191,16 @@ export function toHtml(p: ScriptProject): string {
       ]
         .filter(Boolean)
         .join(';');
-      return `<p class="el-${el.type}" style="${css}">${plain(el.text).replace(/\n/g, '<br>')}</p>`;
+      return `<p class="el-${el.type}" style="${css}">${escapeHtml(plain(el.text)).replace(/\n/g, '<br>')}</p>`;
     })
     .join('\n');
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${plain(p.titlePage.title || p.name)}</title>
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(p.titlePage.title || p.name)}</title>
 <style>
 body{font-family:${st.fontKey};font-size:${st.fontSize}pt;line-height:${st.lineHeight};margin:4em auto;max-width:48em;padding:0 1em;}
 p{margin:0 0 0.8em;}
 .el-character{margin-top:1em;}
 </style></head><body>
-${p.titlePage.show ? `<h1>${plain(p.titlePage.title)}</h1>` : ''}
+${p.titlePage.show ? `<h1>${escapeHtml(p.titlePage.title)}</h1>` : ''}
 ${body}
 </body></html>`;
 }

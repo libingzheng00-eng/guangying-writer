@@ -2,6 +2,7 @@ import type {
   Act,
   ElementType,
   Scene,
+  SceneMeta,
   ScriptElement,
   ScriptProject,
   ScriptSettings,
@@ -99,10 +100,16 @@ export function deriveScenes(project: ScriptProject): Scene[] {
   els.forEach((el, i) => {
     if (el.type === 'scene_heading') indices.push(i);
   });
+  if (!indices.length) return out;
+  // Preserve Array.find's first-match behavior for old files with duplicate metadata.
+  const metaByElement = new Map<string, SceneMeta>();
+  for (const meta of project.sceneMeta) {
+    if (!metaByElement.has(meta.elementId)) metaByElement.set(meta.elementId, meta);
+  }
   indices.forEach((startIdx, k) => {
     const el = els[startIdx];
     const end = k + 1 < indices.length ? indices[k + 1] : els.length;
-    const m = project.sceneMeta.find((s) => s.elementId === el.id);
+    const m = metaByElement.get(el.id);
     const number = project.settings.autoNumberScenes ? String(k + 1) : m?.title || '';
     out.push({
       id: m?.id || el.id,
@@ -150,9 +157,7 @@ export function normalizeName(raw: string): string {
 
 export function deriveCharacters(project: ScriptProject): CharacterStat[] {
   const map = new Map<string, CharacterStat>();
-  const scenes = deriveScenes(project);
   let sceneIdx = -1;
-  let pending: CharacterStat | null = null;
   project.elements.forEach((el) => {
     if (el.type === 'scene_heading') sceneIdx += 1;
     if (el.type !== 'character') return;
@@ -164,13 +169,6 @@ export function deriveCharacters(project: ScriptProject): CharacterStat[] {
       map.set(name, stat);
     }
     if (sceneIdx >= 0 && !stat.scenes.includes(sceneIdx)) stat.scenes.push(sceneIdx);
-    pending = stat;
-  });
-  // 统计对白字数
-  project.elements.forEach((el) => {
-    if (el.type === 'dialogue' && pending) {
-      // 逐条对应：简化为归属于最近一次出现的人物
-    }
   });
   // 精确统计：人物与其后连续的对白块
   let current: CharacterStat | null = null;
@@ -184,7 +182,6 @@ export function deriveCharacters(project: ScriptProject): CharacterStat[] {
       current = null;
     }
   });
-  void scenes;
   return Array.from(map.values()).sort((a, b) => b.words - a.words);
 }
 

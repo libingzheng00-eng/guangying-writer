@@ -21,7 +21,16 @@
     "test:history": "node scripts/history-test.cjs",
     "test:input": "node scripts/input-performance-test.cjs",
     "test:editing": "node scripts/editing-test.cjs",
+    "test:quotes": "node scripts/smartquotes-test.cjs",
+    "test:recovery": "node scripts/autosave-path-test.cjs && node scripts/autosave-recovery-test.cjs",
+    "test:save": "node scripts/project-save-test.cjs && node scripts/project-save-ipc-test.cjs",
+    "test:derivation": "node scripts/writing-derivation-test.cjs",
+    "test:clipboard": "node scripts/clipboard-format-test.cjs && node scripts/clipboard-ui-test.cjs",
+    "test:files": "node scripts/file-commands-test.cjs && node scripts/writing-range-integrity-test.cjs",
+    "test:core": "node scripts/core-regression.cjs",
+    "test:smarttype": "node scripts/smarttype-test.cjs && node scripts/smarttype-ui-test.cjs",
     "test:search": "node scripts/search-test.cjs && node scripts/search-ui-test.cjs",
+    "test:board": "node scripts/board-workspace-model-test.cjs && node scripts/board-workspace-ui-test.cjs && node scripts/board-polish-test.cjs && node scripts/scene-notes-test.cjs",
     "smoke": "node scripts/run-smoke.cjs"
   },
   "dependencies": {

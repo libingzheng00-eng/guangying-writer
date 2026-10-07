@@ -151,6 +151,71 @@ function benchmark(api, label) {
     assert.equal(state().future.length, 120);
     for (let i = 0; i < 120; i++) state().redo();
     assert.equal(state().project.elements[1].text, '历史129');
+
+    reset(api, fixture(api));
+    state().setText('e1', '分组起点');
+    for (const elapsed of [1000, 1000, 1000, 1000, 999]) {
+      clockTime += elapsed;
+      state().setText('e1', `连续${clockTime}`);
+    }
+    assert.equal(state().past.length, 1, 'typing still coalesces at 4999ms total');
+    const beforeMaximum = state().project.elements[1].text;
+    clockTime += 1;
+    state().setText('e1', '满五秒的新分组');
+    assert.equal(state().past.length, 2, 'exactly 5000ms starts a new typing group');
+    clockTime += 1499;
+    state().setText('e1', '新分组继续');
+    assert.equal(state().past.length, 2, 'new typing group restarts its absolute clock');
+    state().undo();
+    assert.equal(state().project.elements[1].text, beforeMaximum, 'maximum-duration undo preserves earlier typing');
+    state().redo();
+    assert.equal(state().project.elements[1].text, '新分组继续');
+
+    // Generic mutations with the same text key share the immutable input rule.
+    reset(api, fixture(api));
+    for (let i = 0; i <= 5; i++) {
+      state().mutate(p => { p.elements[1].text = `通用文本${i}`; }, { coalesce: 'text:e1' });
+      clockTime += 1000;
+    }
+    assert.equal(state().past.length, 2, 'generic text-key mutation has the same 5-second maximum');
+
+    // Continuous legacy resize keeps its established idle-gap coalescing rule.
+    reset(api, fixture(api));
+    for (let i = 0; i < 9; i++) {
+      state().resizeBeat('b', 320 + i * 10, 240);
+      clockTime += 1000;
+    }
+    assert.equal(state().past.length, 1, 'legacy resize remains one group beyond 5 seconds');
+    state().undo();
+    assert.equal(state().project.beats[0].w, 300);
+
+    reset(api, fixture(api));
+    const baselineContinuous = state().project;
+    for (let i = 1; i <= 600; i++) {
+      clockTime += 100;
+      state().setText('e1', '字'.repeat(i));
+    }
+    assert.equal(state().past.length, 12, '60-second typing is bounded into twelve 5-second groups');
+    state().undo();
+    assert.equal(state().project.elements[1].text.length, 550, 'first continuous undo removes only the latest group');
+    for (let i = 0; i < 11; i++) state().undo();
+    assert.equal(state().project, baselineContinuous, 'all continuous typing groups restore the original snapshot');
+    for (let i = 0; i < 12; i++) state().redo();
+    assert.equal(state().project.elements[1].text, '字'.repeat(600));
+
+    // An explicit interface boundary must only reset coalescing, even with redo.
+    state().undo();
+    const beforeBreak = state();
+    state().breakHistoryGroup();
+    assert.equal(state(), beforeBreak, 'history boundary preserves entire store identity and redo');
+    state().setText('e1', '合成分支');
+    assert.equal(state().future.length, 0);
+    const beforeExplicitGroup = state().past.length;
+    const beforeExplicitVersion = state().version;
+    state().breakHistoryGroup();
+    assert.equal(state().version, beforeExplicitVersion);
+    state().setText('e1', '断点后合成输入');
+    assert.equal(state().past.length, beforeExplicitGroup + 1, 'explicit boundary starts a separate group inside idle window');
   } finally { Date.now = originalNow; }
 
   // Fake clock proves trailing save, latest data/path, no UI-only rescheduling,

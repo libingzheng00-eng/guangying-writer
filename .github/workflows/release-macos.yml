@@ -30,6 +30,20 @@ jobs:
           node scripts/render-test.cjs
           node scripts/writing-test.cjs
           node scripts/editing-test.cjs
+          node scripts/smartquotes-test.cjs
+          node scripts/clipboard-format-test.cjs
+          node scripts/clipboard-ui-test.cjs
+          node scripts/writing-range-integrity-test.cjs
+          node scripts/file-commands-test.cjs
+          node scripts/autosave-path-test.cjs
+          node scripts/autosave-recovery-test.cjs
+          node scripts/project-save-test.cjs
+          node scripts/project-save-ipc-test.cjs
+          node scripts/writing-derivation-test.cjs
+          node scripts/native-draft-history-test.cjs
+          node scripts/source-integrity-test.cjs
+          node scripts/smarttype-test.cjs
+          node scripts/smarttype-ui-test.cjs
           node scripts/search-test.cjs
           node scripts/search-ui-test.cjs
           node scripts/zhsp-compat-test.cjs
@@ -45,6 +59,8 @@ jobs:
           node scripts/storyboard-acts-test.cjs
           node scripts/reports-test.cjs
           node scripts/board-polish-test.cjs
+          node scripts/board-workspace-model-test.cjs
+          node scripts/board-workspace-ui-test.cjs
           node scripts/writing-controls-test.cjs
           node scripts/progress-bands-test.cjs
 

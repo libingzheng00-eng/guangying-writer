@@ -3,6 +3,7 @@ import { useStore, type ViewMode } from '../store/store';
 import { ELEMENT_META, ELEMENT_ORDER } from '../model/elements';
 import type { ElementType } from '../model/types';
 import type { useCommands } from '../app/useCommands';
+import { runEditHistory } from '../utils/editHistory';
 
 const VIEWS: { key: ViewMode; label: string }[] = [
   { key: 'write', label: '写作' },
@@ -20,8 +21,10 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
   const activeRev = useStore((s) => s.activeRev);
   const setRevision = useStore((s) => s.setRevision);
   const toggleOmit = useStore((s) => s.toggleOmit);
-  const undo = useStore((s) => s.undo);
-  const redo = useStore((s) => s.redo);
+  const canUndo = useStore((s) => s.past.length > 0);
+  const canRedo = useStore((s) => s.future.length > 0);
+  const undo = () => runEditHistory('undo');
+  const redo = () => runEditHistory('redo');
   const dirty = useStore((s) => s.dirty);
   const filePath = useStore((s) => s.filePath);
   const writingSelectionMode = useStore((s) => s.writingSelectionMode);
@@ -44,12 +47,16 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
   }, []);
 
   const fmt = (cmd: string) => {
+    useStore.getState().breakHistoryGroup();
     try {
       document.execCommand('styleWithCSS', false, 'false');
       document.execCommand(cmd);
+      const node = document.activeElement;
+      if (node instanceof HTMLElement && node.matches('.sc-el--editable') && node.dataset.id) useStore.getState().setText(node.dataset.id, node.innerHTML);
     } catch {
       /* ignore */
     }
+    useStore.getState().breakHistoryGroup();
   };
 
   return (
@@ -80,7 +87,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
           <span className="writing-select-toolbar__count" title={`已选 ${writingSelectedIds.length} 段`} aria-live="polite">已选 {writingSelectedIds.length} 段</span>
           <button title="选择全部正文段落" onClick={() => setWritingSelectedIds(project.elements.map((el) => el.id))}>全选</button>
           <button disabled={!writingSelectedIds.length} title="删除选中的正文段落" onClick={() => deleteWritingElements(writingSelectedIds)}>删除所选</button>
-          <button title="撤销最近一次修改" onClick={undo}>撤销</button>
+          <button disabled={!canUndo} title="撤销最近一次修改" onMouseDown={e => e.preventDefault()} onClick={undo}>撤销</button>
         </div>
       ) : <>
         <select
@@ -95,13 +102,13 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
             </option>
           ))}
         </select>
-        <button className="icon-btn" title="加粗 ⌘B" onClick={() => fmt('bold')}>
+        <button className="icon-btn" title="加粗 ⌘B" onMouseDown={e => e.preventDefault()} onClick={() => fmt('bold')}>
           <b>B</b>
         </button>
-        <button className="icon-btn" title="斜体 ⌘I" onClick={() => fmt('italic')}>
+        <button className="icon-btn" title="斜体 ⌘I" onMouseDown={e => e.preventDefault()} onClick={() => fmt('italic')}>
           <i>I</i>
         </button>
-        <button className="icon-btn" title="下划线 ⌘U" onClick={() => fmt('underline')}>
+        <button className="icon-btn" title="下划线 ⌘U" onMouseDown={e => e.preventDefault()} onClick={() => fmt('underline')}>
           <u>U</u>
         </button>
         <button className="icon-btn" title="插入新场景 ⌘↩" onClick={commands.insertScene}>
@@ -157,10 +164,10 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
 
       <div className="toolbar__group toolbar__file-actions">
         <button className="icon-btn" title="查找正文 ⌘/Ctrl+F" onClick={commands.openFind}>查找</button>
-        <button className="icon-btn" title="撤销 ⌘Z" onClick={undo}>
+        <button className="icon-btn" disabled={!canUndo} title="撤销 ⌘Z" onMouseDown={e => e.preventDefault()} onClick={undo}>
           ↶
         </button>
-        <button className="icon-btn" title="重做 ⇧⌘Z" onClick={redo}>
+        <button className="icon-btn" disabled={!canRedo} title="重做 ⇧⌘Z" onMouseDown={e => e.preventDefault()} onClick={redo}>
           ↷
         </button>
         <button className="btn btn--ghost" onClick={() => commands.save(false)}>

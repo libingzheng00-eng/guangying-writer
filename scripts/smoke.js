@@ -1,12 +1,15 @@
 /**
- * 冒烟测试：无头加载渲染进程，收集控制台错误，并把界面截图写到 /tmp/guangying-*.png
- * 用法： ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron scripts/smoke.js
+ * 冒烟测试：仅在独立临时 userData 中加载空白模板，收集错误与截图。
+ * 用法： npm run smoke（通过独立临时 QA 壳加载本主进程入口）。
  */
 const { app, BrowserWindow } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 
-const OUT = process.env.SMOKE_OUT || '/tmp/guangying-smoke.png';
+const qaRoot = process.env.GUANGYING_SMOKE_ROOT || fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-smoke-'));
+app.setPath('userData', path.join(qaRoot, 'userData'));
+const OUT = process.env.SMOKE_OUT || path.join(qaRoot, 'smoke.png');
 const WAIT = Number(process.env.SMOKE_WAIT || 6000);
 
 app.disableHardwareAcceleration();

@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useStore } from '../store/store';
 import { bridge } from '../io/native';
 import { parseProject, serializeProject } from '../io/zhsp';
@@ -25,24 +25,37 @@ async function waitForPrintableAssets() {
 
 export function useCommands() {
   const store = useStore;
+  const saving = useRef(false);
+  const isSaving = useCallback(() => saving.current, []);
+  const openingRequest = useRef(0);
 
   const save = useCallback(
     async (asNew = false) => {
-      const { project, filePath, markSaved, notify } = store.getState();
-      const content = serializeProject(project);
-      const name = `${project.name}.zhsp`;
+      const { project, documentEpoch, filePath, markSaved, notify } = store.getState();
+      if (saving.current) {
+        notify('保存正在进行，请等待完成');
+        return false;
+      }
+      saving.current = true;
       try {
+        const content = serializeProject(project);
+        const name = `${project.name}.zhsp`;
         const target = asNew
           ? await bridge.saveProjectAs({ content, name: project.name, ext: 'zhsp' })
           : await bridge.saveProject({ content, path: filePath, name });
         if (target) {
-          markSaved(target);
-          notify(`已保存：${target}`, 'ok');
+          const belongsToCurrent = markSaved(target, { project, documentEpoch });
+          const message = !belongsToCurrent ? `已保存先前剧本：${target}`
+            : store.getState().dirty ? `已保存先前版本：${target}；当前修改尚未保存`
+            : `已保存：${target}`;
+          notify(message, 'ok');
         }
         return target;
       } catch (err) {
         notify(`保存失败：${(err as Error).message}`, 'error');
         return null;
+      } finally {
+        saving.current = false;
       }
     },
     [store],
@@ -50,20 +63,30 @@ export function useCommands() {
 
   const open = useCallback(async () => {
     const { loadProject, notify } = store.getState();
-    const res = await bridge.openProject();
-    if (!res) return;
+    const epochAtOpen = store.getState().documentEpoch;
+    const request = ++openingRequest.current;
     try {
+      const res = await bridge.openProject();
+      if (!res) return;
+      if (request !== openingRequest.current) return;
+      if (store.getState().documentEpoch !== epochAtOpen) {
+        notify('打开期间已切换剧本，请重新选择要打开的文件。', 'error');
+        return;
+      }
+      // Ask at replacement time, including edits made while the dialog waited.
+      // Loading starts a fresh history: cancelled discard must retain both stacks.
+      if (store.getState().dirty && !window.confirm('当前剧本尚未保存，打开其他剧本将丢弃这些修改。确定继续吗？')) return;
       if (res.path.toLowerCase().endsWith('.fdx')) {
         const { elements, title } = fromFdx(res.content);
-        const p = createProject(res.path.split(/[\\/]/).pop()?.replace('.fdx', '') || '导入的剧本');
+        const p = createProject(res.path.split(/[\\/]/).pop()?.replace(/\.fdx$/i, '') || '导入的剧本');
         p.elements = elements.length ? elements : [newElement('action', '')];
         if (title) Object.assign(p.titlePage, title);
-        loadProject(p, res.path);
+        loadProject(p, null);
       } else if (/\.(txt|md)$/i.test(res.path)) {
         const elements = fromPlainText(res.content);
-        const p = createProject(res.path.split(/[\\/]/).pop()?.replace(/\.(txt|md)$/, '') || '导入的剧本');
+        const p = createProject(res.path.split(/[\\/]/).pop()?.replace(/\.(txt|md)$/i, '') || '导入的剧本');
         p.elements = elements;
-        loadProject(p, res.path);
+        loadProject(p, null);
       } else {
         loadProject(parseProject(res.content), res.path);
       }
@@ -144,13 +167,13 @@ export function useCommands() {
     async (kind: 'fdx' | 'txt' | 'md' | 'html') => {
       const { project, notify } = store.getState();
       const map = {
-        fdx: { content: toFdx(project), ext: 'fdx' },
-        txt: { content: toPlainText(project), ext: 'txt' },
-        md: { content: toMarkdown(project), ext: 'md' },
-        html: { content: toHtml(project), ext: 'html' },
+        fdx: toFdx,
+        txt: toPlainText,
+        md: toMarkdown,
+        html: toHtml,
       } as const;
-      const { content, ext } = map[kind];
-      const file = await bridge.saveProjectAs({ content, name: project.name, ext });
+      const content = map[kind](project);
+      const file = await bridge.saveProjectAs({ content, name: project.name, ext: kind });
       if (file) notify(`已导出：${file}`, 'ok');
     },
     [store],
@@ -223,5 +246,5 @@ export function useCommands() {
     window.dispatchEvent(new Event('guangying:find'));
   }, [store]);
 
-  return { save, open, importAny, exportPdf, exportAs, newFile, setElementType, insertScene, makeDual, openFind, sceneHeadings };
+  return { save, isSaving, open, importAny, exportPdf, exportAs, newFile, setElementType, insertScene, makeDual, openFind, sceneHeadings };
 }

@@ -21,6 +21,7 @@ release-alpha-test-r13/
 *.log
 .vite/
 .tmp-app.*
+/tmp/editing-review/
 assets/icon.iconset/
 
 # Local project documents may contain private writing material

@@ -21,7 +21,7 @@ export interface SearchMatch {
 /**
  * 与 dom.ts atoms 相同的偏移契约：文本节点按 UTF-16，BR 计一个换行，
  * P/DIV 闭合不额外计字。惰性的 template 不挂载，不加载图片或执行脚本。
- * 此投影只供查找使用，不能替换分页、统计和导出的全局 plain()。
+ * 此投影供查找及编辑光标定位使用，不能替换分页、统计和导出的全局 plain()。
  */
 export function searchText(html: string): string {
   if (!html) return '';
