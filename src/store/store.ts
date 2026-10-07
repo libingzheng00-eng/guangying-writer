@@ -119,6 +119,8 @@ interface StoreState {
   splitBlock: (id: string, before: string, after: string, nextType: ElementType) => string;
   /** Atomic cut/paste or selected-range replacement; never coalesces with typing. */
   replaceWritingRange: (ids: string[], before: string, after: string, inserted: string, nextType?: ElementType) => string | null;
+  /** Explicit SmartType acceptance: text + type in one guarded history transaction. */
+  commitSmartType: (id: string, expectedText: string, expectedType: ElementType, html: string, targetType: ElementType, expectedEpoch: number) => boolean;
   setType: (id: string, type: ElementType) => void;
   setText: (id: string, text: string) => void;
   removeElement: (id: string) => void;
@@ -510,6 +512,30 @@ export const useStore = create<StoreState>((set, get) => ({
       p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removedAssociations);
     });
     return nextId;
+  },
+
+  commitSmartType: (id, expectedText, expectedType, html, targetType, expectedEpoch) => {
+    const state = get();
+    const current = state.project.elements.find(element => element.id === id);
+    if (state.documentEpoch !== expectedEpoch || !current ||
+        current.text !== expectedText || current.type !== expectedType ||
+        (targetType !== current.type && (current.dual || current.dualGroup)) ||
+        (targetType !== current.type && !['character', 'scene_heading', 'shot', 'transition'].includes(targetType))) {
+      lastCoalesce = null;
+      return false;
+    }
+    // Never call setText then setType: that would split a single acceptance into
+    // two undos. The existing mutate path preserves immutable saved snapshots.
+    get().mutate(project => {
+      const element = project.elements.find(item => item.id === id)!;
+      element.text = html;
+      element.type = targetType;
+      if (!['character', 'parenthetical', 'dialogue'].includes(targetType)) {
+        delete element.dual;
+        delete element.dualGroup;
+      }
+    });
+    return true;
   },
 
   setType: (id, type) => {

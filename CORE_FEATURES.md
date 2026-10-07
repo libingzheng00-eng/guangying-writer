@@ -23,7 +23,8 @@
 - 全文查找使用独立面板，可按 ⌘/Ctrl+F 打开、Enter/Shift+Enter 定位上下处、Esc 关闭；覆盖正文九类元素与备忘，支持大小写选项。高亮只能是浏览器绘制，不写入正文 HTML、工程、撤销栈或 PDF；未打开查找时不得运行全文匹配。专项：`search-test.cjs` / `search-ui-test.cjs` / `search-electron.cjs`。
 - 智能识别、自动补全、双列对白、场号、同一人物再次说话的 `(CONT'D)` 视觉提示保持正常。
 - **智能双引号红线（2026-10-07）**：保持既有“对白 + smartQuotes 开启”的范围，只转换可确认的本次新输入 ASCII 双引号，不按 HTML 字符偏移奇偶配向、不全文改写。反斜杠转义原样保留；已有未闭合开引号时优先闭合（包括引文以冒号/括号/破折号结尾），否则依据段首、空白、冒号/开括号等开启上下文；词内、尺寸或无法确认的孤立引号保留原字符。手动弯引号、已有直引号、单引号、粘贴/历史/替换输入不重整，标签与属性不参与方向判断。DOM UTF-16 偏移与 BR=1 的光标口径保持一致；格式和未选正文不得改变。IME 中间态不重建节点，完成时仅根据原选区、最终 data 与 documentEpoch 校验处理新增部分；转换沿用本次输入事务，不额外制造撤销步骤。只做保守单层自动配向，不自动嵌套或补配对，不改双列范围安全逻辑。专项：`smartquotes-test.cjs`，真实输入法另验。
-- **快捷输入红线（2026-10-07）**：人物、人物扩展、内外景/地点/时段、转场及镜头按当前字段匹配；候选文字不能解释为 HTML，不能覆盖其他字段。空格/右箭头补全当前字段并留在本段，Enter 补全后按既有回车节奏进入下一段；Esc 只收起候选、保留正文焦点。Tab 永远只做九类循环、清除旧类型候选，并保留原光标偏移。修饰键、段中光标、非折叠选区、中文组合期不得误接受候选；单次补全独立可撤销。完整匹配不能被强制扩为更长名称或时段。只从空动作段开始识别 INT./EXT./内景前缀，不能改写已有正文或用户手选类型；组合提交前不改类型。专项：`smarttype-test.cjs` / `smarttype-ui-test.cjs`，另需实机按键。
+- **快捷输入红线（2026-10-08，用户明确批准的新契约）**：从新空段开始的连续输入可跨类型推荐人物、镜头、转场、场次前缀，不要求先切换段落属性；候选带类型标记，只有明确确认才将补全文字与目标类型一次提交、一次撤销。输入“特”可选“特写 · 镜头”，输入“小明”仍显示“小明 · 人物”和“小明妈妈 · 人物”，完整匹配优先但不自动接受或强制扩为长词。**有候选时第一次 Enter 仅确认并留在同段；确认后关闭候选，未有新输入不得重新弹出；第二次 Enter 才按原回车节奏切段。**鼠标/右箭头确认同样留在本段；原同类型字段补全的空格行为保留，跨类型意图候选不得抢占空格。无候选或已 Esc 取消时 Enter 正常切段。候选文字不能解释为 HTML，字段补全不能覆盖别的字段。
+- **快捷输入安全边界**：旧正文编辑、粘贴、段中拆行携带的尾文不启用新跨类型识别，双列对白不扩展新跨类型语义；没有可匹配跨类型候选时保留原保守识别回退。候选须校验当前段落/类型/文本/光标/文档边界，段中光标、非折叠选区、修饰键、中文组合期及 `keyCode=229` 不得误接受。中文输入法确认汉字不能同时接受软件候选；Esc 仅收起候选并保焦。Tab/Shift+Tab 永远只做九类循环、清除旧候选、保留原光标位置；Shift+Enter 软换行不变。候选会话和缓存不写入 `.zhsp`、自动恢复或历史。**本新契约覆盖2026-10-07“只按当前类型匹配、Enter确认立即下一段”的旧要求**，历史日志不得作为恢复旧语义的依据。专项：`smarttype-test.cjs` / `smarttype-ui-test.cjs`，另需真实浏览器或 Electron 按键、连续 Tab 与输入法分层验收。
 - 写作多选模式下：普通点击可选择段落；Shift 点击正文或复选框可按正文顺序连续选择；删除只删除选中段落；普通写作模式绝不能被这套逻辑干扰。
 - `⌘/Ctrl+Z` 撤销与 `⌘/Ctrl+Shift+Z` 重做须支持多步恢复正文、卡片、关系线；输入及同一卡片连续移动/缩放可按既有规则合并，不得跨不相关操作误合并，批量删除必须一次完整撤回。
 - 输入性能：`setText` 仅不可变更新当前段落与元素列表，不能按每个字 JSON 复制/比较整个含图工程；未改对象可共享引用，但严禁直接修改当前工程或撤销快照。它与通用 `mutate` 必须共用同一历史提交规则。无变化/无效 ID 保留 redo、dirty、version 并切断合并窗口。自动保存保持约 900ms 停笔后保存最新正文/路径，连续修改增加约30秒截止点；订阅不能导致 App 整树随字重渲染。专项：`input-performance-test.cjs` / `autosave-recovery-test.cjs`；实际组合输入与重载恢复：`input-electron.cjs`。
@@ -116,7 +117,7 @@ node scripts/progress-bands-test.cjs
 | 行为契约 | 关键实现位置 | 回归入口 |
 | --- | --- | --- |
 | Tab 焦点闭环、备忘往返、正文 Shift 多选 | `src/model/flow.ts`、`Editor.tsx`、`ScriptBlock.tsx` | writing / render / 实机连续 Tab |
-| 分字段快捷输入、候选生命周期、Tab 光标位置与补全撤销 | `src/model/smarttype.ts`、`Editor.tsx`、`ScriptBlock.tsx` | smarttype / smarttype-ui / 实机候选与连续 Tab |
+| 空段跨类型/分字段快捷输入、两次 Enter、候选生命周期与原子撤销 | `src/model/smarttype.ts`、`Editor.tsx`、`ScriptBlock.tsx`、`store.ts` | smarttype / smarttype-ui / 实机候选与连续 Tab |
 | 回车移动尾部、剪切粘贴原子撤销、只读全文查找 | `Editor.tsx`、`ScriptBlock.tsx`、`store.ts`、`src/utils/dom.ts`、`FindPanel.tsx`、`search.ts` | editing / search / search-ui / editing-electron / search-electron |
 | 拖入图片、原位卡片创作 PDF、A4 纯文本 | `Editor.tsx`、`src/io/creativePdf.ts`、`useCommands.ts`、`PreviewView.tsx`、`PaginationProvider.tsx`、`electron/pdf.js` | image-drop-electron / pdf-layout-electron / pagination-safety / PDF 渲染检查 |
 | 选择、归幕、删除、撤销重做 | `store.ts`、`selection.ts`、`board.ts`、`BoardView.tsx`、`CardsView.tsx` | history / writing / render / 实机拖放 |

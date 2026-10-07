@@ -11,12 +11,15 @@ import { WRITING_CLIPBOARD_MIME, encodeWritingClipboard, decodeWritingClipboard,
 import { nextTypeOnEnter, nextTypeOnTab, groupDual, recognizeType, deriveWritingElements, CONTD_SUFFIX } from '../model/flow';
 import { deriveScenes } from '../model/project';
 import { fontStackOf } from '../model/elements';
-import { createSmartTypeCatalogReader, getSmartTypeSuggestions, type SmartTypeSuggestion } from '../model/smarttype';
+import { createSmartTypeCatalogReader, getSmartTypeSuggestions, type SmartTypeCatalog, type SmartTypeSuggestion } from '../model/smarttype';
 import { searchText } from '../model/search';
 import type { ScriptElement, ElementType } from '../model/types';
 
 interface SuggestState {
   id: string;
+  epoch: number;
+  sourceHtml: string;
+  catalog: SmartTypeCatalog;
   type: ElementType;
   sourceText: string;
   start: number;
@@ -67,9 +70,23 @@ export function Editor() {
   // 只追踪“从空动作段开始”的内外景前缀，不重新猜测已有正文或用户手选的类型。
   const sceneIntroInputRef = useRef(new Map<string, string>());
   const compositionEmptyActionRef = useRef(new Set<string>());
+  // Cross-type suggestions belong to a live input session that began empty,
+  // never an old paragraph, paste, split tail, or a document/undo snapshot.
+  const intentInputRef = useRef<{ id: string; epoch: number; html: string; type: ElementType } | null>(null);
+  const dismissedSuggestRef = useRef<{ id: string; epoch: number; html: string; type: ElementType } | null>(null);
   /** ⌘⇧N 备忘切换：记住每个元素上一次的非备忘类型，便于从 note 切回 */
   const noteMemoryRef = useRef(new Map<string, ElementType>());
   const [suggest, setSuggest] = useState<SuggestState | null>(null);
+  useEffect(() => {
+    // Element IDs may legitimately recur in another loaded/restored project.
+    // Neither the old recognizer prefix nor a live completion session belongs
+    // to that document. Keep all ephemeral input state inside its epoch.
+    sceneIntroInputRef.current.clear();
+    compositionEmptyActionRef.current.clear();
+    intentInputRef.current = null;
+    dismissedSuggestRef.current = null;
+    setSuggest(null);
+  }, [documentEpoch]);
   const readSmartTypeCatalog = useMemo(() => createSmartTypeCatalogReader(), []);
   const smartTypeCatalog = useMemo(
     () => readSmartTypeCatalog(project, activeId || undefined, documentEpoch),
@@ -157,11 +174,21 @@ export function Editor() {
       const selection = window.getSelection();
       const text = node ? domText(node) : '';
       const caret = node ? caretOffset(node) : -1;
+      const epoch = useStore.getState().documentEpoch;
+      const dismissed = dismissedSuggestRef.current;
+      if (dismissed?.id === el.id && dismissed.epoch === epoch &&
+          dismissed.html === node?.innerHTML && dismissed.type === el.type) {
+        setSuggest(null);
+        return;
+      }
       if (composingRef.current || selectMode || !node || document.activeElement !== node || !text.trim() || !selection?.isCollapsed || caret !== text.length) {
         setSuggest(null);
         return;
       }
-      const matches = getSmartTypeSuggestions({ ...el, text: node.innerHTML }, caret, smartTypeCatalog);
+      const session = intentInputRef.current;
+      const allowCrossType = session?.id === el.id && session.epoch === epoch &&
+        session.html === node.innerHTML && session.type === el.type && !el.dual && !el.dualGroup;
+      const matches = getSmartTypeSuggestions({ ...el, text: node.innerHTML }, caret, smartTypeCatalog, { allowCrossType });
       if (!matches?.items.length) {
         setSuggest(null);
         return;
@@ -174,6 +201,9 @@ export function Editor() {
       const beside = nb.right + menuWidth + 18 <= window.innerWidth;
       setSuggest({
         id: el.id,
+        epoch,
+        sourceHtml: node.innerHTML,
+        catalog: smartTypeCatalog,
         type: el.type,
         sourceText: text,
         start: matches.start,
@@ -193,14 +223,23 @@ export function Editor() {
     setSuggest((s) => {
       if (!s || selectMode) return null;
       const current = project.elements.find((item) => item.id === s.id);
-      return current && current.type === s.type && searchText(current.text) === s.sourceText ? s : null;
+      return s.epoch === documentEpoch && s.catalog === smartTypeCatalog && current && current.type === s.type &&
+        current.text === s.sourceHtml && searchText(current.text) === s.sourceText &&
+        !(s.kind === 'intent' && (current.dual || current.dualGroup)) ? s : null;
     });
-  }, [project.elements, project.id, selectMode]);
+    const session = intentInputRef.current;
+    const current = session && project.elements.find(item => item.id === session.id);
+    if (session && (!current || current.dual || current.dualGroup || selectMode || session.epoch !== documentEpoch ||
+        current.text !== session.html || current.type !== session.type)) intentInputRef.current = null;
+  }, [project.elements, project.id, documentEpoch, smartTypeCatalog, selectMode]);
   useEffect(() => {
     if (!suggest) return;
     const onSelection = () => {
       const node = refs.current.get(suggest.id);
-      if (!node || document.activeElement !== node || !window.getSelection()?.isCollapsed || caretOffset(node) !== domLength(node)) setSuggest(null);
+      if (!node || document.activeElement !== node || !window.getSelection()?.isCollapsed || caretOffset(node) !== domLength(node)) {
+        setSuggest(null);
+        intentInputRef.current = null;
+      }
     };
     const dismiss = () => setSuggest(null);
     document.addEventListener('selectionchange', onSelection);
@@ -213,13 +252,16 @@ export function Editor() {
     };
   }, [suggest]);
 
-  const acceptSuggest = useCallback((advance = false, index?: number) => {
+  const acceptSuggest = useCallback((withSeparator = true, index?: number) => {
     const state = suggest;
     if (!state || composingRef.current || selectMode) return false;
     const item = state.items[index ?? state.active];
     const node = refs.current.get(state.id);
     const current = useStore.getState().project.elements.find((el) => el.id === state.id);
-    if (!item || !node || !current || current.type !== state.type || document.activeElement !== node ||
+    if (!item || !node || !current || state.catalog !== smartTypeCatalog || useStore.getState().documentEpoch !== state.epoch ||
+        current.text !== state.sourceHtml || current.type !== state.type ||
+        ((state.kind === 'intent' || (item.targetType && item.targetType !== current.type)) && (current.dual || current.dualGroup)) ||
+        document.activeElement !== node ||
         !window.getSelection()?.isCollapsed || caretOffset(node) !== state.end || domText(node) !== state.sourceText) {
       setSuggest(null);
       return false;
@@ -227,24 +269,23 @@ export function Editor() {
     // 只替换当前字段，保留其他文本与格式；候选永远作为文本节点插入，不能解释为 HTML。
     const nextNode = node.cloneNode(true) as HTMLDivElement;
     const range = makeTextRange(nextNode, state.start, state.end);
-    const value = item.value + (advance ? '' : item.separator || '');
+    const separator = withSeparator ? item.separator || '' : '';
+    const value = item.value + separator;
     range.deleteContents();
     range.insertNode(document.createTextNode(value));
     const html = nextNode.innerHTML;
     setSuggest(null);
-    const nextType = advance ? nextTypeOnEnter({ ...current, text: html }, false) : undefined;
+    const targetType = item.targetType || current.type;
+    intentInputRef.current = null;
+    dismissedSuggestRef.current = { id: state.id, epoch: state.epoch, html, type: targetType };
     // 完成候选是一笔独立撤销；不能与之前或之后的普通打字合并。
-    const id = useStore.getState().replaceWritingRange([state.id], '', '', html, nextType);
-    if (!id) return false;
-    node.innerHTML = html;
-    const nextCaret = state.start + (item.caret ?? item.value.length) + (advance ? 0 : (item.separator || '').length);
-    if (!advance) {
-      setCaret(node, nextCaret);
-      updateSuggest({ ...current, text: html });
-    }
-    requestFocus(id, advance ? 'start' : nextCaret);
+    if (!useStore.getState().commitSmartType(state.id, state.sourceHtml, state.type, html, targetType, state.epoch)) return false;
+    // Model sync can rebuild a scene-number wrapper; request the same element's
+    // focus after React commits, rather than touching a possibly detached node.
+    const nextCaret = state.start + (item.caret ?? item.value.length) + separator.length;
+    requestFocus(state.id, nextCaret);
     return true;
-  }, [suggest, selectMode, updateSuggest, requestFocus]);
+  }, [suggest, smartTypeCatalog, selectMode, requestFocus]);
 
   const moveFocus = useCallback(
     (dir: -1 | 1, caret: 'start' | 'end') => {
@@ -262,7 +303,7 @@ export function Editor() {
     (el: ScriptElement, e: React.KeyboardEvent<HTMLDivElement>) => {
       const node = e.currentTarget as HTMLDivElement;
       // 输入法组合中不做任何拦截
-      if (e.nativeEvent.isComposing || composingRef.current) return;
+      if (e.nativeEvent.isComposing || composingRef.current || e.nativeEvent.keyCode === 229) return;
 
       const meta = e.metaKey || e.ctrlKey;
       // Cursor navigation/selection changes create a typing-history boundary;
@@ -271,11 +312,11 @@ export function Editor() {
       const candidateKey = !meta && !e.altKey && !e.shiftKey;
       const hasSuggest = suggest?.id === el.id && suggest.type === el.type && suggest.sourceText === domText(node) && window.getSelection()?.isCollapsed && caretOffset(node) === suggest.end;
       if (suggest && !hasSuggest) setSuggest(null);
-      if (hasSuggest && candidateKey && e.key === 'Enter' && acceptSuggest(true)) {
+      if (hasSuggest && candidateKey && e.key === 'Enter' && acceptSuggest(false)) {
         e.preventDefault();
         return;
       }
-      if (hasSuggest && candidateKey && (e.key === ' ' || e.key === 'ArrowRight') && acceptSuggest(false)) {
+      if (hasSuggest && candidateKey && (e.key === 'ArrowRight' || (e.key === ' ' && suggest?.kind !== 'intent')) && acceptSuggest(true)) {
         e.preventDefault();
         return;
       }
@@ -288,6 +329,10 @@ export function Editor() {
       }
       if (e.key === 'Escape') {
         if (suggest) e.preventDefault();
+        dismissedSuggestRef.current = { id: el.id, epoch: useStore.getState().documentEpoch, html: node.innerHTML, type: el.type };
+        intentInputRef.current = null;
+        sceneIntroInputRef.current.delete(el.id);
+        compositionEmptyActionRef.current.delete(el.id);
         setSuggest(null);
         return;
       }
@@ -309,6 +354,8 @@ export function Editor() {
       }
 
       if (e.key === 'Enter' && !e.shiftKey && !meta && !e.altKey) {
+        intentInputRef.current = null;
+        dismissedSuggestRef.current = null;
         e.preventDefault();
         const selected = readWritingSelection(contentRef.current);
         if (selected && !selected.collapsed) {
@@ -339,6 +386,7 @@ export function Editor() {
         // 红线：无论候选是否可见，Tab 都只循环类型，并立即废弃旧类型的候选。
         setSuggest(null);
         sceneIntroInputRef.current.delete(el.id);
+        intentInputRef.current = null;
         const caret = caretOffset(node);
         const next = nextTypeOnTab(el.type, e.shiftKey);
         const keepDual = el.dual && ['character', 'parenthetical', 'dialogue'].includes(next);
@@ -360,6 +408,7 @@ export function Editor() {
         e.preventDefault();
         setSuggest(null);
         sceneIntroInputRef.current.delete(el.id);
+        intentInputRef.current = null;
         if (el.type === 'note') {
           const fallback = noteMemoryRef.current.get(el.id) || 'action';
           setType(el.id, fallback);
@@ -493,6 +542,22 @@ export function Editor() {
     (el: ScriptElement, html: string, input?: InputEvent, composition?: { html: string; start: number; end: number; data: string }) => {
       markTyping();
       let value = html;
+      const state = useStore.getState();
+      const previous = state.project.elements.find((e) => e.id === el.id);
+      const node = refs.current.get(el.id);
+      const session = intentInputRef.current;
+      const continuingIntent = !!previous && session?.id === el.id && session.epoch === state.documentEpoch &&
+        session.html === previous.text && session.type === previous.type;
+      const ordinaryInput = !input?.inputType || ['insertText', 'insertCompositionText', 'deleteContentBackward', 'deleteContentForward'].includes(input.inputType);
+      // Refocus/keyup and unchanged composition replays must stay dismissed,
+      // but genuine editing starts a new request even if the text later returns
+      // to the previously accepted value (小明 → 小 → 小明).
+      if (previous && ordinaryInput && value !== previous.text) dismissedSuggestRef.current = null;
+      const atEnd = !!node && window.getSelection()?.isCollapsed && caretOffset(node) === domLength(node);
+      if (previous && ordinaryInput && !previous.dual && !previous.dualGroup &&
+          (continuingIntent || (isBlank(previous.text) && (atEnd || composingRef.current)))) {
+        intentInputRef.current = { id: el.id, epoch: state.documentEpoch, html: value, type: previous.type };
+      } else intentInputRef.current = null;
       if (composingRef.current || input?.isComposing) {
         // 组合期只同步输入，不猜类型、不开候选、不重建场号包装；提交后再识别一次。
         setText(el.id, value);
@@ -501,8 +566,6 @@ export function Editor() {
       }
       // 从空动作段逐字输入 INT./EXT./内景也应识别；I/IN 不能提前抢成“人物”。
       // 会话只延续未被编辑/手动改类型的短前缀，绝不每次输入都猜已有正文。
-      const previous = useStore.getState().project.elements.find((e) => e.id === el.id);
-      const node = refs.current.get(el.id);
       // Red line: transform only known newly inserted text, in this typing
       // transaction. Never walk/replace HTML quotes, pasted text, history or an
       // active IME composition. Direction depends on text, never markup length.
@@ -521,9 +584,13 @@ export function Editor() {
       const lastPrefix = sceneIntroInputRef.current.get(el.id);
       const continuingIntro = previous?.type === 'action' && lastPrefix !== undefined &&
         plain(previous.text).trim() === lastPrefix && trimmedNew.startsWith(lastPrefix);
-      const atEnd = !!node && window.getSelection()?.isCollapsed && caretOffset(node) === domLength(node);
+      // A known cross-type candidate is only a suggestion: even 内景/INT. must
+      // wait for explicit acceptance. Keep the old conservative recognizer for
+      // inputs which are not covered by the project/built-in intent vocabulary.
+      const intentMatches = intentInputRef.current && previous && atEnd
+        ? getSmartTypeSuggestions({ ...previous, text: value }, caretOffset(node!), smartTypeCatalog, { allowCrossType: true }) : null;
       let changedType = false;
-      if ((wasEmpty || continuingIntro || compositionEmptyActionRef.current.has(el.id)) && trimmedNew && previous?.type === 'action') {
+      if (!intentMatches && (wasEmpty || continuingIntro || compositionEmptyActionRef.current.has(el.id)) && trimmedNew && previous?.type === 'action') {
         const sceneIntro = previous.type === 'action' && atEnd &&
           /^(?:内景|外景|内\/外景|外\/内景|内外景)(?:$|[\s·.．、:：\-—])|^(?:INT|EXT|INT\.\/EXT|I\/E)\.(?:$|[\s\-—])/i.test(trimmedNew);
         const recognized = sceneIntro ? 'scene_heading' : recognizeType(trimmedNew);
@@ -540,13 +607,21 @@ export function Editor() {
       const caret = node ? caretOffset(node) : -1;
       if (changedType) requestFocus(el.id, caret < 0 ? 'end' : caret);
       const latest = useStore.getState().project.elements.find((item) => item.id === el.id);
+      if (latest && intentInputRef.current) intentInputRef.current = {
+        id: latest.id, epoch: state.documentEpoch, html: latest.text, type: latest.type,
+      };
       if (latest) updateSuggest({ ...latest, text: value });
     },
-    [project.settings.smartQuotes, markTyping, setText, setType, updateSuggest, requestFocus],
+    [project.settings.smartQuotes, smartTypeCatalog, markTyping, setText, setType, updateSuggest, requestFocus],
   );
 
   const handlePaste = useCallback(
     (_el: ScriptElement, e: React.ClipboardEvent<HTMLDivElement>) => {
+      intentInputRef.current = null;
+      // Paste ends direct-typing recognition even when it replaces a prefix
+      // with identical text; later typing must not revive that old session.
+      sceneIntroInputRef.current.clear();
+      compositionEmptyActionRef.current.clear();
       // No native paste while IME or block selection owns the editor: it could
       // bypass our literal/typed paste path and create a second DOM-only edit.
       if (selectMode || composingRef.current) { e.preventDefault(); return; }
@@ -589,6 +664,9 @@ export function Editor() {
     const payload = encodeWritingClipboard(selected.fragments as Array<{ type: ElementType; html: string }>);
     if (payload) event.clipboardData.setData(WRITING_CLIPBOARD_MIME, payload);
     if (cut) {
+      intentInputRef.current = null;
+      sceneIntroInputRef.current.clear();
+      compositionEmptyActionRef.current.clear();
       const id = useStore.getState().replaceWritingRange(selected.ids, selected.before, selected.after, '');
       setSuggest(null);
       if (id) requestFocus(id, selected.start);
@@ -738,19 +816,20 @@ export function Editor() {
           {suggest.items.map((s, i) => (
             <button
               type="button"
-              key={s.label}
+              key={`${s.targetType || suggest.type}:${s.label}`}
               className={`smarttype__item ${i === suggest.active ? 'is-active' : ''}`}
               role="option"
               aria-selected={i === suggest.active}
               onMouseDown={(e) => {
                 e.preventDefault();
-                acceptSuggest(false, i);
+                acceptSuggest(true, i);
               }}
             >
-              {s.label}
+              <span className="smarttype__label">{s.label}</span>
+              {s.typeLabel ? <small className="smarttype__type"> · {s.typeLabel}</small> : null}
             </button>
           ))}
-          <div className="smarttype__hint">↑↓ 选择 · → / 空格补全 · Enter 下一段</div>
+          <div className="smarttype__hint">↑↓ 选择 · → / Enter 确认 · 再按 Enter 换段</div>
         </div>
       ) : null}
     </div>
@@ -806,6 +885,9 @@ export function Editor() {
           useStore.getState().breakHistoryGroup();
           composingRef.current = true;
           const current = useStore.getState().project.elements.find((item) => item.id === el.id);
+          if (current && isBlank(current.text) && !current.dual && !current.dualGroup) {
+            intentInputRef.current = { id: el.id, epoch: useStore.getState().documentEpoch, html: current.text, type: current.type };
+          }
           quoteCompositionRef.current = null;
           const node = refs.current.get(el.id);
           const selection = window.getSelection();
@@ -839,6 +921,7 @@ export function Editor() {
           useStore.getState().breakHistoryGroup();
           sceneIntroInputRef.current.delete(el.id);
           compositionEmptyActionRef.current.delete(el.id);
+          intentInputRef.current = null;
           setSuggest((s) => s?.id === el.id ? null : s);
           if (el.type === 'scene_heading' && project.settings.autoNumberScenes) {
             const stripped = stripSceneNumber(plain(el.text));
