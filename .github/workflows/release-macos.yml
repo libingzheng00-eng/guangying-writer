@@ -65,7 +65,11 @@ jobs:
           node scripts/progress-bands-test.cjs
 
       - name: 打包 arm64 应用
-        run: bash package.sh
+        run: |
+          test "${GITHUB_REF_NAME}" = "v$(node -p "require('./package.json').version")"
+          bash package.sh
+          node scripts/core-guard.cjs --package "release/GuangyingWriter.app/Contents/Resources/app"
+          codesign --verify --deep --strict "release/GuangyingWriter.app"
 
       - name: 创建 DMG
         run: |
@@ -82,10 +86,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 网页先创建的预发布也能接收 CI 产物；避免因 release 已存在而整条流水线失败。
+          # 先留草稿，验收附件后才公开；已有附件不覆盖，防止同版本替换。
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
-            gh release create "$GITHUB_REF_NAME" --title "光影写手 $GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" --title "光影写手 $GITHUB_REF_NAME" --generate-notes --draft --prerelease
           gh release upload "$GITHUB_REF_NAME" \
             "release/GuangyingWriter-macOS-arm64.zip" \
-            "release/GuangyingWriter-macOS-arm64-${GITHUB_REF_NAME}.dmg" \
-            --clobber
+            "release/GuangyingWriter-macOS-arm64-${GITHUB_REF_NAME}.dmg"

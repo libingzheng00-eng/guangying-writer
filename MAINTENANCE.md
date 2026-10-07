@@ -1,6 +1,6 @@
 # 光影写手源码维护手册
 
-更新：2026-10-07。适用于当前 `1.3.0-alpha.18.10` 源码及本地候选改动，不代表这些改动已打包、推送或公开发布。
+更新：2026-10-07。适用于当前 `1.3.0-alpha.18.11` 源码。版本号不代表打包、推送或公开发布已经完成；实际安装附件以对应 GitHub Release 为准。
 
 这是当前维护入口；历史版本记录保留在 `CHANGELOG.md` / `DEVELOPER_HANDOFF.md`，不要把旧日志中的状态当作当前交付事实。行为契约以 [CORE_FEATURES.md](CORE_FEATURES.md) 为准，历史/剪贴板证据见 [EDITING_QA_20261007.md](EDITING_QA_20261007.md)，后续智能引号证据与边界见 [SMART_QUOTES_QA_20261007.md](SMART_QUOTES_QA_20261007.md)。
 
