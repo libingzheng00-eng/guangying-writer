@@ -1,6 +1,6 @@
 # 光影写手 v1.3.0-alpha.18.11
 
-2026-10-07，macOS Apple Silicon（arm64）测试版。实际附件与公开状态以 [GitHub 下载页](https://github.com/libingzheng00-eng/guangying-writer/releases/tag/v1.3.0-alpha.18.11) 为准。源码来自 `fix/recovery-performance-20261007`；[PR #10](https://github.com/libingzheng00-eng/guangying-writer/pull/10) 供审查，发布安装包不等于该PR已经合并main。本次没有自动替换用户电脑的现用应用。
+2026-10-07，macOS Apple Silicon（arm64）测试版，已公开。实际附件以 [GitHub 下载页](https://github.com/libingzheng00-eng/guangying-writer/releases/tag/v1.3.0-alpha.18.11) 为准。安装包与版本tag固定来自 `fix/recovery-performance-20261007` 的 `7d92d5953c4e2463f21430651d060409564c9e39`；[PR #10](https://github.com/libingzheng00-eng/guangying-writer/pull/10) 是合并到main的入口，实际合并状态以PR为准。后续发布流程/文档修复不会替换已验收安装包；发布安装包与更新默认分支须分别核对。本次没有自动替换用户电脑的现用应用。
 
 ## 本版更新
 
@@ -28,6 +28,8 @@
 - 包内PDF模块与渲染器生成实际合成PDF：第五场旁声音/图片坐标误差小于1px、不放文末；A4不含素材。长稿250个、双列170个唯一行标记各恰好一次；28组短对白的人物与对白同页。已看图检查创作页、A4两页、短对白三页及大图页。第一次临时提取脚本误用短对白标记名，改为脚本实际生成的 `SHORT_DIALOGUE_001` 等后重跑通过；没有因此改产品代码或放松断言。
 
 ## 边界与后续
+
+公开后tag自动流程因重复上传同名附件失败，源码检查、打包与创建DMG成功。发布流程的后续修复只读跳过完整现有附件，未删除或覆盖它们；旧失败保留，修复验证使用新的默认分支工作流，不移动tag。675项离线发布测试与37套应用源码回归分别计数，不替代上述安装包实机验收。
 
 真实macOS中文输入法、原生文件选择器（此前独立壳曾出现按钮禁用，原因未定位）、跨机安装、Windows/Linux、Finder物理拖拽和硬断电/网络盘仍未完整验收。Poppler曾报告中文嵌入字体类型警告，已查看页面文字可见；不承诺所有PDF阅读器/字体都相同。测试版不是全平台零风险认证。
 

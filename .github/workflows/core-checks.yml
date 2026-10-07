@@ -24,7 +24,9 @@ jobs:
       - name: 安装锁定依赖
         run: npm ci
       - name: 发布卫生与核心契约
-        run: node scripts/core-guard.cjs
+        run: |
+          node scripts/core-guard.cjs
+          node scripts/release-assets-test.cjs
       - name: 类型和构建
         run: |
           npm run typecheck
