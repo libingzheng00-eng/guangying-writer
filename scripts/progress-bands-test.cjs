@@ -33,6 +33,17 @@ const Module = require('node:module');
   assert.ok(component.includes("requestFocus(scene.elementId, 'start', 'start')"), '保留既有精确场标题跳转');
   assert.match(css,/grid-template-columns:\s*max-content minmax\(160px, 1fr\) max-content/, '页数使用实际内容宽度');
   assert.match(css,/font-family:\s*"Snell Roundhand"/, '使用本机英式圆手体');
-  assert.ok(!/[;{]\s*(?:height|min-height|grid-template-rows)\s*:/.test(css), '不能改变顶栏总高度或网格行几何');
-  console.log('progress-bands: 21 checks passed');
+  // 用户批准收细轨道和场景条；仅限制外栏、标尺点击盒和两行网格，允许内部绘制变薄。
+  for (const [, selector, declarations] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (/\.write-progress\s*$/.test(selector.trim()) || /\.write-progress__road\s*$/.test(selector.trim())) {
+      assert.ok(!/(?:^|;)\s*(?:height|min-height|grid-template-rows)\s*:/.test(declarations), '外栏及标尺点击盒保持原高度');
+    }
+    assert.ok(!/(?:^|;)\s*grid-template-rows\s*:/.test(declarations), '两行网格保持原几何');
+  }
+  const trackRule = css.match(/\.write-progress__road::before\s*\{([^}]+)\}/)?.[1];
+  assert.ok(trackRule, '可见细轨道独立于点击盒');
+  assert.match(trackRule, /inset:\s*11px 0/, '30px 点击盒内绘制8px轨道');
+  assert.match(trackRule, /pointer-events:\s*none/, '轨道绘制不得拦截点击');
+  assert.match(css, /\.write-progress__fill\s*\{[^}]*top:\s*11px;[^}]*bottom:\s*11px/, '填充须与细轨道对齐');
+  console.log('progress-bands: proportion, navigation and thin-track geometry checks passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

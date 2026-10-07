@@ -1,4 +1,5 @@
-/* 写作进度栏的屏幕呈现；不改写作画布、进度栏高度、分页或素材位置。 */
+/* 写作进度栏的屏幕呈现；不改写作画布、进度栏高度、分页或素材位置。
+   细轨道由伪元素绘制：30px 标尺仍接收点击，76px 外栏与两行网格保持原几何。 */
 @media screen {
   /* 页数按内容取宽，不能再用94px固定列和旧min-width挤压标尺。
      Snell Roundhand为macOS本机英式圆手体，仅引用字体，不分发系统字体文件。 */
@@ -13,7 +14,7 @@
   }
   .app-shell[data-theme] .editor > .write-progress .write-progress__value {
     font-family: "Snell Roundhand", "Apple Chancery", "Segoe Script", cursive;
-    font-size: 23px;
+    font-size: 21px;
     font-weight: 500;
     line-height: 1.2;
     letter-spacing: 0;
@@ -23,16 +24,87 @@
   }
   .app-shell[data-theme] .editor > .write-progress .write-progress__value strong {
     font-family: inherit;
-    font-size: 28px;
+    font-size: 25px;
     font-weight: 600;
   }
   .app-shell[data-theme] .editor > .write-progress :is(.write-progress__divider, .write-progress__target) {
     font-family: inherit;
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 500;
   }
   .app-shell[data-theme] .editor > .write-progress .write-progress__goal { padding-left: 0; gap: 6px; }
   .app-shell[data-theme] .editor > .write-progress .write-progress__tools { gap: 4px; }
+  /* 只收细可见轨道；鼠标仍可在整行点击、显示跳页提示。 */
+  .app-shell[data-theme] .editor > .write-progress .write-progress__road {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__road::before {
+    content: '';
+    position: absolute;
+    inset: 11px 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: repeating-linear-gradient(90deg, transparent 0 31px, var(--studio-tick) 31px 32px), var(--studio-ruler);
+    pointer-events: none;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__fill {
+    top: 11px;
+    bottom: 11px;
+    border-radius: 5px;
+    border-right: 0;
+    background: var(--studio-fill);
+    pointer-events: none;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__milestone {
+    top: 8px;
+    bottom: auto;
+    background: var(--studio-tick);
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__milestone.is-done {
+    background: var(--accent);
+    opacity: .65;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__marker {
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .16));
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__end::before {
+    font-size: 7px;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__scenes {
+    height: 16px;
+    min-height: 16px;
+    align-self: center;
+    border-color: transparent;
+    border-radius: 3px;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__scene {
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__scene.is-active {
+    outline-width: 1px;
+    outline-offset: -1px;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__scenes.is-over-target {
+    border-color: var(--danger);
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__goal input {
+    width: 64px;
+    min-width: 64px;
+    flex-basis: 64px;
+    padding-inline: 6px;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls button {
+    border-radius: 6px 0 0 6px;
+  }
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls button + button {
+    border-radius: 0 6px 6px 0;
+  }
   @media (max-width: 1100px) {
     .app-shell[data-theme] .editor > .write-progress { column-gap: 12px; padding-inline: 12px; }
   }
@@ -45,6 +117,6 @@
     box-sizing: border-box;
     justify-content: flex-start;
   }
-  .editor > .write-progress .write-progress__scene-no { margin-left: 2px; }
+  .editor > .write-progress .write-progress__scene-no { margin-left: 4px; }
   .editor > .write-progress .write-progress__over { position: absolute; right: 0; top: 0; pointer-events: none; }
 }

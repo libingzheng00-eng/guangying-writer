@@ -874,7 +874,15 @@ textarea {
   min-width: 250px;
   max-width: min(320px, calc(100vw - 16px));
   padding: 4px;
+  max-height: min(300px, calc(100vh - 16px));
+  overflow-y: auto;
   backdrop-filter: blur(14px) saturate(120%);
+}
+.smarttype__hint {
+  padding: 5px 9px 3px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
 }
 .smarttype__item {
   display: block;
@@ -2647,3 +2655,5 @@ textarea {
 .writing-select-row { position: relative; }
 .writing-select-row > input { position: absolute; left: -28px; top: 8px; width: 18px; height: 18px; cursor: pointer; }
 .doc-title { -webkit-app-region: no-drag; cursor: pointer; }
+.statusbar__recovery { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.statusbar__recovery.is-error { color: #b54432; }

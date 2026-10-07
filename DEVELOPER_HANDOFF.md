@@ -1,6 +1,76 @@
 # 光影写手源码接手摘要
 
-更新时间：2026-09-20；维护目标 `1.3.0-alpha.18.10`。本轮修复正文回车重复尾部、剪切粘贴撤销可见状态，并新增只读全文查找。不覆盖现用应用；尚未公开发布。具体测试、安装与发布状态以本次交付记录和 Git 状态为准，本文不是实机验收证明。
+更新时间：2026-10-07；当前源码版本号 `1.3.0-alpha.18.11`，汇集自由板第2稿、进度栏外观、快捷输入、编辑历史、智能引号及可靠性改进。用户已授权源码推送及新安装包公开发布；构建和附件发布以实际 GitHub Release 为准，不覆盖现用应用。下方日志保留各轮当时状态，本文不是实机验收证明。
+
+## 2026-10-07 发布流程收尾与默认分支合并
+
+alpha.18.11已公开，附件与tag固定来自`7d92d5953c4e2463f21430651d060409564c9e39`，详见 [RELEASE_ALPHA_18_11.md](RELEASE_ALPHA_18_11.md)。随后tag自动流程在上传同名附件处失败，源码检查/打包/DMG创建实际成功；不得删除已验收附件或移动tag来重写此记录。
+
+用户已明确授权“处理并合并到main”。本次只完善发布workflow、独立发布安全脚本/离线测试与文档，不改`src/`、`electron/`、manifest/lock、应用标识或用户资料。已有完整Release只读核验并跳过；不完整或非404异常fail closed，新版本只建草稿、不覆盖附件。675项发布断言及typecheck/build/37套软件回归通过。PR #10的实际合并状态以GitHub为准；合并后从main运行手动只读核验，不重打现有DMG，不把源码流程维护伪装成新安装包。
+
+## 2026-10-07 恢复、落盘、派生与原生验收（当前本地候选）
+
+本轮四项范围如下，版本号暂保持alpha.18.10。新增独立QA壳不是可分发安装包。源码37套、实际系统剪贴板/关闭、5组真实Electron及实际PDF分层结果见 [RELIABILITY_QA_20261007.md](RELIABILITY_QA_20261007.md)，真实macOS输入法/独立壳文件对话框等仍待验；尚未打包或发布新安装包。下方此前日志的验证数量/未运行状态只描述其当时轮次。
+
+1. **自动恢复与关闭**：`src/app/autosaveStorage.ts`、`autosaveSubscription.ts`、`recoveryStatus.ts` 提供单份最新恢复点、约900ms trailing/30秒最长等待、读写/容量失败反馈和坏raw保留。自动恢复不等于磁盘保存，不清dirty、不增加撤销历史；保留坏载荷失败或槽冲突时不得覆盖原载荷。App关闭检查dirty、未确认工程草稿、保存进行中与恢复flush失败；原生主进程提示默认继续写作。
+2. **工程落盘**：`electron/projectSave.js` 为 `.zhsp` 同目录独占临时写入、文件fsync、上一版 `.guangying-backup` 与rename，按规范化目标排队并检查目标/备份身份，失败只清本次临时文件。保存IPC等待真实结果；已有快照/epoch/in-flight规则继续有效。保留普通mode但不保留全部ACL/xattr，不承诺跨进程锁或任意文件系统断电保证；目标已替换后目录sync失败报告耐久性warning，不假报保存失败。
+3. **派生复用**：`src/model/flow.ts` 共用不可变元素数组的索引/CONT'D投影；`src/model/smarttype.ts` 根据实际候选来源字段复用解析，改名、类型/顺序/删除/撤销、活动段排除与文档边界须正确更新。仅减少重复推导，不改 Tab、智能引号、候选接受、分页测量、字体等待、PDF或工程格式，缓存不持久化。
+4. **独立原生验收载具**：固定QA manifest与白名单launcher、临时userData、合成稿；editing/input/pdf/search/image夹具在当前构建React挂载前seed，恢复检查同入口/partition且无二次seed。夹具destroy只是测试清理，不是关闭验收，也不绕过产品guard。系统剪贴板、真实中文输入法、菜单、真实PDF和长稿性能分别报告，不能把CDP/内存事件推广为系统层通过。
+
+当前 `npm run test:core` 列出37套源码专项，新增 `autosave-recovery-test.cjs`、`project-save-test.cjs`、`project-save-ipc-test.cjs`、`writing-derivation-test.cjs`，runner与两条CI需同步维护。交付前运行typecheck/build/完整core，并另核对实际原生/PDF输出；本文记录范围与保护约定，不代替当次执行结果。工程最终rename失败时备份可能与当前工程同版本，不能宣传无限历史或失败后必保留更早版本。维护入口仍为 [MAINTENANCE.md](MAINTENANCE.md) 和 [CORE_FEATURES.md](CORE_FEATURES.md)。
+
+## 2026-10-07 智能双引号修复（后续独立本地候选）
+
+- 用户仅批准智能引号方向，不批准双列跨栏语义改造。运行代码限定新 `utils/smartQuotes.ts`、Editor 输入 metadata/组合快照接入和 ScriptBlock 传 native event；未改分页、PDF、保存格式、双列范围校验或现用安装包。
+- 旧正则按 HTML offset 奇偶替换全文，会把 `"ABC"` 配错且误处理属性。新 helper 用 inert template 的文本节点投影，BR=1 / UTF-16 与编辑器一致；只在原文前后缀、data、光标/原选区全部匹配时改新增 ASCII 双引号。
+- 已有未闭合开引号优先闭合，包括冒号/括号/破折号结尾；无 opener 时按明确开启上下文判断，不明确则保留。只做单层自动配向，不自动嵌套或补配对；已有直引号、弯引号、单引号、复制内容、尺寸/转义字面值不全文改写。
+- IME 组合期只同步原文、不改 DOM；组合开始捕获 id/epoch/原 HTML/选区，结束时按最终 data、当前设置和 epoch 校验新增部分，转换与原输入共用事务。未知 metadata 不猜测；真实中文输入法仍需独立验收。
+- `npm run test:quotes` / `smartquotes-test.cjs` 已纳入统一 33 套回归与两条 CI。自动与浏览器证据见 [SMART_QUOTES_QA_20261007.md](SMART_QUOTES_QA_20261007.md)，版本号未变，不代表已提交、推送、打包、安装或发布。
+
+## 2026-10-07 编辑历史与维护梳理（当前本地候选）
+
+- 当前统一维护入口为 [MAINTENANCE.md](MAINTENANCE.md)，验收事实为 [EDITING_QA_20261007.md](EDITING_QA_20261007.md)。下方历史段落保留，但不得把旧发布/验证状态当作本轮结论。版本号未变，现用应用未替换，未提交/推送/打包/发布。
+- `runEditHistory` 统一键盘/工具栏/菜单/beforeinput，正文不再用原生DOM撤销；只对明确标记的UI草稿用native history。快照弱引用书签恢复Enter重做后的新段与光标，不写工程。筛选/搜索/外观草稿不得误撤销正文。
+- 文字合并保持1500ms idle并加5000ms绝对组上限，120个独立事务上限不变。点击、导航、IME起止和格式操作切断合并；复制/空粘贴/无变化不消耗历史或抹掉redo。
+- 内部剪贴板版本1仅type/html；多段保留类型与基础格式，单段保留目标类型，一次事务；非法payload回退纯文本，格式白名单无属性。范围修改清理SceneMeta.id及旧标题ID两种关联，保留素材本体。异常跨栏范围拒绝并提示，不放松安全校验。
+- `documentEpoch` 防止同ID重载的旧保存/图片回调写错工程；保存快照有新输入则仍dirty，外部FDX/TXT/MD无zhsp文件绑定。打开未保存修改须确认，过期/并发结果不得替换新稿。另存为的文件关联也须更新自动保存，已有正文timer不得被路径变化推迟。
+- 低风险优化限于场景/人物/计数派生、单一格式转换、文本转义及独立smoke壳；未重写分页、PDF、数据目录或幕管理。
+- 新统一入口：typecheck、build、`npm run test:core`。新增 clipboard-format/UI、writing-range-integrity、file-commands、source-integrity、autosave-path、native-draft-history，两条CI同步。原生Electron/系统剪贴板/IME/实际PDF不得据此宣称通过。
+
+## 2026-10-07 自由板第2稿（本地候选）
+
+- 用户已选择紧凑单行标题、选中卡片附近颜色/关联工具、底部选择/连线/缩放方案。顶栏保留三分区，将四类新增和视图设置收进两个下拉菜单；没有删除创建、关联、改色或缩放能力。素材标题双击/F2/Enter 编辑，Enter/失焦提交、Esc 回滚，普通点击标题仍支持拖动与多选。
+- `BoardView` 的连线模式显式由 L/底部入口开启，点两卡后退出；线/卡选区互斥，Delete 删除当前对象，整场正文仍需确认并可完整撤销。关系说明普通状态不显示输入框，编辑草稿不提前写历史，组合期间 Enter 不提交。编辑控件必须阻止画布鼠标事件；快捷键也须检查文本目标与组合状态。
+- 新 `model/boardWorkspace.ts` 只定义板面位置投影与28单位网格磁吸。`Beat.boardX/boardY` 为可选字段，缺省显示回退原写作 `x/y`，仅实际自由板移动时写独立字段。`zhsp` 保留有限值；旧工程打开、保存和切板不主动补坐标。
+- 新 `store.moveBoardCards` / `resizeBoardCard` / `setBoardCardColors` / `addBoardScene` 是板面独立原子事务；旧写作 `moveBeat`、旧 resize 入口及故事板移动不替换。拖动和尺寸预览只用本地 React 状态，鼠标释放一次提交；独立手势不依赖1500ms合并键。场景创建保留正文、默认未归幕，不切写作视图。
+- 完成标题/备注用 `commitBoardCardTitle` / `commitBoardLinkNote` 独立提交，不与上一次正文或另一次确认合并；草稿仅在组件里。画布使用 `overflow:clip`，禁止焦点原生滚动使网格/pan错位；附近工具按实际画布宽高夹限。
+- 删除场景时同时识别规范 `Beat.sceneId = SceneMeta.id` 和旧 heading ID，未选场景关联保持；本轮仅修正自由板共用整场删除 action，不扩大到其他正文删除流程。
+- `board-polish.css` 全部仅 screen/board--polished 范围；默认尺寸仅显示，保存尺寸仍优先。网格显示默认开启、磁吸默认关闭，切换不排布旧卡；Alt 暂停磁吸，组拖动共用一个位移；空格/中键平移，空白拖动框选。
+- 专项：`board-workspace-model-test.cjs`（真实 store/兼容/历史）和 `board-workspace-ui-test.cjs`（合成 jsdom 事件），同时保留 board-polish/scene-notes/render 语义覆盖，已接入两条 CI 与 `npm run test:board`。真实浏览器外观、鼠标与剩余边界见 `design-qa.md`；Node 测试不能表述为 Electron/PDF/原生输入法已验收。
+- 旧 alpha.18.8 图标按钮和 alpha.18.6 “网格仅参考、不吸附”是历史记录，本轮经用户批准的新交互覆盖其界面入口；原删除确认、保存兼容、正文/PDF位置及撤销红线继续生效。不得通过回迁旧条目恢复常驻按钮或让自由板重新使用写作坐标。
+- 验证：typecheck/build退出0，完整25条Node回归退出0（模型113、UI116、board-polish46）；浏览器已测连线/备注/删线、Shift三卡选择、群组拖动及一次撤销、缩放及撤销、磁吸、日夜和820px窗口。三轮比较与未验证边界见 `design-qa.md`。Electron/原生输入法/实际PDF未跑，不能宣布安装包已完成。
+
+
+## 2026-10-07 快捷输入修复（本地候选）
+
+- 参考 Final Draft 官方 SmartType 的词类/分字段匹配，中文场次分别处理内外景、地点、时段，人物括号扩展单独补齐。词库从本工程实时提取；只解析人物/场次/转场/镜头，按未变化元素引用缓存文本投影，不扫描动作/对白，不新增工程字段或独立历史词库。
+- 不照搬 Final Draft 的 Tab 接受候选：用户已明确规定九类循环。空格/右箭头只完成当前字段，Enter 完成并进入既有下一元素，Esc 保焦；候选不匹配当前段落、类型、光标和文本时必须作废。只替换字段文本节点，保留前后文字与格式；既有 `replaceWritingRange` 让完成候选成为独立撤销事务。
+- 空动作段逐字输入 INT./EXT./内景可识别，不能在首字 I/IN 时提前抢成“人物”。中文组合期仅同步输入，提交后识别；显式类型与已有正文不被猜测覆盖。候选在切类型、段中光标/选区、组合开始、失焦、滚动、窗口改变时作废；不能恢复旧的延迟 blur 清除跨段候选。
+- `ScriptBlock` 的布局同步依赖同时包含文字、类型和场号：场号包装重建时先填回新 DOM 再恢复光标，否则 Tab 到场次标题时偏移会被空节点夹成0。不要只测试焦点 ID，还要检查每次切换后的内容和光标偏移。
+- 新增 `smarttype-test.cjs` 与 `smarttype-ui-test.cjs`，两条CI均运行。纯函数与jsdom结果不能代替原生中文输入法、Electron或实际PDF验收。参考：[SmartType官方说明](https://kb.finaldraft.com/hc/en-us/articles/27750003388948-What-is-SmartType-and-how-do-I-use-it)、[官方键位说明](https://kb.finaldraft.com/hc/en-us/articles/27977488282644-What-keyboard-shortcuts-can-I-use-in-Final-Draft)。
+
+## 2026-10-07 进度栏轻薄外观（本地候选）
+
+- 本轮仅改 `styles/progress-bands.css` 的进度栏内部外观：8px 可见轨道由无鼠标事件的伪元素绘制，标尺仍保留30px点击盒、56px指针锚点、76px外栏及原两行网格；场景色带为16px，置于原18px网格行中。
+- 保留九类Tab、打字机跳动、25/75%里程碑、目标留白比例、已写页跳转、精确场标题跳转、超目标提示及声音卡控件。目标输入略加宽以容纳四位数，保留原生步进功能；不改进度计算、事件、工程字段、正文排版或PDF。
+- `progress-bands-test.cjs` 分别保护外部几何/点击盒与8px绘制规则，允许用户批准的内部色带变薄，不再将所有子元素高度一概视为外栏高度。验证结果以当前交付记录为准，未更新已安装应用或发布包。
+
+## 2026-10-07 本轮验证记录
+
+- `npm run build` 成功；当前核心基线除构建外的22条命令，以及 `studio-theme-test.cjs` / `appearance-test.cjs` 全部退出0，共24条。快捷输入纯函数84/84，编辑器交互254/254；未删减既有断言。
+- 在独立 `127.0.0.1:5207` 浏览器预览中，仅用合成工程实测：连续11次Tab与11次Shift+Tab保留当前正文节点、文字和光标偏移；右箭头补人物、撤销回到原前缀、空格补地点后选择时段、Enter进入动作段均通过。
+- 日间/夜间及窄窗口外观已看图，四位目标数仍完整显示。截图位于工作区外层 `captures/progress-ui-20261007/`，不是源码或生产资源；构建目录不保留QA种子HTML。
+- 本轮未运行原生Electron，未使用真实中文输入法，也未重新生成实际PDF；组合输入与PDF只运行合成事件/mock回归。不能把这些结果表述为上述三项实机验收。未打包、安装、提交、推送或发布。
 
 ## alpha.18.10 编辑与查找边界
 
@@ -17,7 +87,7 @@
 - `pdf-transport-test.cjs` 覆盖大负载与资源清理；`pdf-layout-electron.cjs` 使用随机合成 PNG 生成大图 PDF，并保留原位图文、长单列/双列及短对白验收。
 - 不操作用户现用剧本、自动保存或运行实例。测试包为 alpha.18.9，需用户保存并退出旧版后再切换；公开发布状态以 GitHub Releases 为准。
 
-## alpha.18.8 自由板外观边界
+## alpha.18.8 自由板外观边界（历史记录，入口已由第2稿替代）
 
 - 只改 `BoardView.tsx` 的卡片内部排列和视觉标签，以及 `board-polish.css` 屏幕范围；事件处理、store、保存、正文和 PDF 均不变。
 - 删除整场现在是垃圾桶图标，必须保留明确 aria-label/title、原生确认及完整撤销。不能因取消文字就丢失危险操作说明。
@@ -54,7 +124,7 @@
 
 - 以最新 [CORE_FEATURES.md](CORE_FEATURES.md) 为验收清单；[MIGRATION.md](MIGRATION.md) 用于追溯历史，不要重新实现已被用户取消的三主题进度或素材附页。
 - 当前真实 PNG 打字机指针位于 `src/assets/typewriter-pointer.png`，由 `ProgressBar.tsx` 使用；不要重新放回 `StatusBar.tsx`。
-- 当前维护目标为 `1.3.0-alpha.18.8`；完成全部回归后才能考虑正式 `1.3.0`。
+- 当前源码版本号为 `1.3.0-alpha.18.11`；它仍是alpha测试版，不能把此次发包描述成正式 `1.3.0` 或全平台认证。
 - 新建候选安装包，保留用户当前应用与资料。打包脚本拒绝覆盖已有产物，可显式选择已验证的 `RUNTIME_APP`；这不代表签名/公证或跨机安装已完成。
 
 ## 隐私红线

@@ -4,7 +4,8 @@
  * Renderer path may be selected via GUANGYING_TEST_RENDERER/GUANGYING_TEST_ROOT.
  * Exercises the production menu IPC handler; this does not test OS menu accelerators.
  */
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, ipcMain } = require('electron');
+const { createFixtureWindow } = require('./native-fixture-window.cjs');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -40,13 +41,8 @@ const status = () => run(`document.querySelector('.find-panel [role=status]').te
 const current = () => run(`[...CSS.highlights.get('script-find-current')].map(r=>r.toString())`);
 app.whenReady().then(async () => {
   try {
-    win = new BrowserWindow({ width: 1440, height: 960, show: true, webPreferences: {
-      preload: path.join(root, 'electron/preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
-    } });
     const errors = [];
-    win.webContents.on('console-message', (_event, level, message) => { if (level >= 3) errors.push(message); });
-    await win.loadFile(renderer);
-    await until(`!!document.querySelector('.script-flow [contenteditable]')`);
+    const observe = candidate => candidate.webContents.on('console-message', (_event, level, message) => { if (level >= 3) errors.push(message); });
     const project = { id: 'search-qa', name: '合成查找测试', createdAt: 1, updatedAt: 1, titlePage: { show: false },
       settings: {}, acts: [], sceneMeta: [], boardLinks: [], revisions: [], beats: [],
       elements: [
@@ -55,9 +51,8 @@ app.whenReady().then(async () => {
         { id: 'search-bottom', type: 'action', text: '&#x1F3AC;底部定位合成' },
         { id: 'search-note', type: 'note', text: '合成备忘' },
       ] };
-    await run(`localStorage.setItem('guangying:autosave',${JSON.stringify(JSON.stringify({ project, filePath: null }))})`);
-    await run(`localStorage.setItem('guangying:appTheme','day')`);
-    await win.loadFile(renderer);
+    win = await createFixtureWindow({ out, renderer, project, theme: 'day',
+      preload: path.join(root, 'electron/preload.js'), onCreated: observe });
     await until(`!!document.querySelector('.editor__scroll[data-ready=true]')`);
     // parseProject fills defaults on load; settle that initial autosave before
     // measuring whether the following read-only search changes anything.
@@ -103,7 +98,9 @@ app.whenReady().then(async () => {
     await pause(1100);
     assert.equal(await run(`localStorage.getItem('guangying:autosave')`), beforeAutosave);
     await run(`localStorage.setItem('guangying:appTheme','night')`);
-    await win.loadFile(renderer);
+    // Retain this read-only fixture's isolated storage, without replacing seed.
+    win = await createFixtureWindow({ out, renderer, previous: win, restore: true,
+      preload: path.join(root, 'electron/preload.js'), onCreated: observe });
     await until(`!!document.querySelector('.editor__scroll[data-ready=true]')`);
     win.webContents.send('menu:action', 'edit:find');
     await until(`document.activeElement?.getAttribute('aria-label')==='查找内容'`);

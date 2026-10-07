@@ -21,7 +21,7 @@ function normalizeSceneNumber(raw: unknown): ScriptSettings['sceneNumber'] {
 
 /**
  * 把任意来源的 beat 对象规整为 Beat。
- * 仅对缺失的必填字段做最小兜底；可选字段（kind/title/img/w/h）保留 undefined，
+ * 仅对缺失的必填字段做最小兜底；可选字段（boardX/boardY/kind/title/img/w/h）保持缺省，
  * 序列化时由 JSON.stringify 自动跳过，从而保证旧数据的 round-trip 完全无损。
  */
 function normalizeBeat(raw: unknown): Beat {
@@ -35,6 +35,8 @@ function normalizeBeat(raw: unknown): Beat {
     x,
     y,
   };
+  if (typeof b.boardX === 'number' && Number.isFinite(b.boardX)) beat.boardX = b.boardX;
+  if (typeof b.boardY === 'number' && Number.isFinite(b.boardY)) beat.boardY = b.boardY;
   if (typeof b.sceneId === 'string' && b.sceneId) beat.sceneId = b.sceneId;
   // `wimg` 是旧版「写作图」的重复类型。读取时归并为 image，保留图片、标题、坐标与尺寸；
   // 新版不会再生成 wimg，从而只维护一套图片卡和一条 PDF 导出链路。

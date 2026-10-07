@@ -14,15 +14,13 @@ import { SettingsDialog, TitlePageDialog } from './components/Dialogs';
 import { useCommands } from './app/useCommands';
 import { onMenuAction } from './io/native';
 import { isElectron } from './io/native';
-import { parseProject } from './io/zhsp';
 import { sampleProject } from './model/sample';
 import { hexToRgba } from './utils/color';
 import { resolveFontColor } from './model/appearance';
 import { subscribeAutosave } from './app/autosaveSubscription';
-
-// 新名称使用独立键；读取旧键一次，确保升级后不会丢失已有自动保存。
-const LS_KEY = 'guangying:autosave';
-const LEGACY_LS_KEY = 'mojiang:autosave';
+import { readRecovery, createRecoveryWriter, recoveryErrorMessage } from './app/autosaveStorage';
+import { useRecoveryStatus } from './app/recoveryStatus';
+import { ownsNativeHistory, runEditHistory } from './utils/editHistory';
 
 export default function App() {
   const view = useStore((s) => s.view);
@@ -39,6 +37,7 @@ export default function App() {
     return () => window.removeEventListener('guangying:find', open);
   }, []);
   const commands = useCommands();
+  const isSaving = commands.isSaving;
   // 与工作台共用纯色背景；仅改变显示，不改变稿纸或素材的坐标。
   const writeBg = appTheme === 'day'
     ? 'linear-gradient(#eeede8, #eeede8)'
@@ -46,31 +45,66 @@ export default function App() {
 
   /* 启动：读取自动保存或示例剧本 */
   useEffect(() => {
-    const raw = localStorage.getItem(LS_KEY) || localStorage.getItem(LEGACY_LS_KEY);
-    if (raw) {
-      try {
-        const saved = JSON.parse(raw);
-        if (saved && saved.project) {
-          useStore.getState().loadProject(parseProject(JSON.stringify(saved.project)), saved.filePath || null);
-          // 将旧自动保存平滑迁移到光影写手命名空间；旧键不删除，便于回退旧版本。
-          if (!localStorage.getItem(LS_KEY)) localStorage.setItem(LS_KEY, raw);
-          return;
-        }
-      } catch {
-        /* 忽略损坏的自动保存 */
-      }
+    // Obtaining window.localStorage itself can throw in a restricted context.
+    let recovered;
+    try { recovered = readRecovery(window.localStorage); }
+    catch { recovered = { snapshot: null, source: null, warning: '无法读取自动恢复存储。请手动保存工程文件。' }; }
+    const saved = recovered.snapshot;
+    useStore.getState().loadProject(saved?.project ?? sampleProject(), saved?.filePath ?? null);
+    // Recovery is not proof of a completed disk save. Loading is independent of
+    // migration: quota/permissions must never replace recovered writing by blank.
+    if (saved) useStore.setState({ dirty: true });
+    if (recovered.warning) {
+      useRecoveryStatus.setState({ phase: 'error', error: recovered.warning, lastSuccess: null });
+      useStore.getState().notify(recovered.warning, 'error');
     }
-    useStore.getState().loadProject(sampleProject(), null);
   }, []);
 
   /* 自动保存到本地 */
-  useEffect(() => subscribeAutosave(useStore, (saved) => {
+  useEffect(() => {
+    let failureReported = false;
+    let epoch = useStore.getState().documentEpoch;
+    const writeRecovery = createRecoveryWriter(() => window.localStorage);
+    const subscription = subscribeAutosave(useStore, (saved) => {
       try {
-        localStorage.setItem(LS_KEY, JSON.stringify(saved));
-      } catch {
-        /* 忽略容量问题 */
+        writeRecovery(saved);
+        failureReported = false;
+        useRecoveryStatus.setState({ phase: 'saved', error: null, lastSuccess: Date.now() });
+        return true;
+      } catch (error) {
+        const message = recoveryErrorMessage(error);
+        useRecoveryStatus.setState({ phase: 'error', error: message });
+        // One toast per failure episode, not a modal on every keystroke.
+        if (!failureReported) useStore.getState().notify(message, 'error');
+        failureReported = true;
+        return false;
       }
-  }), []);
+    }, undefined, () => {
+      const currentEpoch = useStore.getState().documentEpoch;
+      if (currentEpoch !== epoch) {
+        epoch = currentEpoch;
+        useRecoveryStatus.setState({ lastSuccess: null });
+      }
+      if (useRecoveryStatus.getState().phase !== 'error') useRecoveryStatus.setState({ phase: 'pending' });
+    });
+    const flush = () => subscription.flush();
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      const recovered = flush();
+      const state = useStore.getState();
+      const uncommittedDraft = !!document.querySelector('[data-project-draft-pending="true"]');
+      if (state.dirty || uncommittedDraft || !recovered || isSaving()) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', beforeUnload);
+      subscription();
+    };
+  }, [isSaving]);
 
   useEffect(() => {
     document.title = `${projectName} · 光影写手`;
@@ -130,12 +164,10 @@ export default function App() {
           setDialog('settings');
           break;
         case 'edit:undo':
-          if (document.activeElement?.closest('.find-panel')) document.execCommand('undo');
-          else st.undo();
+          runEditHistory('undo');
           break;
         case 'edit:redo':
-          if (document.activeElement?.closest('.find-panel')) document.execCommand('redo');
-          else st.redo();
+          runEditHistory('redo');
           break;
         case 'edit:find':
           commands.openFind();
@@ -187,7 +219,7 @@ export default function App() {
           '8': 'element:act',
         };
         const key = e.key.toLowerCase();
-        if (key === 'z' && (e.target as HTMLElement).closest('.find-panel')) return;
+        if (key === 'z' && ownsNativeHistory(e.target)) return;
         if (map[key]) {
           e.preventDefault();
           run(map[key]);

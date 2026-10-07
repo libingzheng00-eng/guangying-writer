@@ -1,5 +1,6 @@
 /** 真实导出回归：合成七场剧本，第五场旁放参考图和声音卡。全程独立用户目录。 */
 const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
+const { createFixtureWindow } = require('./native-fixture-window.cjs');
 const { randomBytes } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -42,9 +43,6 @@ const geometry = `(() => {
 app.whenReady().then(async () => {
   let proof;
   try {
-    win = new BrowserWindow({width:1440,height:960,show:true,webPreferences:{preload:path.join(root,'electron/preload.js'),nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
-    await win.loadFile(renderer);
-    await until('!!document.querySelector(".editor__scroll[data-ready=true]")');
     const image = 'data:image/png;base64,' + fs.readFileSync(path.join(root,'src/assets/typewriter-pointer.png')).toString('base64');
     const project = { id:'pdf-qa',name:'图文位置验收',createdAt:1,updatedAt:1,titlePage:{show:false},sceneMeta:[],boardLinks:[],acts:[],revisions:[],settings:{paper:'letter'},elements:[],beats:[
       {id:'qa-image',kind:'image',title:'第五场视角参考',text:'参考图应与第五场并列，不能出现在文末。',img:image,color:'#fff',x:860,y:100},
@@ -55,8 +53,8 @@ app.whenReady().then(async () => {
       project.elements.push({id:`action-${i}`,type:'action',text:`第${i}场正文。镜头越过窗边，停在桌面上。这里仅使用合成的测试文字。`.repeat(5)});
     }
     const loadProject = async () => {
-      await run(`localStorage.setItem('guangying:autosave',${JSON.stringify(JSON.stringify({project,filePath:null}))});localStorage.setItem('guangying:appTheme','day');`);
-      await win.loadFile(renderer);
+      win = await createFixtureWindow({ out, renderer, project, theme: 'day', previous: win,
+        preload: path.join(root, 'electron/preload.js') });
       await until('!!document.querySelector(".editor__scroll[data-ready=true]") && !!document.querySelector("[data-id=scene-5]")');
     };
     await loadProject();

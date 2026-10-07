@@ -4,13 +4,25 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '只读核验已发布版本（不打包、不上传、不修改附件）'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-macos-${{ github.repository }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release-macos-arm64:
     runs-on: macos-14
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - name: 获取源码
         uses: actions/checkout@v4
@@ -21,7 +33,20 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: 核验标签与已有附件（不覆盖）
+        id: release-plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/release-assets-test.cjs
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            node scripts/release-assets.cjs --mode verify --repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG"
+          else
+            node scripts/release-assets.cjs --mode prepare --repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --sha "$GITHUB_SHA"
+          fi
+
       - name: 安装依赖并检查源码
+        if: steps.release-plan.outputs.needs-build == 'true'
         run: |
           npm ci
           npm run typecheck
@@ -30,6 +55,20 @@ jobs:
           node scripts/render-test.cjs
           node scripts/writing-test.cjs
           node scripts/editing-test.cjs
+          node scripts/smartquotes-test.cjs
+          node scripts/clipboard-format-test.cjs
+          node scripts/clipboard-ui-test.cjs
+          node scripts/writing-range-integrity-test.cjs
+          node scripts/file-commands-test.cjs
+          node scripts/autosave-path-test.cjs
+          node scripts/autosave-recovery-test.cjs
+          node scripts/project-save-test.cjs
+          node scripts/project-save-ipc-test.cjs
+          node scripts/writing-derivation-test.cjs
+          node scripts/native-draft-history-test.cjs
+          node scripts/source-integrity-test.cjs
+          node scripts/smarttype-test.cjs
+          node scripts/smarttype-ui-test.cjs
           node scripts/search-test.cjs
           node scripts/search-ui-test.cjs
           node scripts/zhsp-compat-test.cjs
@@ -45,13 +84,21 @@ jobs:
           node scripts/storyboard-acts-test.cjs
           node scripts/reports-test.cjs
           node scripts/board-polish-test.cjs
+          node scripts/board-workspace-model-test.cjs
+          node scripts/board-workspace-ui-test.cjs
           node scripts/writing-controls-test.cjs
           node scripts/progress-bands-test.cjs
 
       - name: 打包 arm64 应用
-        run: bash package.sh
+        if: steps.release-plan.outputs.needs-build == 'true'
+        run: |
+          test "$RELEASE_TAG" = "v$(node -p "require('./package.json').version")"
+          bash package.sh
+          node scripts/core-guard.cjs --package "release/GuangyingWriter.app/Contents/Resources/app"
+          codesign --verify --deep --strict "release/GuangyingWriter.app"
 
       - name: 创建 DMG
+        if: steps.release-plan.outputs.needs-build == 'true'
         run: |
           mkdir release/dmg-content
           ditto "release/GuangyingWriter.app" "release/dmg-content/光影写手.app"
@@ -60,16 +107,12 @@ jobs:
             -volname "光影写手" \
             -srcfolder "release/dmg-content" \
             -format UDZO \
-            "release/GuangyingWriter-macOS-arm64-${GITHUB_REF_NAME}.dmg"
+            "release/GuangyingWriter-macOS-arm64-${RELEASE_TAG}.dmg"
 
       - name: 发布到 GitHub Releases
+        if: steps.release-plan.outputs.needs-build == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 网页先创建的预发布也能接收 CI 产物；避免因 release 已存在而整条流水线失败。
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
-            gh release create "$GITHUB_REF_NAME" --title "光影写手 $GITHUB_REF_NAME" --generate-notes
-          gh release upload "$GITHUB_REF_NAME" \
-            "release/GuangyingWriter-macOS-arm64.zip" \
-            "release/GuangyingWriter-macOS-arm64-${GITHUB_REF_NAME}.dmg" \
-            --clobber
+          # 仅明确不存在时新建草稿；现有附件不删除、不覆盖、不移动tag。
+          node scripts/release-assets.cjs --mode publish --repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --sha "$GITHUB_SHA" --dir release

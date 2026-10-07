@@ -29,17 +29,22 @@ process.on('exit', () => {
     if (condition) console.log(`  ✓ ${name}`);
     else { console.log(`  ✗ ${name}`); failures.push(name); }
   };
-  const reset = (project) => useStore.setState({
-    project,
-    past: [],
-    future: [],
-    dirty: false,
-    selectedIds: [],
-    writingSelectionMode: false,
-    writingSelectedIds: [],
-    activeId: project.elements[0]?.id || null,
-    version: 0,
-  });
+  const reset = (project) => {
+    useStore.getState().breakHistoryGroup();
+    useStore.setState({
+      project,
+      filePath: null,
+      past: [],
+      future: [],
+      dirty: false,
+      selectedIds: [],
+      writingSelectionMode: false,
+      writingSelectedIds: [],
+      activeId: project.elements[0]?.id || null,
+      focus: null,
+      version: 0,
+    });
+  };
   const state = () => useStore.getState();
 
   console.log('\n== Item 6c：撤销 / 重做安全 ==');
@@ -146,10 +151,96 @@ process.on('exit', () => {
   p2.beats = [{ id: 'same', text: '', color: '#fff7d6', x: 0, y: 0, w: 220, h: 170 }];
   state().loadProject(p1);
   state().resizeBeat('same', 300, 200);
-  state().loadProject(p2);
+  state().loadProject(p2, '/synthetic/project-two.zhsp');
+  ok('打开工程清空上一工程的撤销与重做', state().past.length === 0 && state().future.length === 0);
+  state().undo();
+  ok('打开后立即撤销仍保留当前工程与文件路径', state().project === p2 && state().filePath === '/synthetic/project-two.zhsp' && !state().dirty);
   state().resizeBeat('same', 310, 210);
   state().undo();
   ok('切换工程后撤销只回退当前工程', state().project.name === '工程二' && state().project.beats[0].w === 220);
+  const openedBaseline = state().project;
+  state().undo();
+  ok('当前工程第二次撤销不跨回上一个文件', state().project === openedBaseline && state().past.length === 0 && state().future.length === 1 && state().filePath === '/synthetic/project-two.zhsp');
+  state().redo();
+  ok('工程内重做恢复当前工程操作', state().project.name === '工程二' && state().project.beats[0].w === 310 && state().filePath === '/synthetic/project-two.zhsp');
+  state().undo();
+  state().loadProject(p1, '/synthetic/project-one.zhsp');
+  state().redo();
+  ok('打开另一个工程清空旧重做分支', state().project === p1 && state().past.length === 0 && state().future.length === 0 && !state().dirty);
+  state().resizeBeat('same', 330, 230);
+  state().newProject();
+  const blank = state().project;
+  state().undo(); state().redo();
+  ok('新建工程不可撤销或重做到旧文件', state().project === blank && state().filePath === null && state().past.length === 0 && state().future.length === 0 && !state().dirty);
+  ok('新建工程清除旧焦点请求与选择', state().focus === null && state().selectedIds.length === 0 && state().writingSelectedIds.length === 0);
+
+  // Forty distinct editing transactions must walk back and forward exactly.
+  const sequence = createProject('合成连续撤销');
+  sequence.elements = [{ id: 'sequence-a', type: 'action', text: '合成起点' }];
+  reset(sequence);
+  const snapshots = [JSON.stringify(state().project)];
+  for (let i = 1; i <= 40; i++) {
+    state().breakHistoryGroup();
+    state().setText('sequence-a', `合成事务${i}`);
+    snapshots.push(JSON.stringify(state().project));
+  }
+  ok('40个独立正文事务均保留撤销点', state().past.length === 40);
+  let exactUndo = true;
+  for (let i = 39; i >= 0; i--) {
+    state().undo();
+    exactUndo &&= JSON.stringify(state().project) === snapshots[i] && state().past.length === i;
+  }
+  ok('连续40次撤销每一步精确恢复快照', exactUndo && state().future.length === 40);
+  let exactRedo = true;
+  for (let i = 1; i <= 40; i++) {
+    state().redo();
+    exactRedo &&= JSON.stringify(state().project) === snapshots[i] && state().future.length === 40 - i;
+  }
+  ok('连续40次重做每一步精确恢复快照', exactRedo && state().past.length === 40);
+  state().undo();
+  const beforeBoundary = state();
+  let boundaryNotifications = 0;
+  const unsubscribeBoundary = useStore.subscribe(() => boundaryNotifications++);
+  state().breakHistoryGroup();
+  unsubscribeBoundary();
+  ok('显式合并断点无状态、版本、dirty、历史或订阅副作用', state() === beforeBoundary && boundaryNotifications === 0);
+  state().setText('sequence-a', '合成新分支');
+  ok('显式断点后的新输入保留旧撤销且清空redo', state().past.length === 40 && state().future.length === 0);
+
+  // IDs are interface state, not snapshot history; stale IDs must be removed.
+  const selectionProject = createProject('合成选区清理');
+  selectionProject.elements = [
+    { id: 'keep-scene', type: 'scene_heading', text: '内景 合成空间 日' },
+    { id: 'keep-action', type: 'action', text: '合成动作' },
+  ];
+  selectionProject.beats = [{ id: 'keep-beat', text: '合成卡片', color: '#fff', x: 0, y: 0 }];
+  reset(selectionProject);
+  state().mutate(p => {
+    p.elements.push({ id: 'new-action', type: 'action', text: '新合成段落' });
+    p.beats.push({ id: 'new-beat', text: '新合成卡片', color: '#fff', x: 0, y: 0 });
+  });
+  state().requestFocus('new-action', 2);
+  state().setSelectedIds(['scene:keep-scene', 'beat:keep-beat', 'keep-beat', 'beat:new-beat', 'scene:keep-action', 'missing']);
+  state().setWritingSelectedIds(['keep-action', 'new-action']);
+  state().undo();
+  ok('撤销新增清除失效active与focus但不强制聚焦', state().activeId === null && state().focus === null);
+  ok('撤销仅过滤失效板面选区并保留兼容裸ID', JSON.stringify(state().selectedIds) === JSON.stringify(['scene:keep-scene', 'beat:keep-beat', 'keep-beat']));
+  ok('撤销保留尚存在的正文选区', JSON.stringify(state().writingSelectedIds) === JSON.stringify(['keep-action']));
+  state().requestFocus('keep-action', 1);
+  const survivingFocus = state().focus;
+  state().redo();
+  ok('重做保留合法active及原焦点请求不制造新请求', state().activeId === 'keep-action' && state().focus === survivingFocus);
+  state().mutate(p => {
+    p.elements = p.elements.filter(el => el.id !== 'keep-action');
+    p.beats = p.beats.filter(beat => beat.id !== 'keep-beat');
+  });
+  state().undo();
+  state().requestFocus('keep-action', 1);
+  state().setSelectedIds(['scene:keep-scene', 'beat:keep-beat', 'beat:new-beat']);
+  state().setWritingSelectedIds(['keep-action', 'new-action']);
+  state().redo();
+  ok('重做删除清除失效active与focus', state().activeId === null && state().focus === null);
+  ok('重做删除仅过滤消失的卡片与段落选区', JSON.stringify(state().selectedIds) === JSON.stringify(['scene:keep-scene', 'beat:new-beat']) && JSON.stringify(state().writingSelectedIds) === JSON.stringify(['new-action']));
 
   if (failures.length) {
     console.error(`\nFAILURES: ${failures.length}`);

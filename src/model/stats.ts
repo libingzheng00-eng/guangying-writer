@@ -72,20 +72,21 @@ export function computeStats(p: ScriptProject, pageCount?: number): ScriptStats 
   let dialogueWords = 0;
   let actionWords = 0;
   let cjk = 0;
+  let words = 0;
   p.elements.forEach((el) => {
     if (el.type === 'note') return;
     elementCounts[el.type] = (elementCounts[el.type] || 0) + 1;
     const w = countWords(el.text);
+    words += w;
     if (el.type === 'dialogue') dialogueWords += w;
     if (el.type === 'action') actionWords += w;
     cjk += plain(el.text).match(/[\u4e00-\u9fff]/g)?.length ?? 0;
   });
-  const totalAll = p.elements.reduce((acc, el) => (el.type === 'note' ? acc : acc + countWords(el.text)), 0);
   const pages = pageCount && pageCount > 0 ? pageCount : estimatePages(p);
   const scenes = deriveScenes(p);
   const chars = deriveCharacters(p);
   return {
-    words: totalAll,
+    words,
     cjk,
     dialogueWords,
     actionWords,
@@ -93,7 +94,7 @@ export function computeStats(p: ScriptProject, pageCount?: number): ScriptStats 
     sceneCount: scenes.length,
     characterCount: chars.length,
     estimatedPages: pages,
-    estimatedMinutes: totalAll / Math.max(1, p.settings.wordsPerMinute),
+    estimatedMinutes: words / Math.max(1, p.settings.wordsPerMinute),
   };
 }
 

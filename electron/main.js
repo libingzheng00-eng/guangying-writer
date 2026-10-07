@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron')
 const path = require('node:path');
 const fs = require('node:fs');
 const { renderPdf } = require('./pdf');
+const { saveProjectFile } = require('./projectSave');
 
 /* ---------------------------- 主进程崩溃兜底 ---------------------------- */
 /* 任何未捕获的同步异常 / 未处理的 Promise 拒绝，默认会让 Electron 直接退出且无提示。
@@ -69,6 +70,17 @@ function createWindow() {
   });
 
   win.once('ready-to-show', () => win.show());
+  // beforeunload first flushes the latest recovery point in the renderer.
+  // A recovery point is NOT a disk save: default to staying in the document.
+  win.webContents.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'warning', title: '关闭前确认保存',
+      message: '尚有未保存的修改、未确认的卡片文字，或保存仍在进行。',
+      detail: '请先确认卡片文字，再使用“保存/另存为”。自动恢复点不能替代工程文件；恢复点保存失败时也请不要直接退出。',
+      buttons: ['继续写作', '仍然离开'], defaultId: 0, cancelId: 0, noLink: true,
+    });
+    if (choice === 1) event.preventDefault(); // Electron: allow the unload.
+  });
   // 窗口关闭后把引用置空，避免后续 send() 打到已销毁的窗口而抛错
   win.on('closed', () => {
     win = null;
@@ -177,6 +189,18 @@ function buildMenu() {
 
 /* ---------------------------- IPC ---------------------------- */
 
+function warnProjectSaveDurability(result) {
+  const warning = result?.durabilityWarning;
+  if (result?.directorySynced !== false || typeof warning !== 'string' ||
+      !/^directory-sync-[A-Z][A-Z0-9_]{0,31}$/.test(warning)) return;
+  // The atomic replacement already committed. Diagnostics must not include the
+  // project path/content or turn a successful save into a failure dialog/null.
+  // Unsupported directory fsync is an expected platform limitation, not an error.
+  try {
+    console.warn('[光影写手] 工程已写入；目录持久化同步未确认。', warning);
+  } catch { /* logging failure cannot undo an already successful save */ }
+}
+
 ipcMain.handle('dialog:open', async () => {
   const res = await dialog.showOpenDialog(win, {
     properties: ['openFile'],
@@ -211,7 +235,7 @@ ipcMain.handle('dialog:save', async (_e, { content, path: target, name }) => {
     file = res.filePath;
   }
   try {
-    fs.writeFileSync(file, content, 'utf8');
+    warnProjectSaveDurability(await saveProjectFile(file, content));
   } catch (err) {
     dialog.showErrorBox('保存失败', `无法写入文件：${file}\n${err && err.message ? err.message : err}`);
     return null;
@@ -227,7 +251,8 @@ ipcMain.handle('dialog:saveAs', async (_e, { content, name, ext }) => {
   });
   if (res.canceled || !res.filePath) return null;
   try {
-    fs.writeFileSync(res.filePath, content, 'utf8');
+    if ((ext || 'zhsp').toLowerCase() === 'zhsp') warnProjectSaveDurability(await saveProjectFile(res.filePath, content));
+    else fs.writeFileSync(res.filePath, content, 'utf8');
   } catch (err) {
     dialog.showErrorBox('导出失败', `无法写入文件：${res.filePath}\n${err && err.message ? err.message : err}`);
     return null;

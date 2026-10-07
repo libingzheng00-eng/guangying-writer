@@ -2,7 +2,8 @@
  * Load via an independent QA app, never by attaching to the user's application.
  * Input-to-two-frames timings include frame scheduling; not an end-user latency SLA.
  */
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, ipcMain } = require('electron');
+const { createFixtureWindow } = require('./native-fixture-window.cjs');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -22,23 +23,18 @@ async function until(js) {
 }
 app.whenReady().then(async () => {
   try {
-    win = new BrowserWindow({ width: 1440, height: 960, show: true,
-      webPreferences: { preload: path.join(root, 'electron/preload.js'), contextIsolation: true,
-        nodeIntegration: false, backgroundThrottling: false } });
     const errors = [];
-    win.webContents.on('console-message', (_event, level, message) => {
+    const observe = candidate => candidate.webContents.on('console-message', (_event, level, message) => {
       if (level >= 3) { errors.push(message); console.error('RENDERER', message); }
     });
-    await win.loadFile(renderer);
-    await until('!!document.querySelector(".script-flow [contenteditable]")');
     const project = { id: 'input-qa', name: '合成输入测试', createdAt: 1, updatedAt: 1,
       titlePage: { show: false }, settings: {}, acts: [], sceneMeta: [], boardLinks: [], revisions: [],
       elements: Array.from({ length: 300 }, (_, i) => ({ id: `qa-${i}`,
         type: i % 10 === 0 ? 'scene_heading' : 'action', text: i % 10 === 0 ? `内景 合成场景${i} 日` : '合成测试文字。'.repeat(8) })),
       beats: [{ id: 'image-qa', kind: 'image', title: '合成素材', text: '', color: '#fff', x: 850, y: 40,
         img: 'data:image/png;base64,' + fs.readFileSync(path.join(root, 'src/assets/typewriter-pointer.png')).toString('base64') }] };
-    await run(`localStorage.setItem('guangying:autosave',${JSON.stringify(JSON.stringify({ project, filePath: null }))});`);
-    await win.loadFile(renderer);
+    win = await createFixtureWindow({ out, renderer, project,
+      preload: path.join(root, 'electron/preload.js'), onCreated: observe });
     await until('!!document.querySelector(".editor__scroll[data-ready=true]") && !!document.querySelector(".script-flow [data-id=qa-1]")');
     win.show(); win.focus();
     await run(`(() => {
@@ -76,12 +72,15 @@ app.whenReady().then(async () => {
     const result = { renderer, measuredInputs: times.length, paragraphs: 300,
       medianInputToTwoFramesMs: times[Math.floor(times.length / 2)],
       maxInputToTwoFramesMs: times.at(-1), errors };
-    await win.loadFile(renderer);
+    // Recreate only the owned test window, with the same partition and HTML URL
+    // but no seed. This validates recovery, NOT production close/reload prompts.
+    win = await createFixtureWindow({ out, renderer, previous: win, restore: true,
+      preload: path.join(root, 'electron/preload.js'), onCreated: observe });
     await until('!!document.querySelector(".editor__scroll[data-ready=true]") && !!document.querySelector(".script-flow [data-id=qa-1]")');
     assert.equal(await run(`document.querySelector('.script-flow [data-id=qa-1]').textContent`), expected);
     await until('document.querySelector(".writing-material-card__image")?.naturalWidth > 0');
     assert.equal(await run('document.querySelectorAll(".script-flow [contenteditable]").length'), 300);
-    console.log('PASS 自动保存后重载，正文、图片与300段结构完整');
+    console.log('PASS 同一隔离存储中无新seed重建测试窗口，恢复正文、图片与300段结构完整（不验收关闭确认）');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(out, 'input.png'), (await win.webContents.capturePage()).toPNG());
     fs.writeFileSync(path.join(out, 'result.json'), JSON.stringify(result, null, 2));

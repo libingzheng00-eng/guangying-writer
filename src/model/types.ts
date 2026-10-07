@@ -77,9 +77,12 @@ export interface Beat {
   id: string;
   text: string;
   color: string;
-  /** 自由画布坐标 */
+  /** 写作画布 / 创作 PDF 的素材坐标；旧工程也用作自由板初始坐标。 */
   x: number;
   y: number;
+  /** 自由板独立坐标；缺失时仅在显示时回退到 x/y，不自动写入旧工程。 */
+  boardX?: number;
+  boardY?: number;
   /** 关联的场景卡 id（SceneMeta.id），可选 */
   sceneId?: string;
   /** 卡片种类；旧数据缺省时按 'beat' 处理 */

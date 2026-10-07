@@ -4,7 +4,8 @@
  * GUANGYING_TEST_ROOT 指向源码根，GUANGYING_TEST_RENDERER 可指定待验收安装包的 index.html。
  * 结果和截图保留在输出的临时目录。CDP 不能代替 Finder 手工拖动的系统层验收。
  */
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, ipcMain } = require('electron');
+const { createFixtureWindow } = require('./native-fixture-window.cjs');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -61,10 +62,7 @@ async function screenshot(name) {
 }
 app.whenReady().then(async () => {
   try {
-    win = new BrowserWindow({ width: 1440, height: 960, show: true,
-      webPreferences: { preload: path.join(root, 'electron/preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
-    });
-    await win.loadFile(renderer);
+    win = await createFixtureWindow({ out, renderer, preload: path.join(root, 'electron/preload.js') });
     await until('!!document.querySelector(".script-flow [contenteditable]")');
     win.webContents.debugger.attach('1.3');
     check('独立用户目录首次启动为空白正文', await run(`!document.querySelector('.script-flow [contenteditable]').textContent.trim()`));
@@ -125,12 +123,13 @@ app.whenReady().then(async () => {
     check('保存后重新打开保留图片', await count() === 5);
     await run(`localStorage.setItem('guangying:appTheme','day')`);
     await pause(1000);
-    await win.loadFile(renderer);
+    win = await createFixtureWindow({ out, renderer, previous: win, restore: true,
+      preload: path.join(root, 'electron/preload.js') });
     await until('document.querySelectorAll(".writing-material-card--image").length === 5');
     await run(`document.querySelector('.editor__scroll').style.minHeight='2400px'; document.querySelector('.editor').scrollTop=700;`);
     await pause(200);
     await screenshot('image-drop-day.png');
-    check('重启后自动保存仍恢复五张图片', await count() === 5);
+    check('同隔离存储无seed重建测试窗口后仍恢复五张图片（非关闭确认验收）', await count() === 5);
     win.webContents.send('menu:action', 'file:exportPdf');
     for (let i=0; !exported && i<160; i++) await pause(50);
     check('创作版按原位保留五张图片（包括无 MIME 图片）', !!exported && (exported.html.match(/<img /g) || []).length === 5 && (exported.html.match(/src="data:/g) || []).length === 5);

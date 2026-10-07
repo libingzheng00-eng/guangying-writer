@@ -4,6 +4,7 @@ import { ELEMENT_META } from '../model/elements';
 import { isBlank } from '../utils/text';
 import { setCaret, offsetOf, makeTextRange } from '../utils/dom';
 import { useStore } from '../store/store';
+import { runEditHistory } from '../utils/editHistory';
 
 export interface BlockStyleOptions {
   settings: ScriptSettings;
@@ -89,7 +90,7 @@ export function StaticBlock(props: BlockProps) {
 
 export interface EditableBlockProps extends BlockProps {
   selected?: boolean;
-  onInput?: (html: string) => void;
+  onInput?: (html: string, event: InputEvent) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   readOnly?: boolean;
   onFocus?: () => void;
@@ -97,7 +98,7 @@ export interface EditableBlockProps extends BlockProps {
   onPaste?: (e: React.ClipboardEvent<HTMLDivElement>) => void;
   onBlur?: () => void;
   onCompositionStart?: () => void;
-  onCompositionEnd?: () => void;
+  onCompositionEnd?: (event: React.CompositionEvent<HTMLDivElement>) => void;
 }
 
 /** 可编辑渲染（写作视图） */
@@ -123,24 +124,52 @@ export function EditableBlock(props: EditableBlockProps) {
   } = props;
   const focus = useStore((s) => s.focus);
   const localRef = useRef<HTMLDivElement | null>(null);
+  const detachedSelectionRef = useRef<{ node: HTMLDivElement; start: number; end: number } | null>(null);
   const empty = isBlank(el.text);
+
+  // Core contract: context-menu / browser beforeinput history cannot silently
+  // mutate DOM and then be recorded as a fresh typing transaction.
+  useEffect(() => {
+    const node = localRef.current;
+    if (!node || props.readOnly) return;
+    const history = (event: InputEvent) => {
+      if (event.isComposing || !['historyUndo', 'historyRedo'].includes(event.inputType)) return;
+      event.preventDefault();
+      runEditHistory(event.inputType === 'historyUndo' ? 'undo' : 'redo');
+    };
+    node.addEventListener('beforeinput', history);
+    return () => node.removeEventListener('beforeinput', history);
+  }, [el.type, sceneNumber?.left, sceneNumber?.right, props.readOnly]);
 
   // 核心红线：聚焦不能阻止撤销/剪切/回车分段回写。正常输入的 DOM 已与
   // state 相同，不触碰它；仅外部不同值同步，并恢复当前文本选区，避免光标跳动。
   useLayoutEffect(() => {
     const node = localRef.current;
     if (!node) return;
-    if (node.innerHTML === el.text) return;
     const selection = window.getSelection();
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
     const saved = document.activeElement === node && range && node.contains(range.startContainer) && node.contains(range.endContainer)
       ? [offsetOf(node, range.startContainer, range.startOffset), offsetOf(node, range.endContainer, range.endOffset)] : null;
-    node.innerHTML = el.text;
-    if (saved && selection) {
-      selection.removeAllRanges();
-      selection.addRange(makeTextRange(node, saved[0], saved[1]));
+    if (node.innerHTML !== el.text) {
+      node.innerHTML = el.text;
+      if (saved && selection) {
+        selection.removeAllRanges();
+        selection.addRange(makeTextRange(node, saved[0], saved[1]));
+      }
     }
-  }, [el.text]);
+    const detached = detachedSelectionRef.current;
+    detachedSelectionRef.current = null;
+    // 场号包装也可能由设置切换重建：只恢复真正丢到 body 的编辑焦点，
+    // 不抢设置对话框、查找、工具栏或多选模式的焦点。
+    if (detached && detached.node !== node && !props.readOnly && selection &&
+        (document.activeElement === document.body || document.activeElement === detached.node)) {
+      node.focus({ preventScroll: true });
+      selection.removeAllRanges();
+      selection.addRange(makeTextRange(node, detached.start, detached.end));
+    }
+  // Tab 切到场次标题/场号包装开关会重建内部 contentEditable，文字没变也需
+  // 在恢复光标之前填回新 DOM；否则 setCaret(旧偏移) 会被空节点夹到 0。
+  }, [el.text, el.type, sceneNumber?.left, sceneNumber?.right]);
 
   useEffect(() => {
     if (!focus || focus.id !== el.id) return;
@@ -169,6 +198,18 @@ export function EditableBlock(props: EditableBlockProps) {
   const node = (
     <div
       ref={(n) => {
+        const previous = localRef.current;
+        if (!n && previous && document.activeElement === previous) {
+          const selection = window.getSelection();
+          const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+          if (range && previous.contains(range.startContainer) && previous.contains(range.endContainer)) {
+            detachedSelectionRef.current = {
+              node: previous,
+              start: offsetOf(previous, range.startContainer, range.startOffset),
+              end: offsetOf(previous, range.endContainer, range.endOffset),
+            };
+          }
+        }
         localRef.current = n;
         if (innerRef) innerRef(n);
       }}
@@ -181,7 +222,7 @@ export function EditableBlock(props: EditableBlockProps) {
       suppressContentEditableWarning
       spellCheck={false}
       data-placeholder={empty ? ELEMENT_META[el.type].placeholder : undefined}
-      onInput={(e) => onInput && onInput((e.target as HTMLDivElement).innerHTML)}
+      onInput={(e) => onInput && onInput((e.target as HTMLDivElement).innerHTML, e.nativeEvent as InputEvent)}
       onKeyDown={onKeyDown}
       onFocus={onFocus}
       onClick={onClick}
