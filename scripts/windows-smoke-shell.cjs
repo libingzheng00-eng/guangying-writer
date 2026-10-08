@@ -253,12 +253,14 @@ app.whenReady().then(async () => {
       assert.equal((pdf.match(/\/Type\s*\/Page\b/g) || []).length, 1, 'This short synthetic fixture must produce one page');
       const boxes = [...pdf.matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
       assert.ok(boxes.length > 0, 'PDF must declare page geometry');
-      const images = (pdf.match(/\/Subtype\s*\/Image\b/g) || []).length;
+      // Chromium may retain unrelated raster masks in an otherwise text-only
+      // PDF. Identify this fixture's 1x1 image, rather than counting all masks.
+      const fixtureImages = (pdf.match(/\/Subtype\s*\/Image\b(?:(?!>>)[\s\S])*?\/Width\s+1\b\s*\/Height\s+1\b/g) || []).length;
       if (outputName === 'print-a4.pdf') {
         for (const box of boxes) assert.ok(Math.abs(Number(box[1]) - 595.28) < 1 && Math.abs(Number(box[2]) - 841.89) < 1, 'Plain-text PDF must use A4 points');
-        assert.equal(images, 0, 'Plain-text PDF must exclude the image card');
+        assert.equal(fixtureImages, 0, 'Plain-text PDF must exclude the synthetic image card');
       } else {
-        assert.ok(images > 0, 'Creative PDF must embed the synthetic image');
+        assert.ok(fixtureImages > 0, 'Creative PDF must embed the synthetic image');
       }
       fs.copyFileSync(destination, path.join(config.output, outputName));
       await until('!!document.querySelector(".editor__scroll[data-ready=true]")', 'return from PDF view');
