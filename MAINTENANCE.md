@@ -193,6 +193,10 @@ Editor接受前核对DOM/光标、原HTML/类型、documentEpoch和候选目录�
 
 ## 8. 构建、打包与发布
 
+开发HMR设followSymlinks:false，并用lstat忽略函数剪掉符号链接入口，避免macOS初扫仍递归进入链接后代；本仓库顶层release、release-*、tmp及.app根和后代在更早阶段忽略，Vite默认的.git/node_modules/构建输出忽略保留。过滤前底层可能解析链接目标元数据，不能声称完全不访问target；保证的是不递归扫描其后代。禁止用全局 `**/tmp/**`，否则临时测试仓库源码也会被吞掉。`node scripts/dev-watch-test.cjs` 用独立合成目录验证源码真实HMR、产物剪枝及外部链接后代无登记/事件；这不属于37套正文回归。未来外部symlink源码的HMR需单独设计受控监听，不能恢复任意链接遍历。
+
+alpha.18.12公开tag固定于 `775acd8fa5e144944670c76551ac94ca474d0edf`，两个附件SHA见 `RELEASE_ALPHA_18_12.md`。此后的开发监听/文档维护不重打或覆盖这些附件；构建产物须仍逐字节相同，不伪称新生产版本。
+
 `npm run build` 仅构建 renderer。`bash package.sh` 在完整、可信的 Electron 运行时下生成应用/ZIP；现有 macOS CI 另生成 DMG 并上传 Release。三个步骤都不应自动替换现用应用。
 
 打包必须按明确白名单收集 renderer、Electron 主进程、资源与必要 manifest；测试工程、`tmp/editing-review/`、截图、用户文件和自动保存不进入应用。复核包内初始模板和资源，再分享。
