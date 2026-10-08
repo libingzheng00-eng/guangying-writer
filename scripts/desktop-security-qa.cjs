@@ -16,6 +16,12 @@ const hostileMetadata = '</style><script id="metadata-script">window.syntheticAt
 const hostileImage = 'https://outside.invalid/native-qa.png';
 const hostileColor = 'url(file:///synthetic/beat.png)';
 
+function bounded(task, label, timeout = 10000) {
+  let timer;
+  return Promise.race([task, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Timeout: ${label}`)), timeout); })])
+    .finally(() => clearTimeout(timer));
+}
+
 async function observeRequests(window) {
   const requests = [];
   window.webContents.debugger.attach('1.3');
@@ -25,12 +31,14 @@ async function observeRequests(window) {
     if (/^(?:https?|ftp):/i.test(url) || /^file:\/\/\/synthetic\//i.test(url)) requests.push(url);
   };
   window.webContents.debugger.on('message', observe);
-  await window.webContents.debugger.sendCommand('Network.enable');
-  return { stop() {
+  const stop = () => {
     window.webContents.debugger.removeListener('message', observe);
     if (window.webContents.debugger.isAttached()) window.webContents.debugger.detach();
     return requests;
-  } };
+  };
+  try { await bounded(window.webContents.debugger.sendCommand('Network.enable'), 'Network.enable on initialized QA renderer'); }
+  catch (error) { stop(); throw error; }
+  return { stop };
 }
 
 async function verifyDisplaySafety(run) {
@@ -59,29 +67,53 @@ async function verifyHtmlExport({ win, run, until, pause, temporary, output, sav
   await until(() => fs.existsSync(exportedFile), 'HTML export writes through production saveAs IPC');
   fs.copyFileSync(exportedFile, path.join(output, 'export-security.html'));
   const proof = new BrowserWindow({ width: 1024, height: 768, show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, partition: 'qa-html-' + randomUUID() } });
+  const evidence = { status: 'running', windowId: proof.id, stages: [] };
+  const journal = () => fs.writeFileSync(path.join(output, 'html-export-stages.json'), JSON.stringify(evidence, null, 2));
+  const step = async (name, action, timeout = 10000) => {
+    evidence.current = name; journal();
+    const started = Date.now();
+    try {
+      const result = await bounded(Promise.resolve().then(action), `HTML proof ${name}`, timeout);
+      evidence.stages.push({ name, status: 'passed', durationMs: Date.now() - started }); journal();
+      return result;
+    } catch (error) {
+      evidence.stages.push({ name, status: 'failed', durationMs: Date.now() - started, error: String(error.message) }); journal();
+      throw error;
+    }
+  };
   let observer;
   try {
-    observer = await observeRequests(proof);
-    await Promise.race([proof.loadFile(exportedFile), pause(10000).then(() => { throw Error('HTML export proof load timed out'); })]);
+    // A newly constructed hidden window may not yet own a renderer/CDP target.
+    // Initialize only inert about:blank, then enable observation BEFORE the
+    // exported document's first load so its earliest requests remain covered.
+    await step('blank-ready', () => proof.loadURL('about:blank'));
+    observer = await step('network-ready', () => observeRequests(proof));
+    await step('export-loaded', () => proof.loadFile(exportedFile));
     proof.show(); proof.focus();
-    await Promise.race([proof.webContents.executeJavaScript('document.fonts.ready.then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))'), pause(10000).then(() => { throw Error('HTML export proof paint timed out'); })]);
-    const value = await proof.webContents.executeJavaScript(`(() => ({
+    await step('painted', () => proof.webContents.executeJavaScript('document.fonts.ready.then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))'));
+    const value = await step('DOM-read', () => proof.webContents.executeJavaScript(`(() => ({
       active:document.querySelectorAll('script,img,iframe,object,embed,link,base,form').length,
       styles:document.querySelectorAll('style').length,
       unsafeStyle:/url\\s*\\(|<|metadata-script/i.test(document.querySelector('style')?.textContent||''),
       title:document.title, executed:typeof window.syntheticAttack!=='undefined',
       csp:document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.content,
       text:document.body.textContent
-    }))()`);
+    }))()`));
     assert.equal(value.active, 0); assert.equal(value.styles, 1); assert.equal(value.unsafeStyle, false);
     assert.equal(value.title, hostileMetadata); assert.equal(value.executed, false);
     assert.ok(value.csp.includes("default-src 'none'"));
     assert.ok(value.text.includes('合成前粗体斜体合成后'));
     await pause(150);
-    assert.deepEqual(observer.stop(), [], 'Exported HTML must not attempt remote or synthetic private-file requests'); observer = null;
+    evidence.requests = observer.stop(); observer = null;
+    assert.deepEqual(evidence.requests, [], 'Exported HTML must not attempt remote or synthetic private-file requests');
     fs.writeFileSync(path.join(output, 'html-export-dom.json'), JSON.stringify(value, null, 2));
-    fs.writeFileSync(path.join(output, 'html-export.png'), (await proof.webContents.capturePage()).toPNG());
+    evidence.stages.push({ name: 'DOM-verified', status: 'passed' }); journal();
+    await step('captured', async () => fs.writeFileSync(path.join(output, 'html-export.png'), (await proof.webContents.capturePage()).toPNG()), 8000);
+    evidence.status = 'passed'; journal();
     pass('real toolbar HTML export retains literal hostile title and body; actual Chromium DOM has one trusted stylesheet, restrictive CSP, no active/resource nodes, execution or external requests');
+  } catch (error) {
+    evidence.status = 'failed'; evidence.error = String(error.message); journal();
+    throw error;
   } finally {
     if (observer && !proof.isDestroyed()) observer.stop();
     if (!proof.isDestroyed()) proof.destroy();

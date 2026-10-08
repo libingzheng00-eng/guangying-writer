@@ -10,7 +10,7 @@
  */
 const strictAssert = require('node:assert/strict');
 
-module.exports = async function runWindowsUiLayers({ win, run, key, command, menu, pause, until, screenshot: capture, pass: markPassed, snapshot }) {
+module.exports = async function runWindowsUiLayers({ win, run, key, command, menu, pause, until, screenshot: capture, pass: markPassed, snapshot, recordWindowGeometry }) {
   let assertions = 0;
   const groups = [], screenshots = [], buttonActivations = [];
   const assert = Object.fromEntries(['ok', 'equal', 'deepEqual'].map(method => [method, (...args) => { strictAssert[method](...args); assertions++; }]));
@@ -269,6 +269,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, command, men
 
   for (const [width, height] of [[1024, 680], [1440, 960]]) {
     win.setSize(width, height); await pause(150);
+    await recordWindowGeometry('UI size acceptance', { width, height });
     assert.deepEqual(win.getSize(), [width, height], 'Evidence window has the requested outer size');
     for (const theme of ['day', 'night']) {
       await openSettings();

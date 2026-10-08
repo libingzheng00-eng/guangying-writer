@@ -19,6 +19,62 @@ const denied = async (operation, label) => { await assert.rejects(operation, /�
 const rejected = (operation, label) => { assert.throws(operation, /请求未获授权或参数无效/, label); checks++; };
 const body = '{"synthetic":"合成安全测试"}';
 
+function entryURLTests() {
+  const source = fs.readFileSync(path.join(__dirname, '../electron/security.js'), 'utf8');
+  const urls = require('node:url');
+  for (const windows of [false, true]) {
+    // Exercise both native path grammars on every host, using Node's own URL
+    // converters. This performs no filesystem resolution or GUI operation.
+    const module = { exports: {} };
+    vm.runInNewContext(source, { module, require(name) {
+      assert.equal(name, 'node:url');
+      return { URL: urls.URL, fileURLToPath: url => urls.fileURLToPath(url, { windows }),
+        pathToFileURL: file => urls.pathToFileURL(file, { windows }) };
+    } });
+    const api = module.exports;
+    const encoded = `file:///${windows ? 'C:/' : ''}synthetic/RUNNER%7E1/app/index.html`;
+    const literal = encoded.replace('%7E', '~');
+    const verify = (expected, observed, contentsURL = observed) => {
+      const frame = { url: observed };
+      const contents = { mainFrame: frame, isDestroyed: () => false, getURL: () => contentsURL };
+      const window = { webContents: contents, isDestroyed: () => false };
+      const event = { sender: contents, senderFrame: frame };
+      api.requireTrustedSender(event, window, expected);
+      return { event, window };
+    };
+    for (const expected of [encoded, literal]) {
+      for (const observed of [encoded, literal, encoded.replace('%7E', '%7e'), `${literal}#same-document`]) {
+        assert.doesNotThrow(() => verify(expected, observed), 'equivalent file URL syntax retains exact main-window authority'); checks++;
+      }
+    }
+    assert.doesNotThrow(() => verify(`${encoded}?mode=1`, `${literal}?mode=1#same-document`)); checks++;
+    assert.doesNotThrow(() => verify(`${encoded}?`, `${literal}?`)); checks++;
+    for (const other of [literal.replace('index.html', 'other.html'), literal.replace('/app/', '/App/'),
+      `${literal}?`, `${literal}?mode=1`, literal.replace('file:///', 'file://other/'),
+      encoded.replace('%7E', '%257E'), literal.replace('/app/', '%2Fapp/')]) {
+      rejected(() => verify(encoded, other), 'normalizing URL syntax does not authorize a different path, query, host or encoded separator');
+    }
+    rejected(() => verify(`${encoded}?mode=1`, `${literal}?mode=2`), 'different query values stay distinct');
+    rejected(() => verify(`${encoded}?`, literal), 'an empty query stays distinct from no query');
+    rejected(() => verify(encoded, literal, `${literal}?unexpected=1`), 'webContents URL is validated independently of the frame URL');
+    const trusted = verify(encoded, literal);
+    rejected(() => api.requireTrustedSender({ ...trusted.event, sender: {} }, trusted.window, encoded), 'URL equivalence cannot authorize an unknown sender');
+    rejected(() => api.requireTrustedSender({ ...trusted.event, senderFrame: { url: literal } }, trusted.window, encoded), 'URL equivalence cannot authorize a subframe');
+    for (const invalid of ['not a URL', literal.replace('/app/', '%2Fapp/')]) {
+      rejected(() => verify(invalid, invalid), 'invalid expected and observed URLs never authorize through equal null results');
+    }
+    if (windows) {
+      rejected(() => verify(encoded, literal.replace('/C:/', '/c:/')), 'Windows drive spelling is not case-folded');
+      rejected(() => verify(encoded, literal.replace('/app/', '%5Capp/')), 'Windows encoded backslash cannot become a path separator');
+      assert.doesNotThrow(() => verify('file://server/share/App%7E1/index.html', 'file://server/share/App~1/index.html')); checks++;
+      rejected(() => verify('file://server/share/App%7E1/index.html', 'file://another/share/App~1/index.html'), 'UNC host remains part of the trusted entry');
+      rejected(() => verify('file://server/share/App%7E1/index.html', 'file://server/other/App~1/index.html'), 'UNC share remains part of the trusted entry');
+    }
+    eq(api.entryURL('http://localhost:5178/#same-document'), 'http://localhost:5178/', 'development HTTP identity retains its original policy');
+    rejected(() => verify('http://localhost:5178/', 'http://localhost:5178/?'), 'HTTP query boundaries are unchanged');
+  }
+}
+
 async function ipcTests() {
   const h = harness();
   const s = h.state;
@@ -311,6 +367,6 @@ function preloadTests() {
 }
 
 (async () => {
-  await ipcTests(); await filesystemTests(); preloadTests();
+  entryURLTests(); await ipcTests(); await filesystemTests(); preloadTests();
   console.log(`electron-security: ${checks} assertions passed (main/preload VM + isolated real filesystem; no native Electron)`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

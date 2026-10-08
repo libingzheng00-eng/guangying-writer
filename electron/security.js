@@ -1,6 +1,6 @@
 'use strict';
 
-const { URL } = require('node:url');
+const { URL, fileURLToPath, pathToFileURL } = require('node:url');
 const MAX_CONTENT_BYTES = 256 * 1024 * 1024;
 const EXPORT_EXTENSIONS = new Set(['zhsp', 'fdx', 'txt', 'md', 'html']);
 const navigations = new WeakMap();
@@ -12,7 +12,16 @@ function rejectRequest() {
 }
 
 function entryURL(value) {
-  try { const url = new URL(value); url.hash = ''; return url.href; }
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    if (url.protocol !== 'file:') return url.href;
+    // Chromium and Node may spell the same file URL with ~ versus %7E. Round
+    // trip URL syntax only: never realpath, case-fold, or accept another file.
+    // Keep even an empty ? distinct; URL.search alone would lose that boundary.
+    const query = url.href.indexOf('?');
+    return pathToFileURL(fileURLToPath(url)).href + (query < 0 ? '' : url.href.slice(query));
+  }
   catch { return null; }
 }
 
@@ -20,11 +29,12 @@ function requireTrustedSender(event, window, expectedURL) {
   // URL alone is not an identity: same-origin child frames/other windows must
   // never obtain the main window's file capabilities.
   const contents = window?.webContents;
-  if (!window || window.isDestroyed() || !contents || contents.isDestroyed() ||
+  const expected = entryURL(expectedURL);
+  if (!expected || !window || window.isDestroyed() || !contents || contents.isDestroyed() ||
       event?.sender !== contents || !event.senderFrame ||
       event.senderFrame !== contents.mainFrame ||
-      entryURL(event.senderFrame.url) !== entryURL(expectedURL) ||
-      entryURL(contents.getURL()) !== entryURL(expectedURL)) rejectRequest();
+      entryURL(event.senderFrame.url) !== expected ||
+      entryURL(contents.getURL()) !== expected) rejectRequest();
 }
 
 function secureWindow(window) {
@@ -89,4 +99,4 @@ function pdfPayload(opts) {
   return opts;
 }
 
-module.exports = { MAX_CONTENT_BYTES, rejectRequest, requireTrustedSender, senderGuard, secureWindow, savePayload, pdfPayload };
+module.exports = { MAX_CONTENT_BYTES, rejectRequest, entryURL, requireTrustedSender, senderGuard, secureWindow, savePayload, pdfPayload };

@@ -104,9 +104,12 @@ async function main(platform) {
     packageLockSHA256: createHash('sha256').update(fs.readFileSync(path.join(root, 'package-lock.json'))).digest('hex') };
   fs.mkdirSync(path.dirname(output), { recursive: true });
   assert.ok(outside(source, path.join(fs.realpathSync(path.dirname(output)), path.basename(output))), 'Evidence parent must not alias the distributable');
-  const temporary = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-desktop-smoke-')));
-  const candidate = path.join(temporary, platform === 'darwin' ? 'GuangyingWriter-QA.app' : 'candidate');
+  const temporary = (fs.realpathSync.native || fs.realpathSync)(fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-desktop-smoke-')));
+  // Keep a literal ~ even when native realpath expands Windows 8.3 aliases.
+  // Real packaged IPC must accept Node/Chromium's equivalent URL spellings.
+  const candidate = path.join(temporary, 'qa~entry', platform === 'darwin' ? 'GuangyingWriter-QA.app' : 'candidate');
   fs.mkdirSync(output, { recursive: true });
+  fs.mkdirSync(path.dirname(candidate));
   if (platform === 'darwin') execFileSync('/usr/bin/ditto', [source, candidate], { timeout: 120000 });
   else fs.cpSync(source, candidate, { recursive: true, errorOnExist: true, force: false, dereference: false });
   assert.deepEqual(verify(candidate, expectedManifest), sourceInventory, 'Copied runtime and production resources differ before QA instrumentation');
@@ -137,6 +140,7 @@ async function main(platform) {
     limitations: ['Native file/save dialog selections are stubbed', 'CDP composition is not a real system IME',
       'Native menu callbacks exercise the production IPC route, not system-menu pointer operation',
       ...(platform === 'darwin' ? ['Mac native commands validate exact accelerators and invoke production MenuItem callbacks; physical Command-key dispatch through Cocoa is not verified', 'Mac modal field selection uses Chromium selectAll as input preparation, not a physical Cmd+A check'] : []),
+      ...(platform === 'darwin' ? ['Only the isolated QA primary window adds enableLargerThanScreen; renderer viewport checks do not prove the entire window fits the physical display'] : []),
       'No installer/signature/SmartScreen/cross-machine checks', 'PDF files are generated; full visual/font/layout inspection remains manual'],
     sourceHashes, qaHashes, phaseTimeoutMs, uiTimeoutMs: config.uiTimeoutMs, phases: [],
   };

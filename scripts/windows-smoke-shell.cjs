@@ -1,5 +1,5 @@
 /** Shared QA-only entry copied into a temporary Mac/Windows package by desktop-smoke.cjs. */
-const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, screen } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -12,8 +12,11 @@ const phase = process.env.GUANGYING_WINDOWS_SMOKE_PHASE;
 assert.ok(['first-launch', 'recovery'].includes(phase));
 assert.equal(process.platform, config.expectedPlatform);
 const root = app.getAppPath();
+const { entryURL } = require(path.join(root, 'electron', 'security.js'));
+const realpath = file => (fs.realpathSync.native || fs.realpathSync)(file);
 assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).name, 'guangying-native-acceptance-qa');
-const tempRelative = path.relative(fs.realpathSync(os.tmpdir()), fs.realpathSync(config.temporary));
+assert.ok(root.split(path.sep).includes('qa~entry'), 'Real production IPC must be exercised from the intentional tilde-path fixture');
+const tempRelative = path.relative(realpath(os.tmpdir()), realpath(config.temporary));
 assert.ok(tempRelative && tempRelative !== '..' && !tempRelative.startsWith('..' + path.sep) && !path.isAbsolute(tempRelative));
 assert.equal(path.dirname(config.userData), config.temporary);
 fs.mkdirSync(config.userData, { recursive: true });
@@ -142,6 +145,14 @@ async function waitSaved(expectedText) {
   }, 'autosave latest text and file association');
 }
 async function screenshot(name) { fs.writeFileSync(path.join(config.output, name), (await bounded(win.webContents.capturePage(), 8000, `capture ${name}`)).toPNG()); }
+async function recordWindowGeometry(label, requested) {
+  const bounds = win.getBounds();
+  const displays = screen.getAllDisplays().map(({ id, bounds, workArea, scaleFactor }) => ({ id, bounds, workArea, scaleFactor }));
+  const fullyWithinWorkArea = displays.some(({ workArea: area }) => bounds.x >= area.x && bounds.y >= area.y && bounds.x + bounds.width <= area.x + area.width && bounds.y + bounds.height <= area.y + area.height);
+  (report.windowGeometry ||= []).push({ label, requested, bounds, contentBounds: win.getContentBounds(), displays, fullyWithinWorkArea,
+    viewport: await run('({width:innerWidth,height:innerHeight,devicePixelRatio})') });
+  journal();
+}
 async function closeAndStay() {
   const count = report.dialogs.filter(d => d.kind === 'close').length;
   closeChoices.push(0); win.close();
@@ -176,22 +187,62 @@ app.on('browser-window-created', (_event, candidate) => {
   });
   candidate.webContents.on('preload-error', (_event, _file, error) => { report.errors.push({ preload: error.message }); journal(); });
 });
-require(path.join(root, 'electron', 'main.js'));
+let enlargedWindow;
+function loadProductionMain() {
+  const mainPath = path.join(root, 'electron', 'main.js');
+  if (process.platform !== 'darwin') { require(mainPath); return; }
+  const Module = require('node:module');
+  const originalLoad = Module._load;
+  const facade = Object.create(require('electron'));
+  // Electron 44.7.0 base-window-options.md: construction-only macOS geometry
+  // option. Scope the dependency substitution to main.js, restore immediately,
+  // and leave PDF/probe windows plus every security preference untouched.
+  Object.defineProperty(facade, 'BrowserWindow', { value: new Proxy(BrowserWindow, {
+    construct(Target, args) {
+      assert.equal(enlargedWindow, undefined, 'Only one isolated QA primary window may receive the geometry option');
+      assert.equal(args.length, 1);
+      const [options] = args;
+      assert.equal(options.width, 1440); assert.equal(options.height, 960);
+      assert.equal(options.webPreferences.preload, path.join(root, 'electron', 'preload.js'));
+      const security = { sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, webviewTag: false, allowRunningInsecureContent: false };
+      for (const [key, expected] of Object.entries(security)) assert.equal(options.webPreferences[key], expected, `Production ${key} must remain unchanged`);
+      const patched = { ...options, enableLargerThanScreen: true };
+      assert.equal(patched.webPreferences, options.webPreferences);
+      enlargedWindow = Reflect.construct(Target, [patched], Target);
+      report.qaWindowConstruction = { option: 'enableLargerThanScreen', value: true, scope: 'isolated QA primary window only', originalSize: [options.width, options.height], security, windowId: enlargedWindow.id };
+      return enlargedWindow;
+    },
+  }) });
+  Module._load = function(request, parent, isMain) {
+    if (request === 'electron' && parent?.filename === mainPath) return facade;
+    return Reflect.apply(originalLoad, this, [request, parent, isMain]);
+  };
+  try { require(mainPath); }
+  finally { Module._load = originalLoad; }
+}
+loadProductionMain();
 
 app.whenReady().then(async () => {
   try {
     await until(() => !!win, 'production main creates BrowserWindow');
     await until('!!document.querySelector(".editor__scroll[data-ready=true]")', 'packaged renderer ready', 30000);
-    assert.equal(win.webContents.getURL(), pathToFileURL(path.join(root, 'dist-renderer', 'index.html')).href);
+    const actualURL = win.webContents.getURL();
+    const expectedURL = pathToFileURL(path.join(root, 'dist-renderer', 'index.html')).href;
+    const canonicalURL = entryURL(expectedURL);
+    assert.ok(canonicalURL, 'Expected production entry must be a valid URL');
+    assert.equal(entryURL(actualURL), canonicalURL, 'Only the exact production file entry syntax is allowed; no query/path/host alias');
+    report.entryURL = { actual: actualURL, expected: expectedURL, canonical: canonicalURL, fixture: 'qa~entry' };
+    if (process.platform === 'darwin') assert.equal(enlargedWindow, win, 'Geometry instrumentation must belong to the actual primary window');
     const info = await run('window.api.getInfo()');
     assert.equal(info.version, config.version); assert.equal(info.platform, config.expectedPlatform);
-    assert.equal(fs.realpathSync(app.getPath('userData')), fs.realpathSync(config.userData));
-    assert.equal(fs.realpathSync(app.getPath('sessionData')), fs.realpathSync(config.userData));
-    assert.equal(fs.realpathSync(process.execPath), fs.realpathSync(config.expectedExecutable));
+    assert.equal(realpath(app.getPath('userData')), realpath(config.userData));
+    assert.equal(realpath(app.getPath('sessionData')), realpath(config.userData));
+    assert.equal(realpath(process.execPath), realpath(config.expectedExecutable));
     assert.equal(process.arch, config.expectedArch);
     assert.equal(process.versions.electron, config.expectedElectron);
     assert.equal(app.isPackaged, true);
     report.runtime = { execPath: process.execPath, appPath: app.getAppPath(), main: path.join(root, 'electron', 'main.js'), userData: app.getPath('userData'), sessionData: app.getPath('sessionData'), isPackaged: app.isPackaged };
+    await recordWindowGeometry('primary-startup', { width: 1440, height: 960 });
     journal();
     pass('packaged production main/preload/renderer start with isolated userData');
     if (phase === 'recovery') {
@@ -299,7 +350,7 @@ app.whenReady().then(async () => {
     pass('production Open command reads .zhsp via real IPC from Chinese path with spaces (dialog choice stubbed)');
     try {
       report.uiLayers = { status: 'running', timeoutMs: config.uiTimeoutMs }; journal();
-      report.uiLayers = await bounded(require('./windows-ui-layers.cjs')({ win, run, key, command, menu, pause, until, screenshot, pass, snapshot }), config.uiTimeoutMs, 'Desktop UI layer acceptance');
+      report.uiLayers = await bounded(require('./windows-ui-layers.cjs')({ win, run, key, command, menu, pause, until, screenshot, pass, snapshot, recordWindowGeometry }), config.uiTimeoutMs, 'Desktop UI layer acceptance');
       journal();
       console.log(`Desktop UI layers: ${report.uiLayers.assertions} assertions, ${report.uiLayers.groups.length} groups, ${report.uiLayers.screenshots.length} screenshots passed.`);
     } catch (error) {
