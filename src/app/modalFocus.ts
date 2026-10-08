@@ -97,6 +97,20 @@ export function modalTabStops(dialog: HTMLElement): HTMLElement[] {
     });
 }
 
+function revealModalControl(dialog: HTMLElement, target: HTMLElement) {
+  const body = target.closest<HTMLElement>('.modal__body');
+  if (!body || !dialog.contains(body)) return;
+  const viewport = body.getBoundingClientRect(), control = target.getBoundingClientRect();
+  if (!body.clientHeight || !control.height) return;
+  // Native textarea focus can reveal only its caret, leaving most of the
+  // control clipped. Reveal its whole border box, with room for the focus ring,
+  // by scrolling only the modal body (never the writing surface behind it).
+  const top = viewport.top + body.clientTop + 4;
+  const bottom = viewport.top + body.clientTop + body.clientHeight - 4;
+  if (control.top < top || control.height > bottom - top) body.scrollTop += control.top - top;
+  else if (control.bottom > bottom) body.scrollTop += control.bottom - bottom;
+}
+
 /** Inert is the browser boundary; capture listeners also reject stale queued
  * background events and keep focus contained in environments without inert. */
 export function containModal(dialog: HTMLElement, backdrop: HTMLElement, close: () => void) {
@@ -114,17 +128,22 @@ export function containModal(dialog: HTMLElement, backdrop: HTMLElement, close: 
   };
   let lastFocus: HTMLElement | null = null;
   let composing = false;
+  const focusControl = (target: HTMLElement) => {
+    target.focus({ preventScroll: true });
+    revealModalControl(dialog, target);
+  };
   const focusInside = () => {
     const preferred = dialog.querySelector<HTMLElement>('[data-modal-autofocus]');
     const stops = modalTabStops(dialog);
     const target = lastFocus?.isConnected && dialog.contains(lastFocus) && stops.includes(lastFocus)
       ? lastFocus : preferred && stops.includes(preferred) ? preferred : stops[0] || dialog;
-    // Let the browser reveal controls inside the modal's scrolling body. Only
-    // returning to the background after close should preserve its scroll.
-    target.focus();
+    focusControl(target);
   };
   const focus = (event: FocusEvent) => {
-    if (event.target instanceof HTMLElement && dialog.contains(event.target)) lastFocus = event.target;
+    if (event.target instanceof HTMLElement && dialog.contains(event.target)) {
+      lastFocus = event.target;
+      revealModalControl(dialog, event.target);
+    }
     else { event.stopImmediatePropagation(); focusInside(); }
   };
   const blockOutside = (event: Event) => {
@@ -143,7 +162,7 @@ export function containModal(dialog: HTMLElement, backdrop: HTMLElement, close: 
       event.preventDefault(); event.stopImmediatePropagation();
       const next = index < 0 ? (event.shiftKey ? stops.length - 1 : 0)
         : (index + (event.shiftKey ? -1 : 1) + stops.length) % stops.length;
-      (stops[next] || dialog).focus();
+      focusControl(stops[next] || dialog);
     }
   };
   const compositionStart = () => { composing = true; };

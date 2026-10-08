@@ -245,6 +245,7 @@ async function filesystemTests() {
       const selected = access.selected(target, 'zhsp');
       const expected = { path: path.dirname(selected.canonical), ...selected.parent };
       let swapped = false;
+      let preparedClosed = false;
       const oldDirectory = `${directory}-original`;
       const foreignTemporary = path.join(directory, '.guangying-save-safe-race-token.tmp');
       const replaceDirectory = () => {
@@ -260,7 +261,12 @@ async function filesystemTests() {
         if (property === 'open' && phase === 'prepared') return async (...args) => {
           const handle = await api.open(...args);
           return new Proxy(handle, { get(fd, operation) {
-            if (operation === 'sync') return async () => { await fd.sync(); replaceDirectory(); };
+            // Windows can forbid renaming a directory while its temp file is
+            // open. Inject after actual close, still before requireParent, so
+            // both platforms exercise the save guard rather than an OS lock.
+            if (operation === 'close') return async () => {
+              await fd.close(); preparedClosed = fd.fd === -1; replaceDirectory();
+            };
             const member = fd[operation]; return typeof member === 'function' ? member.bind(fd) : member;
           } });
         };
@@ -268,6 +274,8 @@ async function filesystemTests() {
       } });
       const guarded = createProjectSaver({ fileSystem: racedFs, token: () => 'safe-race-token' });
       await assert.rejects(() => guarded(target, 'must not cross boundary', expected), error => error.code === 'EUNSAFEPATH'); checks++;
+      eq(swapped, true, `${phase}: replacement directory was actually installed`);
+      if (phase === 'prepared') eq(preparedClosed, true, 'prepared: replacement occurs after the real temporary file handle closes');
       eq(fs.readFileSync(target, 'utf8'), 'unrelated target must survive', `${phase}: parent swap cannot redirect project write`);
       eq(fs.readFileSync(path.join(oldDirectory, 'project.zhsp'), 'utf8'), body, `${phase}: original project is preserved`);
       eq(fs.readFileSync(foreignTemporary, 'utf8'), 'unrelated temporary must survive', `${phase}: cleanup cannot delete through an unauthorized replacement directory`);

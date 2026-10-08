@@ -138,6 +138,57 @@ const check = (label, actual, expected = true) => { assert.deepEqual(actual, exp
     unchanged(`cycle ${cycle} modal lifecycle is not a project transaction`, before);
   }
 
+  {
+    // Model the measured 1024x680 native failure: the notes caret is visible,
+    // but the textarea's lower half is clipped. jsdom has no layout, so these
+    // rectangles move with the real modal body's scrollTop; native QA still
+    // independently checks actual geometry and elementFromPoint for every Tab.
+    await selectWriting(true, true);
+    const selected = rangeState(), before = snapshot(), editor = q('.editor');
+    const editorScroll = editor.scrollTop;
+    editor.scrollTop = 173;
+    await menu('file:titlePage');
+    const body = q('.modal__body'), first = q('.modal__head button'), last = q('.modal__foot button');
+    const fields = [...modal().querySelectorAll('.field input, .field textarea')];
+    const notes = fields.at(-1), contact = fields.at(-2);
+    const clipTop = 112.3984375, clipBottom = clipTop + 512;
+    const rect = (top, height) => ({ x: 269, y: top, top, bottom: top + height, left: 269, right: 740, width: 471, height });
+    Object.defineProperty(body, 'clientHeight', { configurable: true, value: 512 });
+    body.getBoundingClientRect = () => rect(clipTop, 512);
+    const place = (node, top, height) => { node.getBoundingClientRect = () => rect(top - body.scrollTop, height); };
+    fields.slice(0, -1).forEach((node, index) => place(node, 182 + index * 59, 30));
+    place(notes, 601.3984375, 59);
+    place(last, 690, 28);
+    const visible = node => {
+      const box = node.getBoundingClientRect();
+      return box.top >= clipTop && box.bottom <= clipBottom;
+    };
+    check('small title fixture has visible notes caret but clipped control',
+      [notes.getBoundingClientRect().top < clipBottom, visible(notes)], [true, false]);
+    await focus(contact); await key(contact, 'Tab');
+    check('Tab reveals the entire partially clipped notes textarea',
+      [document.activeElement === notes, visible(notes)], [true, true]);
+    check('revealing notes scrolls only the modal body', [body.scrollTop > 0, editor.scrollTop], [true, 173]);
+    await key(notes, 'Tab');
+    check('Tab reveals the entire footer button below notes', [document.activeElement === last, visible(last)], [true, true]);
+    const footerScroll = body.scrollTop;
+    await key(last, 'Tab');
+    check('wrapping to the fixed header keeps the modal body position', [document.activeElement === first, body.scrollTop], [true, footerScroll]);
+    await key(first, 'Tab', { shiftKey: true });
+    check('reverse wrapping reveals the footer', [document.activeElement === last, visible(last)], [true, true]);
+    await key(last, 'Tab', { shiftKey: true });
+    check('reverse Tab keeps the full textarea visible', [document.activeElement === notes, visible(notes)], [true, true]);
+    for (let step = 1; step < fields.length; step++) await key(document.activeElement, 'Tab', { shiftKey: true });
+    check('reverse navigation reveals the earlier title field above the clip',
+      [document.activeElement === fields[0], visible(fields[0]), body.scrollTop < footerScroll], [true, true, true]);
+    await key(document.activeElement, 'Escape');
+    check('scrolled modal close restores writing focus and backward cross-block range',
+      [document.activeElement.dataset.id, rangeState()], ['modal-a', selected]);
+    check('scrolled modal close preserves the background editor position', editor.scrollTop, 173);
+    unchanged('modal visibility scrolling does not change project or history', before);
+    editor.scrollTop = editorScroll;
+  }
+
   await menu('edit:find');
   const findInput = q('.find-panel input[aria-label="查找内容"]');
   await input(findInput, '合成未命中的查找词');
