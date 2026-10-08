@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { renderPdf } = require('./pdf');
 const { saveProjectFile } = require('./projectSave');
+const { dialogFileName } = require('./platform');
 
 /* ---------------------------- 主进程崩溃兜底 ---------------------------- */
 /* 任何未捕获的同步异常 / 未处理的 Promise 拒绝，默认会让 Electron 直接退出且无提示。
@@ -57,8 +58,11 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 680,
     title: '光影写手',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 20 },
+    // Keep native minimize/maximize/close controls on Windows. Traffic lights and
+    // the inset title bar belong only to the existing macOS window chrome.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 20 } }
+      : { titleBarStyle: 'default' }),
     backgroundColor: '#f6f7f9',
     show: false,
     webPreferences: {
@@ -160,6 +164,7 @@ function buildMenu() {
       submenu: [
         { label: '写作', accelerator: 'CmdOrCtrl+Alt+1', click: () => send('view:write') },
         { label: '故事板卡片', accelerator: 'CmdOrCtrl+Alt+2', click: () => send('view:cards') },
+        { label: '自由板', click: () => send('view:board') },
         { label: '分页预览', accelerator: 'CmdOrCtrl+Alt+3', click: () => send('view:preview') },
         { label: '统计报表', accelerator: 'CmdOrCtrl+Alt+4', click: () => send('view:reports') },
         { type: 'separator' },
@@ -228,7 +233,7 @@ ipcMain.handle('dialog:save', async (_e, { content, path: target, name }) => {
   let file = target;
   if (!file) {
     const res = await dialog.showSaveDialog(win, {
-      defaultPath: name || '未命名剧本.zhsp',
+      defaultPath: dialogFileName(name || '未命名剧本.zhsp', process.platform),
       filters: [{ name: '光影写手工程', extensions: ['zhsp'] }],
     });
     if (res.canceled || !res.filePath) return null;
@@ -246,7 +251,7 @@ ipcMain.handle('dialog:save', async (_e, { content, path: target, name }) => {
 
 ipcMain.handle('dialog:saveAs', async (_e, { content, name, ext }) => {
   const res = await dialog.showSaveDialog(win, {
-    defaultPath: `${name}.${ext || 'zhsp'}`,
+    defaultPath: dialogFileName(`${name}.${ext || 'zhsp'}`, process.platform),
     filters: [{ name: '导出文件', extensions: [ext || 'zhsp'] }],
   });
   if (res.canceled || !res.filePath) return null;
@@ -262,7 +267,7 @@ ipcMain.handle('dialog:saveAs', async (_e, { content, name, ext }) => {
 
 ipcMain.handle('pdf:export', async (_e, opts) => {
   const res = await dialog.showSaveDialog(win, {
-    defaultPath: opts?.name || '剧本.pdf',
+    defaultPath: dialogFileName(opts?.name || '剧本.pdf', process.platform),
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   if (res.canceled || !res.filePath) return null;

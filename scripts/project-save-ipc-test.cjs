@@ -12,7 +12,7 @@ function eq(actual, expected, message) { assert.equal(actual, expected, message 
 function deep(actual, expected, message) { assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected, message); checks++; }
 function ok(value, message) { assert.ok(value, message || 'expected truthy value'); checks++; }
 
-function harness() {
+function harness(platform = 'darwin') {
   const handlers = new Map();
   const state = {
     disk: new Map(), writes: [], helperCalls: [], pdfCalls: [], errors: [], dialogs: [], warnings: [],
@@ -72,7 +72,7 @@ function harness() {
   const mainFile = path.join(__dirname, '../electron/main.js');
   vm.runInNewContext(fs.readFileSync(mainFile, 'utf8'), {
     module: moduleObject, exports: moduleObject.exports, __dirname: path.dirname(mainFile),
-    process: { env: {}, platform: 'darwin', on() {} },
+    process: { env: {}, platform, on() {} },
     console: { ...console, warn: (...args) => {
       if (state.throwOnWarn) throw new Error('synthetic logging unavailable');
       state.warnings.push(args);
@@ -80,7 +80,8 @@ function harness() {
     require(name) {
       if (name === 'electron') return electron;
       if (name === 'node:fs') return fakeFs;
-      if (name === 'node:path') return path;
+      if (name === 'node:path') return platform === 'win32' ? path.win32 : path.posix;
+      if (name === './platform') return require('../electron/platform');
       if (name === './projectSave') return {
         saveProjectFile(file, content) {
           state.helperCalls.push({ file, content });
@@ -108,6 +109,8 @@ async function main() {
   const file = '/synthetic-qa/工程.zhsp';
   const recentPath = '/synthetic-qa-userData/recent.json';
   eq(s.windows.length, 1, 'VM created only a fake window');
+  eq(s.windows[0].options.titleBarStyle, 'hiddenInset', 'macOS keeps its existing inset title bar');
+  deep(s.windows[0].options.trafficLightPosition, { x: 16, y: 20 });
   ok(h.handlers.has('dialog:save') && h.handlers.has('dialog:saveAs') && h.handlers.has('pdf:export'));
 
   let finish;
@@ -255,6 +258,52 @@ async function main() {
     deep(options.buttons, ['继续写作', '仍然离开']);
     ok(options.detail.includes('自动恢复点不能替代工程文件'));
   }
+
+  const windows = harness('win32');
+  const ws = windows.state;
+  eq(ws.windows[0].options.titleBarStyle, 'default', 'Windows retains native caption controls');
+  eq(ws.windows[0].options.trafficLightPosition, undefined, 'macOS-only traffic light placement is absent');
+  eq(ws.windows[0].options.webPreferences.contextIsolation, true);
+  eq(ws.windows[0].options.webPreferences.nodeIntegration, false);
+  deep(await windows.invoke('app:info'), { version: 'synthetic-test', platform: 'win32' });
+  const menuItems = ws.menus[0].flatMap(menu => menu.submenu || []);
+  for (const [label, accelerator] of [['保存', 'CmdOrCtrl+S'], ['撤销', 'CmdOrCtrl+Z'], ['重做', 'CmdOrCtrl+Shift+Z']]) {
+    const item = menuItems.find(entry => entry.label === label);
+    eq(item.accelerator, accelerator, `${label} retains the Windows Ctrl accelerator`);
+    if (label !== '保存') eq(item.role, undefined, 'history stays on the renderer transaction route');
+  }
+  const windowsPath = 'C:\\合成文件夹 空格\\工程.zhsp';
+  for (const [route, payload, expected] of [
+    ['dialog:save', { content, name: '合成:第一稿?.zhsp' }, '合成_第一稿_.zhsp'],
+    ['dialog:saveAs', { content, name: 'CON', ext: 'zhsp' }, '_CON.zhsp'],
+    ['dialog:saveAs', { content, name: '合成/稿件', ext: 'txt' }, '合成_稿件.txt'],
+    ['pdf:export', { mode: 'print', name: '合成<稿件>.pdf' }, '合成_稿件_.pdf'],
+  ]) {
+    ws.saves.push({ canceled: false, filePath: windowsPath });
+    eq(await windows.invoke(route, payload), windowsPath, 'chosen Windows path is never rewritten');
+    eq(ws.dialogs.at(-1).defaultPath, expected, 'only the suggested filename is Windows-safe');
+  }
+  const suggestionsBefore = ws.dialogs.length;
+  eq(await windows.invoke('dialog:save', { content, path: windowsPath }), windowsPath);
+  eq(ws.dialogs.length, suggestionsBefore, 'ordinary Save keeps the bound path without a new dialog');
+  eq(ws.helperCalls.at(-1).file, windowsPath);
+  const windowsRecent = JSON.parse(ws.writes.at(-1).data);
+  eq(windowsRecent[0].name, '工程.zhsp', 'Windows recent list uses the basename, including Chinese paths');
+  const windowsUnload = ws.windows[0].webEvents.get('will-prevent-unload');
+  let windowsAllowed = false;
+  windowsUnload({ preventDefault: () => { windowsAllowed = true; } });
+  eq(windowsAllowed, false, 'Windows close protection still defaults to staying in the document');
+  eq(ws.closeDialogs.at(-1).cancelId, 0);
+
+  const { dialogFileName } = require('../electron/platform');
+  for (const name of ['CON.zhsp', 'prn.pdf', 'AUX.txt', 'nul.md', 'COM1.zhsp', 'lpt9.zhsp', 'COM¹.zhsp']) {
+    eq(dialogFileName(name, 'win32'), `_${name}`, 'reserved Windows device name gets a safe suggestion');
+    eq(dialogFileName(name, 'darwin'), name, 'macOS suggestion is preserved');
+  }
+  eq(dialogFileName('合成\\路径/含:*?"<>|\u0001.zhsp', 'win32'), '合成_路径_含________.zhsp');
+  eq(dialogFileName('合成.zhsp. ', 'win32'), '合成.zhsp');
+  eq(dialogFileName('...', 'win32'), '未命名剧本');
+  eq(dialogFileName('合成 正文.zhsp', 'win32'), '合成 正文.zhsp');
   console.log(`project-save-ipc: ${checks} assertions passed (real main.js in VM; synthetic dialogs/fs/helper; no native Electron)`);
 }
 

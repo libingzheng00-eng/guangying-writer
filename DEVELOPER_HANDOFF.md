@@ -2,6 +2,12 @@
 
 更新时间：2026-10-08；当前源码及本地包为 `1.3.0-alpha.18.12`。本轮SmartType实现、37套源码回归、六组真实Electron验收及本地打包已完成，桌面独立安装alpha.18.12，不强制退出旧用户应用。独立空白启动、图片严格正文快照、包白名单、DMG和签名完整性通过。源码main和公开附件状态须分别以GitHub核对；下方日志保留各轮当时状态，最新证据以 `SMARTTYPE_QA_20261008.md` / `RELEASE_ALPHA_18_12.md` 为准。
 
+## 2026-10-08 Windows x64 适配分支
+
+从最新 main `dcc097b` 开发 Windows x64 便携候选，版本号仍 alpha.18.12。平台改动和 Windows 构建/合成原生验收说明见 [WINDOWS.md](WINDOWS.md)。原 macOS 包和 Release 附件保持原状；本轮不合并、不发布。实际 CI 结果绑定提交，不把本地源码回归等同 Windows 实机验收。
+
+同日接续模态与菜单修复：独立工作区从远端 `f4be49e` 接入原工作树的9项未提交/未跟踪源码快照，原工作树保留不动。模态焦点、背景 inert、关闭选区恢复及原生查找边界由 `src/app/modalFocus.ts` 和实际 App 入口协作；文件菜单具备键盘与生命周期管理，原生视图菜单补自由板。`modal-ui-test.cjs` / `menu-ui-test.cjs` 已加入统一39套核心回归。Windows原生载具另运行 `windows-ui-layers.cjs`；helper 必须和 smoke 壳一起复制到隔离工作区。新提交是否通过以其 Actions 日志为准，不沿用下方历史37套或旧包的成功记录。
+
 ## 2026-10-08 SmartType 跨类型输入（当前实现与契约）
 
 - 发布已核对：PR #11合并main，合并提交 `775acd8fa5e144944670c76551ac94ca474d0edf`；本次公开alpha.18.12的tag固定该提交，DMG/ZIP上传完成且服务端SHA与本地一致，合并后核心回归和tag发布流程通过。收尾另修复开发watcher沿DMG的Applications链接递归导致预览OOM：只改server.watch隔离及维护测试，不改生产代码、版本号或这组附件。详细事故与验证范围见本轮QA记录。

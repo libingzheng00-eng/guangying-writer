@@ -28,10 +28,14 @@
     "test:clipboard": "node scripts/clipboard-format-test.cjs && node scripts/clipboard-ui-test.cjs",
     "test:files": "node scripts/file-commands-test.cjs && node scripts/writing-range-integrity-test.cjs",
     "test:core": "node scripts/core-regression.cjs",
+    "test:ui": "node scripts/modal-ui-test.cjs && node scripts/menu-ui-test.cjs",
     "test:smarttype": "node scripts/smarttype-test.cjs && node scripts/smarttype-ui-test.cjs",
     "test:search": "node scripts/search-test.cjs && node scripts/search-ui-test.cjs",
     "test:board": "node scripts/board-workspace-model-test.cjs && node scripts/board-workspace-ui-test.cjs && node scripts/board-polish-test.cjs && node scripts/scene-notes-test.cjs",
-    "smoke": "node scripts/run-smoke.cjs"
+    "smoke": "node scripts/run-smoke.cjs",
+    "pack:win": "npm run build && node scripts/package-windows.cjs",
+    "test:windows-package": "node scripts/windows-package-test.cjs",
+    "test:windows": "node scripts/windows-smoke.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -39,6 +43,7 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@electron/packager": "20.3.0",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

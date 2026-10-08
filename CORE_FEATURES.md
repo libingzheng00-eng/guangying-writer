@@ -67,6 +67,7 @@
 - 统计页角色改名必须同步正文人物元素。
 - 统计分析仅使用 `model/reports.ts` 的只读投影与 `styles/reports.css` 的统计页限定样式，不得替换编辑器、底栏、分页或导出共用计算。总量、幕/场景、人物及 CSV 排除省略场景、省略段落与备忘；词字数不是电影时长。正文涉及页数按当前排版有效元素所在页去重，各场涉及页数不能相加。人物只代表人物元素，括号版本合并统计但保留原有精确名称改名入口；拒绝空名/重名时输入须恢复，撤销仍可恢复正文。地点不明时标为未识别。专项：`node scripts/reports-test.cjs`。
 - 深色/日间模式都须保证菜单、输入、文字、按钮有足够对比；日间模式不得遗留深色文件菜单。
+- 标题页与设置打开后须把焦点移入对话框，Tab/Shift+Tab 在可用控件内闭环并将焦点控件滚入对话框可视区域，Esc 关闭；背景工具栏、正文和底栏暂时 inert，原生查找/视图命令不能偷走焦点。关闭后恢复仍有效的触发控件或原正文选区，不把旧文档选区套到新工程。对话框会话内的撤销不越过打开边界，保留工程保存、恢复与既有历史语义。文件菜单须支持方向键/Home/End、Esc、Tab/Shift+Tab及稳定焦点交接，并在外点、窗口失焦、视图或工程切换后关闭；普通菜单键不能泄漏到板面删除/连线命令。专项：`modal-ui-test.cjs` / `menu-ui-test.cjs`；真实绘制与系统输入仍另验。
 - 左侧导航可收起且可恢复，不应遮挡正文或工具栏。
 
 ## 六、每次提交前至少验证
@@ -77,7 +78,7 @@ npm run build
 npm run test:core
 ```
 
-`test:core` 当前统一运行37套源码专项，runner与两条CI必须同步更新；这不等于原生验收通过。单项定位可运行：
+`test:core` 当前统一运行39套源码专项，runner与各平台CI必须同步更新；这不等于原生验收通过。单项定位可运行：
 
 ```bash
 node scripts/core-guard.cjs
@@ -89,6 +90,8 @@ node scripts/smarttype-test.cjs
 node scripts/smarttype-ui-test.cjs
 node scripts/search-test.cjs
 node scripts/search-ui-test.cjs
+node scripts/modal-ui-test.cjs
+node scripts/menu-ui-test.cjs
 node scripts/zhsp-compat-test.cjs
 node scripts/history-test.cjs
 node scripts/input-performance-test.cjs

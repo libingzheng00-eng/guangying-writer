@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useStore, type ViewMode } from '../store/store';
 import { ELEMENT_META, ELEMENT_ORDER } from '../model/elements';
 import type { ElementType } from '../model/types';
@@ -13,10 +13,11 @@ const VIEWS: { key: ViewMode; label: string }[] = [
   { key: 'reports', label: '统计' },
 ];
 
-export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: ReturnType<typeof useCommands>; onOpenSettings: () => void; onOpenTitle: () => void }) {
+export function Toolbar({ commands, onOpenSettings, onOpenTitle, modalOpen = false }: { commands: ReturnType<typeof useCommands>; onOpenSettings: () => void; onOpenTitle: () => void; modalOpen?: boolean }) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const project = useStore((s) => s.project);
+  const documentEpoch = useStore((s) => s.documentEpoch);
   const activeId = useStore((s) => s.activeId);
   const activeRev = useStore((s) => s.activeRev);
   const setRevision = useStore((s) => s.setRevision);
@@ -34,17 +35,92 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
   const deleteWritingElements = useStore((s) => s.deleteWritingElements);
   const [menu, setMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuPopupRef = useRef<HTMLDivElement>(null);
+  const menuFocusEdge = useRef<'first' | 'last'>('first');
+  const menuId = useId();
+  const menuOpen = menu === 'file' && !modalOpen;
 
   const activeEl = project.elements.find((e) => e.id === activeId) || null;
   const selecting = view === 'write' && writingSelectionMode;
 
+  const closeMenu = (restoreFocus = false) => {
+    setMenu(null);
+    if (restoreFocus && !modalOpen) menuTriggerRef.current?.focus({ preventScroll: true });
+  };
+  const focusMenuEdge = (edge: 'first' | 'last') => {
+    const items = menuPopupRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)');
+    if (items?.length) items[edge === 'first' ? 0 : items.length - 1].focus({ preventScroll: true });
+  };
+  const openMenu = (edge: 'first' | 'last' = 'first') => {
+    if (modalOpen) return;
+    menuFocusEdge.current = edge;
+    if (menuOpen) focusMenuEdge(edge);
+    else setMenu('file');
+  };
+  const runMenuAction = (action: () => unknown) => {
+    // Establish a stable return target before a native dialog or modal takes focus.
+    closeMenu(true);
+    action();
+  };
+  const onMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const composing = event.nativeEvent.isComposing || event.keyCode === 229;
+    if (menuOpen && composing) { event.stopPropagation(); return; }
+    if (composing || event.altKey || event.ctrlKey || event.metaKey) return;
+    // The closed trigger is a button too: Space must activate it rather than
+    // start board panning, and Delete/L must never mutate a background card.
+    // Keep native button activation and Tab defaults; app shortcuts may bubble.
+    event.stopPropagation();
+    if (!menuOpen) {
+      if (event.target === menuTriggerRef.current && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+        event.preventDefault(); event.stopPropagation();
+        openMenu(event.key === 'ArrowUp' ? 'last' : 'first');
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault(); event.stopPropagation(); closeMenu(true);
+    } else if (event.key === 'Tab') {
+      // Keep native Tab navigation, starting from the stable trigger rather than
+      // the menu item that will be unmounted. This does not trap toolbar focus.
+      closeMenu(true);
+    } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault(); event.stopPropagation();
+      const items = [...(menuPopupRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') || [])];
+      const current = items.indexOf(document.activeElement as HTMLButtonElement);
+      const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+        : current < 0 ? (event.key === 'ArrowDown' ? 0 : items.length - 1)
+        : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+      items[index]?.focus({ preventScroll: true });
+    }
+  };
+
+  useLayoutEffect(() => {
+    if (menuOpen) focusMenuEdge(menuFocusEdge.current);
+  }, [menuOpen]);
   useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
+    if (modalOpen) setMenu(null);
+  }, [modalOpen]);
+  useEffect(() => {
+    // Native commands can switch pages or documents without a pointer/focus event.
+    if (!modalOpen && menuPopupRef.current?.contains(document.activeElement)) menuTriggerRef.current?.focus({ preventScroll: true });
+    setMenu(null);
+  }, [view, documentEpoch]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e: Event) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(null);
     };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, []);
+    const onBlur = () => setMenu(null);
+    document.addEventListener('mousedown', onDoc, true);
+    document.addEventListener('focusin', onDoc, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      document.removeEventListener('mousedown', onDoc, true);
+      document.removeEventListener('focusin', onDoc, true);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [menuOpen]);
 
   const fmt = (cmd: string) => {
     useStore.getState().breakHistoryGroup();
@@ -60,7 +136,9 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
   };
 
   return (
-    <div className="toolbar" ref={menuRef}>
+    <div className="toolbar" onClickCapture={(event) => {
+      if (menuOpen && !menuRef.current?.contains(event.target as Node)) closeMenu();
+    }}>
       <div className="toolbar__group toolbar__document">
         <button className="doc-title" onClick={onOpenTitle} title={`${filePath || '尚未保存为文件'} · 点击编辑剧本信息`}>
           {filePath?.split(/[\\/]/).pop() || project.name}
@@ -102,19 +180,19 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
             </option>
           ))}
         </select>
-        <button className="icon-btn" title="加粗 ⌘B" onMouseDown={e => e.preventDefault()} onClick={() => fmt('bold')}>
+        <button className="icon-btn" title="加粗 ⌘/Ctrl+B" onMouseDown={e => e.preventDefault()} onClick={() => fmt('bold')}>
           <b>B</b>
         </button>
-        <button className="icon-btn" title="斜体 ⌘I" onMouseDown={e => e.preventDefault()} onClick={() => fmt('italic')}>
+        <button className="icon-btn" title="斜体 ⌘/Ctrl+I" onMouseDown={e => e.preventDefault()} onClick={() => fmt('italic')}>
           <i>I</i>
         </button>
-        <button className="icon-btn" title="下划线 ⌘U" onMouseDown={e => e.preventDefault()} onClick={() => fmt('underline')}>
+        <button className="icon-btn" title="下划线 ⌘/Ctrl+U" onMouseDown={e => e.preventDefault()} onClick={() => fmt('underline')}>
           <u>U</u>
         </button>
-        <button className="icon-btn" title="插入新场景 ⌘↩" onClick={commands.insertScene}>
+        <button className="icon-btn" title="插入新场景 ⌘/Ctrl+Enter" onClick={commands.insertScene}>
           ＋场
         </button>
-        <button className="icon-btn" title="双列对白 ⌘D" onClick={commands.makeDual}>
+        <button className="icon-btn" title="双列对白 ⌘/Ctrl+D" onClick={commands.makeDual}>
           ⇄
         </button>
         <button
@@ -164,35 +242,36 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
 
       <div className="toolbar__group toolbar__file-actions">
         <button className="icon-btn" title="查找正文 ⌘/Ctrl+F" onClick={commands.openFind}>查找</button>
-        <button className="icon-btn" disabled={!canUndo} title="撤销 ⌘Z" onMouseDown={e => e.preventDefault()} onClick={undo}>
+        <button className="icon-btn" disabled={!canUndo} title="撤销 ⌘/Ctrl+Z" onMouseDown={e => e.preventDefault()} onClick={undo}>
           ↶
         </button>
-        <button className="icon-btn" disabled={!canRedo} title="重做 ⇧⌘Z" onMouseDown={e => e.preventDefault()} onClick={redo}>
+        <button className="icon-btn" disabled={!canRedo} title="重做 ⌘/Ctrl+Shift+Z" onMouseDown={e => e.preventDefault()} onClick={redo}>
           ↷
         </button>
         <button className="btn btn--ghost" onClick={() => commands.save(false)}>
           保存
         </button>
-        <div className="menu-wrap">
-          <button className="btn btn--ghost" onClick={() => setMenu(menu === 'file' ? null : 'file')}>
+        <div className="menu-wrap" ref={menuRef} onKeyDown={onMenuKeyDown}>
+          <button ref={menuTriggerRef} className="btn btn--ghost" aria-haspopup="menu" aria-expanded={menuOpen} aria-controls={menuId}
+            disabled={modalOpen} onClick={() => menuOpen ? closeMenu(true) : openMenu()}>
             文件 ▾
           </button>
-          {menu === 'file' ? (
-            <div className="menu">
-              <Item label="新建剧本" onClick={() => { commands.newFile(); setMenu(null); }} />
-              <Item label="打开…" onClick={() => { commands.open(); setMenu(null); }} />
-              <Item label="另存为…" onClick={() => { commands.save(true); setMenu(null); }} />
-              <div className="menu__sep" />
-              <Item label="导入文本 / FDX…" onClick={() => { commands.importAny(); setMenu(null); }} />
-              <div className="menu__sep" />
-              <Item label="导出创作版 PDF（原位卡片）…" onClick={() => { commands.exportPdf('creative'); setMenu(null); }} />
-              <Item label="导出 A4 纯文本 PDF…" onClick={() => { commands.exportPdf('print'); setMenu(null); }} />
-              <Item label="导出 Final Draft (FDX)…" onClick={() => { commands.exportAs('fdx'); setMenu(null); }} />
-              <Item label="导出纯文本…" onClick={() => { commands.exportAs('txt'); setMenu(null); }} />
-              <Item label="导出 Markdown…" onClick={() => { commands.exportAs('md'); setMenu(null); }} />
-              <Item label="导出网页 HTML…" onClick={() => { commands.exportAs('html'); setMenu(null); }} />
-              <div className="menu__sep" />
-              <Item label="标题页…" onClick={() => { onOpenTitle(); setMenu(null); }} />
+          {menuOpen ? (
+            <div className="menu" id={menuId} ref={menuPopupRef} role="menu" aria-label="文件">
+              <Item label="新建剧本" onClick={() => runMenuAction(commands.newFile)} />
+              <Item label="打开…" onClick={() => runMenuAction(commands.open)} />
+              <Item label="另存为…" onClick={() => runMenuAction(() => commands.save(true))} />
+              <div className="menu__sep" role="separator" />
+              <Item label="导入文本 / FDX…" onClick={() => runMenuAction(commands.importAny)} />
+              <div className="menu__sep" role="separator" />
+              <Item label="导出创作版 PDF（原位卡片）…" onClick={() => runMenuAction(() => commands.exportPdf('creative'))} />
+              <Item label="导出 A4 纯文本 PDF…" onClick={() => runMenuAction(() => commands.exportPdf('print'))} />
+              <Item label="导出 Final Draft (FDX)…" onClick={() => runMenuAction(() => commands.exportAs('fdx'))} />
+              <Item label="导出纯文本…" onClick={() => runMenuAction(() => commands.exportAs('txt'))} />
+              <Item label="导出 Markdown…" onClick={() => runMenuAction(() => commands.exportAs('md'))} />
+              <Item label="导出网页 HTML…" onClick={() => runMenuAction(() => commands.exportAs('html'))} />
+              <div className="menu__sep" role="separator" />
+              <Item label="标题页…" onClick={() => runMenuAction(onOpenTitle)} />
             </div>
           ) : null}
         </div>
@@ -206,7 +285,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
 
 function Item({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button className="menu__item" onClick={onClick}>
+    <button className="menu__item" role="menuitem" tabIndex={-1} onClick={onClick}>
       {label}
     </button>
   );

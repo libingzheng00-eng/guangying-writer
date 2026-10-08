@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useId, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from '../store/store';
 import { ELEMENT_META, ELEMENT_ORDER, FONT_PRESETS, REVISION_COLORS } from '../model/elements';
 import type { ElementType, Revision, TextAlign } from '../model/types';
 import { uid } from '../utils/id';
 import { DEFAULT_FONT_COLOR, resolveFontColor } from '../model/appearance';
 import { isHexColor } from '../utils/color';
+import { containModal, createModalSession, type ModalSession } from '../app/modalFocus';
+import { ownsNativeHistory } from '../utils/editHistory';
 
 /** 可选自定义颜色；默认值另用 auto 跟随日夜主题。 */
 const FONT_COLOR_PRESETS = [
@@ -18,13 +20,63 @@ const FONT_COLOR_PRESETS = [
   { name: '浅灰', color: '#c9d1d9' },
 ];
 
-function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+type DialogProps = { onClose: () => void; session?: ModalSession };
+
+function Modal({ title, onClose, children, wide, session }: DialogProps & { title: string; children: React.ReactNode; wide?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const latestClose = useRef(onClose);
+  latestClose.current = onClose;
+  const sessionRef = useRef<ModalSession | null>(session || null);
+  const generation = useRef(0);
+  useLayoutEffect(() => {
+    const node = ref.current!;
+    const current = sessionRef.current ||= createModalSession();
+    const lifetime = ++generation.current;
+    const cleanup = containModal(node, node.parentElement!, () => latestClose.current());
+    current.activate();
+    const history = (event: InputEvent) => {
+      if (event.isComposing) return;
+      if (event.inputType !== 'historyUndo' && event.inputType !== 'historyRedo') return;
+      if (ownsNativeHistory(event.target)) return;
+      event.preventDefault(); event.stopPropagation();
+      current.history(event.inputType === 'historyUndo' ? 'undo' : 'redo');
+    };
+    node.addEventListener('beforeinput', history);
+    return () => {
+      cleanup();
+      node.removeEventListener('beforeinput', history);
+      // StrictMode replays effects with the same live node. Restore only after
+      // a genuine close, and never steal focus from a replacement modal.
+      queueMicrotask(() => {
+        if (generation.current === lifetime && !node.isConnected && !document.querySelector('[aria-modal="true"]')) current.restore();
+      });
+    };
+  }, []);
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className={`modal ${wide ? 'modal--wide' : ''}`} onMouseDown={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" onMouseDown={event => {
+      // Keep the modal alive through pointer release: removing it on mousedown
+      // can expose a background control to the rest of the same gesture.
+      if (event.target === event.currentTarget) event.preventDefault();
+    }} onClick={event => {
+      if (event.target === event.currentTarget) onClose();
+    }} onKeyDown={event => {
+      // Keep board/editor window shortcuts from observing modal keystrokes.
+      event.stopPropagation();
+      if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+      const key = event.key.toLowerCase();
+      if (event.metaKey || event.ctrlKey) {
+        if ((key === 'z' || key === 'y') && !ownsNativeHistory(event.target)) {
+          event.preventDefault(); sessionRef.current?.history(key === 'y' || event.shiftKey ? 'redo' : 'undo');
+        } else if (['s', 'o', 'n', 'p', 'f', 'd', '1', '2', '3', '4', '5', '6', '7', '8', '9'].includes(key)) {
+          event.preventDefault();
+        }
+      }
+    }}>
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className={`modal ${wide ? 'modal--wide' : ''}`} onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal__head">
-          <h3>{title}</h3>
-          <button className="icon-btn" onClick={onClose}>
+          <h3 id={titleId}>{title}</h3>
+          <button className="icon-btn" aria-label={`关闭${title}`} onClick={onClose}>
             ×
           </button>
         </header>
@@ -34,7 +86,7 @@ function Modal({ title, onClose, children, wide }: { title: string; onClose: () 
   );
 }
 
-export function TitlePageDialog({ onClose }: { onClose: () => void }) {
+export function TitlePageDialog({ onClose, session }: DialogProps) {
   const tp = useStore((s) => s.project.titlePage);
   const update = useStore((s) => s.updateTitlePage);
   const rows: { key: keyof typeof tp; label: string; area?: boolean }[] = [
@@ -48,7 +100,7 @@ export function TitlePageDialog({ onClose }: { onClose: () => void }) {
     { key: 'notes', label: '备注', area: true },
   ];
   return (
-    <Modal title="标题页" onClose={onClose}>
+    <Modal title="标题页" onClose={onClose} session={session}>
       <div className="form">
         <label className="checkbox">
           <input type="checkbox" checked={tp.show} onChange={(e) => update({ show: e.target.checked })} />
@@ -60,7 +112,7 @@ export function TitlePageDialog({ onClose }: { onClose: () => void }) {
             {r.area ? (
               <textarea value={tp[r.key] as string} rows={3} onChange={(e) => update({ [r.key]: e.target.value })} />
             ) : (
-              <input value={tp[r.key] as string} onChange={(e) => update({ [r.key]: e.target.value })} />
+              <input aria-label={r.label} data-modal-autofocus={r.key === 'title' ? '' : undefined} value={tp[r.key] as string} onChange={(e) => update({ [r.key]: e.target.value })} />
             )}
           </div>
         ))}
@@ -74,7 +126,7 @@ export function TitlePageDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
+export function SettingsDialog({ onClose, session }: DialogProps) {
   const settings = useStore((s) => s.project.settings);
   const revisions = useStore((s) => s.project.revisions);
   const update = useStore((s) => s.updateSettings);
@@ -93,7 +145,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal title="显示简介设置" onClose={onClose} wide>
+    <Modal title="显示简介设置" onClose={onClose} session={session} wide>
       <div className="tabs">
         {(
           [
@@ -104,7 +156,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             ['general', '常规'],
           ] as const
         ).map(([k, label]) => (
-          <button key={k} className={tab === k ? 'is-active' : ''} onClick={() => setTab(k)}>
+          <button key={k} data-modal-autofocus={tab === k ? '' : undefined} className={tab === k ? 'is-active' : ''} onClick={() => setTab(k)}>
             {label}
           </button>
         ))}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from './store/store';
 import { PaginationProvider } from './hooks/PaginationProvider';
 import { Editor } from './components/Editor';
@@ -21,6 +21,7 @@ import { subscribeAutosave } from './app/autosaveSubscription';
 import { readRecovery, createRecoveryWriter, recoveryErrorMessage } from './app/autosaveStorage';
 import { useRecoveryStatus } from './app/recoveryStatus';
 import { ownsNativeHistory, runEditHistory } from './utils/editHistory';
+import { createModalSession, type ModalSession } from './app/modalFocus';
 
 export default function App() {
   const view = useStore((s) => s.view);
@@ -30,9 +31,18 @@ export default function App() {
   // 只订阅窗口标题真正需要的字段；避免每次打字都让整个 App 树重新渲染。
   const projectName = useStore((s) => s.project.name);
   const [dialog, setDialog] = useState<null | 'settings' | 'title'>(null);
+  const modalSession = useRef<ModalSession | null>(null);
+  const openDialog = useCallback((kind: 'settings' | 'title') => {
+    if (modalSession.current || document.querySelector('[aria-modal="true"]')) return;
+    modalSession.current = createModalSession();
+    setDialog(kind);
+  }, []);
+  const closeDialog = useCallback(() => { setDialog(null); modalSession.current = null; }, []);
   const [findRequest, setFindRequest] = useState(0);
   useEffect(() => {
-    const open = () => setFindRequest(value => value + 1);
+    const open = () => {
+      if (!modalSession.current && !document.querySelector('[aria-modal="true"]')) setFindRequest(value => value + 1);
+    };
     window.addEventListener('guangying:find', open);
     return () => window.removeEventListener('guangying:find', open);
   }, []);
@@ -124,6 +134,10 @@ export default function App() {
   /* 菜单 / 快捷键 */
   useEffect(() => {
     const run = (action: string) => {
+      if (modalSession.current || document.querySelector('[aria-modal="true"]')) {
+        if (action === 'edit:undo' || action === 'edit:redo') modalSession.current?.history(action === 'edit:undo' ? 'undo' : 'redo');
+        return;
+      }
       const st = useStore.getState();
       switch (action) {
         case 'file:new':
@@ -158,10 +172,10 @@ export default function App() {
           commands.exportAs('md');
           break;
         case 'file:titlePage':
-          setDialog('title');
+          openDialog('title');
           break;
         case 'file:settings':
-          setDialog('settings');
+          openDialog('settings');
           break;
         case 'edit:undo':
           runEditHistory('undo');
@@ -232,13 +246,13 @@ export default function App() {
       };
     }
     return off;
-  }, [commands]);
+  }, [commands, openDialog]);
 
   return (
     <PaginationProvider>
       <div className="app-shell" data-theme={appTheme}>
         <div className="write-bg" aria-hidden style={{ backgroundImage: writeBg }} />
-        <Toolbar commands={commands} onOpenSettings={() => setDialog('settings')} onOpenTitle={() => setDialog('title')} />
+        <Toolbar commands={commands} modalOpen={dialog !== null} onOpenSettings={() => openDialog('settings')} onOpenTitle={() => openDialog('title')} />
         <div className="app-body">
           <Sidebar />
           <main className="app-main">
@@ -251,8 +265,8 @@ export default function App() {
         </div>
         <StatusBar />
         {findRequest > 0 && view === 'write' ? <FindPanel request={findRequest} onClose={() => setFindRequest(0)} /> : null}
-        {dialog === 'settings' ? <SettingsDialog onClose={() => setDialog(null)} /> : null}
-        {dialog === 'title' ? <TitlePageDialog onClose={() => setDialog(null)} /> : null}
+        {dialog === 'settings' ? <SettingsDialog onClose={closeDialog} session={modalSession.current!} /> : null}
+        {dialog === 'title' ? <TitlePageDialog onClose={closeDialog} session={modalSession.current!} /> : null}
         {toast ? <Toast text={toast.text} kind={toast.kind} ts={toast.ts} /> : null}
       </div>
     </PaginationProvider>

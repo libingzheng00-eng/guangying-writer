@@ -12,9 +12,11 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 
 const repo = path.resolve(__dirname, '..');
-// macOS aliases /var to /private/var. Use a canonical fixture root so Vite's
-// strict file-serving check and its realpath-resolved module ID agree.
-const out = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-dev-watch-')));
+// Match Vite's native realpath resolution: macOS aliases /var to /private/var,
+// and Windows TEMP can use an 8.3 alias such as RUNNER~1. The JS realpathSync
+// implementation can retain that short alias, making Vite's resolved long path
+// fall outside its own strict file-serving root. Do not widen fs.allow instead.
+const out = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-dev-watch-')));
 const fixture = path.join(out, 'project');
 const external = path.join(out, 'external-fixture');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -55,8 +57,11 @@ async function until(label, condition, timeout = 8000) {
   const outsideFile = path.join(external, 'outside.txt');
   fs.writeFileSync(outsideFile, 'external synthetic fixture\n', { flag: 'wx' });
   // Both targets are this test's sibling temporary directory, NOT /Applications.
-  fs.symlinkSync(external, path.join(fixture, 'release/dmg-content/Applications'), 'dir');
-  fs.symlinkSync(external, path.join(fixture, 'src/ExternalFixtures'), 'dir');
+  // A directory junction exercises the same lstat/followSymlinks boundary on
+  // Windows without requiring Developer Mode or elevated symlink privileges.
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+  fs.symlinkSync(external, path.join(fixture, 'release/dmg-content/Applications'), linkType);
+  fs.symlinkSync(external, path.join(fixture, 'src/ExternalFixtures'), linkType);
 
   const loaded = await loadConfigFromFile({ command: 'serve', mode: 'development' }, path.join(repo, 'vite.config.ts'), repo, 'silent');
   assert.ok(loaded, 'Actual vite.config.ts must load successfully');

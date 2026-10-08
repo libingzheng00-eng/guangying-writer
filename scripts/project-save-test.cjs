@@ -66,7 +66,7 @@ async function main() {
   const root = await fs.promises.realpath(await fs.promises.mkdtemp(path.join(os.tmpdir(), 'guangying-project-save-test-')));
   let index = 0;
   async function fixture(initial = a) {
-    const dir = path.join(root, `case-${++index}`);
+    const dir = path.join(root, `合成路径 空格-${++index}`);
     await fs.promises.mkdir(dir);
     const file = path.join(dir, '合成.zhsp');
     if (initial !== null) await fs.promises.writeFile(file, initial, { mode: 0o640 });
@@ -95,7 +95,11 @@ async function main() {
     eq(await content(fresh.file), a, 'new project bytes intact');
     eq(first.path, fresh.file);
     eq(first.backupPath, null, 'new file has no previous backup');
-    eq((await fs.promises.stat(fresh.file)).mode & 0o777, 0o600, 'new project is private');
+    if (process.platform === 'win32') {
+      ok((await fs.promises.stat(fresh.file)).mode & 0o200, 'new Windows project is writable; POSIX privacy bits are not ACLs');
+    } else {
+      eq((await fs.promises.stat(fresh.file)).mode & 0o777, 0o600, 'new POSIX project is private');
+    }
     ok(typeof first.directorySynced === 'boolean');
     await clean(fresh.dir);
     const second = await freshSave(fresh.file, b);
@@ -110,8 +114,9 @@ async function main() {
     const permissions = await fixture();
     await fs.promises.chmod(permissions.file, 0o640);
     await createProjectSaver()(permissions.file, b);
-    eq((await fs.promises.stat(permissions.file)).mode & 0o777, 0o640, 'target permissions preserved');
-    eq((await fs.promises.stat(permissions.backup)).mode & 0o777, 0o640, 'backup permissions preserved');
+    const expectedMode = process.platform === 'win32' ? 0o666 : 0o640;
+    eq((await fs.promises.stat(permissions.file)).mode & 0o777, expectedMode, 'target platform permission bits preserved');
+    eq((await fs.promises.stat(permissions.backup)).mode & 0o777, expectedMode, 'backup platform permission bits preserved');
 
     const backupReadOnly = await fixture();
     await fs.promises.writeFile(backupReadOnly.backup, 'synthetic-protected-backup', { mode: 0o400 });
@@ -173,12 +178,39 @@ async function main() {
 
     const alias = await fixture();
     const aliasDir = path.join(root, 'same-parent-alias');
-    await fs.promises.symlink(alias.dir, aliasDir, 'dir');
+    await fs.promises.symlink(alias.dir, aliasDir, process.platform === 'win32' ? 'junction' : 'dir');
     const aliasSave = createProjectSaver();
     await Promise.all([aliasSave(alias.file, b), aliasSave(path.join(aliasDir, '合成.zhsp'), c)]);
     eq(await content(alias.file), c, 'parent-directory aliases share the same save queue');
     eq(await content(alias.backup), b);
     await clean(alias.dir);
+
+    // Model Windows case-insensitive filename lookup even on a case-sensitive
+    // development volume, and run the same case directly on Windows below.
+    const caseAlias = await fixture();
+    const upperCaseFile = caseAlias.file.replace(/\.zhsp$/, '.ZHSP');
+    const lowerCasePath = value => typeof value === 'string' && value.startsWith(upperCaseFile)
+      ? caseAlias.file + value.slice(upperCaseFile.length) : value;
+    const insensitiveFs = new Proxy(fs.promises, {
+      get(target, key) {
+        const value = target[key];
+        if (typeof value !== 'function') return value;
+        return (...args) => value.apply(target, args.map(lowerCasePath));
+      },
+    });
+    const insensitiveSave = createProjectSaver({ fileSystem: insensitiveFs, platform: 'win32' });
+    await Promise.all([insensitiveSave(caseAlias.file, b), insensitiveSave(upperCaseFile, c)]);
+    eq(await content(caseAlias.file), c, 'Windows case aliases serialize in request order');
+    eq(await content(caseAlias.backup), b, 'case alias backup contains the prior successful snapshot');
+    await clean(caseAlias.dir);
+    if (process.platform === 'win32') {
+      const nativeCase = await fixture();
+      const nativeSave = createProjectSaver();
+      await Promise.all([nativeSave(nativeCase.file, b), nativeSave(nativeCase.file.replace(/\.zhsp$/, '.ZHSP'), c)]);
+      eq(await content(nativeCase.file), c, 'real Windows filesystem case aliases serialize');
+      eq(await content(nativeCase.backup), b);
+      await clean(nativeCase.dir);
+    }
 
     const recoverQueue = await fixture();
     const failsOnce = injectedFs({ fault: Object.assign(e => e.method === 'handle.writeFile', { code: 'ENOSPC' }) });
@@ -277,12 +309,15 @@ async function main() {
 
     for (const code of ['EINVAL', 'EIO']) {
       const syncWarning = await fixture();
-      const syncIo = injectedFs({ fault: Object.assign(e => e.method === 'handle.sync' && e.file === syncWarning.dir, { code }) });
+      // Inject at directory open: Windows can reject directory handles before
+      // .sync() is reachable. This still exercises the real post-commit result.
+      const syncIo = injectedFs({ fault: Object.assign(e => e.method === 'open' && e.file === syncWarning.dir, { code }) });
       const result = await createProjectSaver({ fileSystem: syncIo.fileSystem })(syncWarning.file, b);
       eq(await content(syncWarning.file), b, 'post-commit directory sync does not masquerade as failed save');
       eq(await content(syncWarning.backup), a);
       eq(result.directorySynced, false);
       eq(result.durabilityWarning, code === 'EINVAL' ? 'directory-sync-unavailable' : 'directory-sync-EIO');
+      ok(syncIo.faultUsed(), 'the intended post-commit directory failure was reached');
     }
 
     const invalid = await fixture();
