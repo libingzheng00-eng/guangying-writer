@@ -14,6 +14,7 @@ import { fontStackOf } from '../model/elements';
 import { createSmartTypeCatalogReader, getSmartTypeSuggestions, type SmartTypeCatalog, type SmartTypeSuggestion } from '../model/smarttype';
 import { searchText } from '../model/search';
 import type { ScriptElement, ElementType } from '../model/types';
+import { safeEmbeddedImageSource } from '../utils/displayValues';
 
 interface SuggestState {
   id: string;
@@ -978,7 +979,9 @@ function WritingMaterialCards({ cards, onUpdate, onMove, onDelete }: {
             <span className="writing-material-card__drag" title="拖动卡片" aria-hidden>⠿</span>
             <button type="button" title={`删除这张${card.kind === 'image' ? '图片' : '声音'}卡`} aria-label={`删除这张${card.kind === 'image' ? '图片' : '声音'}卡`} onClick={() => onDelete(card.id)}>×</button>
           </header>
-          {card.kind === 'image' && card.img ? <img className="writing-material-card__image" src={card.img} alt={card.title || '图片素材'} draggable={false} /> : null}
+          {card.kind === 'image' && card.img ? (safeEmbeddedImageSource(card.img)
+            ? <img className="writing-material-card__image" src={safeEmbeddedImageSource(card.img)} alt={card.title || '图片素材'} draggable={false} />
+            : <div className="bcard__empty-media">图片来源已阻止，请重新导入本地图片</div>) : null}
           <textarea value={card.text} placeholder={card.kind === 'image' ? '图片备注、画面灵感或场景提示…' : '声音、环境、节奏或情绪提示…'} aria-label={card.kind === 'image' ? '图片卡备注' : '声音卡内容'} onChange={(e) => onUpdate(card.id, { text: e.target.value })} />
         </article>
       ))}

@@ -1,5 +1,6 @@
 import type { ElementType, ScriptProject } from '../model/types';
 import { newElement } from '../model/project';
+import { ELEMENT_ORDER, fontStackOf } from '../model/elements';
 import { escapeHtml, plain, toLines } from '../utils/text';
 
 const SCENE_RE = /^(\d+[.、．]\s*|[第]\s*[0-9一二三四五六七八九十百]+\s*[场鏡镜]\s*[.、．:-]?\s*)?(内景|外景|内外景|内\/外景|外\/内景|INT|EXT|int|ext|I\/E)[\s.．、:：-]/;
@@ -179,24 +180,30 @@ export function toMarkdown(p: ScriptProject): string {
 /** 导出为 HTML（带内联样式的剧本） */
 export function toHtml(p: ScriptProject): string {
   const st = p.settings;
+  // This is an independent document: the app's CSP does not follow it to disk.
+  // Project metadata is data, never a CSS declaration, attribute or HTML tag.
+  const finite = (value: unknown, fallback: number) => typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  const positive = (value: unknown, fallback: number) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
   const body = p.elements
     .filter((el) => el.type !== 'note' || st.printNotes)
     .map((el) => {
-      const fmt = st.indent[el.type] || { left: 0, right: 0, align: 'left' };
+      const type = ELEMENT_ORDER.includes(el.type) ? el.type : 'action';
+      const fmt = st.indent?.[type];
+      const align = fmt?.align === 'right' || fmt?.align === 'center' ? fmt.align : 'left';
       const css = [
-        `margin-left:${fmt.left}em`,
-        `margin-right:${fmt.right}em`,
-        `text-align:${fmt.align}`,
+        `margin-left:${finite(fmt?.left, 0)}em`,
+        `margin-right:${finite(fmt?.right, 0)}em`,
+        `text-align:${align}`,
         el.type === 'note' ? 'color:#888;font-style:italic' : '',
       ]
         .filter(Boolean)
         .join(';');
-      return `<p class="el-${el.type}" style="${css}">${escapeHtml(plain(el.text)).replace(/\n/g, '<br>')}</p>`;
+      return `<p class="el-${type}" style="${escapeHtml(css)}">${escapeHtml(plain(el.text)).replace(/\n/g, '<br>')}</p>`;
     })
     .join('\n');
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(p.titlePage.title || p.name)}</title>
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>${escapeHtml(p.titlePage.title || p.name)}</title>
 <style>
-body{font-family:${st.fontKey};font-size:${st.fontSize}pt;line-height:${st.lineHeight};margin:4em auto;max-width:48em;padding:0 1em;}
+body{font-family:${fontStackOf(st.fontKey)};font-size:${positive(st.fontSize, 12)}pt;line-height:${positive(st.lineHeight, 1.6)};margin:4em auto;max-width:48em;padding:0 1em;}
 p{margin:0 0 0.8em;}
 .el-character{margin-top:1em;}
 </style></head><body>

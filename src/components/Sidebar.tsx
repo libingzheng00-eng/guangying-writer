@@ -5,6 +5,7 @@ import { reorderOutlineScene } from '../model/outline';
 import { CARD_COLORS, ELEMENT_META, ELEMENT_ORDER } from '../model/elements';
 import { usePagination } from '../hooks/PaginationProvider';
 import type { ElementType } from '../model/types';
+import { safeDisplayColor } from '../utils/displayValues';
 
 const TABS: { key: SidebarMode; label: string }[] = [
   { key: 'navigator', label: '导航' },
@@ -81,7 +82,7 @@ function NavigatorPanel() {
                 setView('write');
               }}
             >
-              <span className="nav-item__no" style={{ background: s.color }}>
+              <span className="nav-item__no" style={{ backgroundColor: safeDisplayColor(s.color) }}>
                 {s.number}
               </span>
               <span className="nav-item__text">
@@ -109,7 +110,7 @@ function NavigatorPanel() {
       <div className="panel__foot">
         {project.acts.map((a) => (
           <div key={a.id} className="panel__act">
-            <span className="dot" style={{ background: a.color }} />
+            <span className="dot" style={{ backgroundColor: safeDisplayColor(a.color) }} />
             {a.title}
             <span className="panel__count">{scenes.filter((s) => s.actId === a.id).length} 场</span>
           </div>
@@ -180,7 +181,7 @@ function OutlinePanel() {
               <button
                 type="button"
                 className="outline-item__no outline-item__drag"
-                style={{ background: s.color }}
+                style={{ backgroundColor: safeDisplayColor(s.color) }}
                 draggable
                 aria-label={`拖动第 ${s.number} 场排序`}
                 title="拖动排序；双击定位正文；Alt+↑/↓ 上下移动"
@@ -306,7 +307,7 @@ function InspectorPanel() {
                 <button
                   key={r.id}
                   className={`rev-chip ${el.rev === r.id ? 'is-active' : ''}`}
-                  style={{ background: r.color }}
+                  style={{ backgroundColor: safeDisplayColor(r.color) }}
                   title={r.label}
                   onClick={() => setRevision(el.id, r.id)}
                 >

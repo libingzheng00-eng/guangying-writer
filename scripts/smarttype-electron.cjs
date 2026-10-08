@@ -86,7 +86,7 @@ async function fixture(type = 'action', text = '') {
     ] };
   win = await createFixtureWindow({ out, renderer, project, previous: win,
     preload: path.join(root, 'electron/preload.js'), onCreated: candidate => {
-      candidate.webContents.on('console-message', (_event, level, message) => { if (level >= 3) errors.push(message); });
+      candidate.webContents.on('console-message', ({ level, message }) => { if (level === 'error') errors.push(message); });
     },
   });
   await until(`!!document.querySelector('.editor__scroll[data-ready=true]')&&!!document.querySelector(${JSON.stringify(selector)})`, 'candidate fixture ready');

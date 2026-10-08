@@ -1,20 +1,22 @@
 /**
- * Actual Chromium UI-layer acceptance inside windows-smoke's owned QA window.
+ * Actual Chromium UI-layer acceptance inside desktop-smoke's owned QA window.
  * No store injection, synthetic React events, beforeunload removal, or real user
  * data. Pointer/key input goes through webContents.sendInputEvent; JavaScript
  * only reads layout/state, scrolls controls into view, and prepares focus/ranges.
  * MenuItem.click exercises the production native-menu -> IPC -> App route; it
- * does not claim a human operated the Windows system menu with a mouse.
+ * does not claim system-menu pointer or physical Command-accelerator dispatch.
+ * Mac native commands validate accelerators and call the production MenuItem;
+ * Chromium keys still drive Tab, Escape, arrows, Enter, and button activation.
  */
 const strictAssert = require('node:assert/strict');
 
-module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause, until, screenshot: capture, pass: markPassed, snapshot }) {
+module.exports = async function runWindowsUiLayers({ win, run, key, command, menu, pause, until, screenshot: capture, pass: markPassed, snapshot, recordWindowGeometry }) {
   let assertions = 0;
   const groups = [], screenshots = [], buttonActivations = [];
   const assert = Object.fromEntries(['ok', 'equal', 'deepEqual'].map(method => [method, (...args) => { strictAssert[method](...args); assertions++; }]));
   const pass = label => { groups.push(label); markPassed(label); };
   const screenshot = async name => { await capture(name); screenshots.push(name); };
-  assert.equal(process.platform, 'win32', 'UI layer acceptance is Windows-only');
+  assert.ok(['win32', 'darwin'].includes(process.platform), 'UI layer acceptance requires a real Mac/Windows desktop runtime');
   const editor = '.script-flow [data-id="windows-action"]';
   const modal = '.modal[role="dialog"][aria-modal="true"]';
   const trigger = '.toolbar [aria-haspopup="menu"]';
@@ -68,12 +70,11 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
       win.webContents.sendInputEvent({ type: 'keyDown', keyCode: code });
       await until(`window.__guangyingButtonInputTrace.events.some(e=>e.type==='keydown')`, `${code} reaches the file button`);
       assert.equal(await run(`document.activeElement===document.querySelector(${q(trigger)})&&!window.__guangyingButtonInputTrace.events.find(e=>e.type==='keydown').defaultPrevented`), true, 'Button keydown keeps focus and permits its native default');
-      // Electron 31.7.7 explicitly requires a char event for keypress. Its
-      // Chromium 126 button activation handles Enter on keypress '\r' and Space
+      // Explicit char input supplies Chromium keypress: Enter activates on '\r', Space
       // on keyup. Keep this sequence local: editor Enter stays on key() and must
       // not receive forced character input after its preventDefault handler.
-      // https://github.com/electron/electron/blob/v31.7.7/spec/api-web-contents-spec.ts#L916
-      // https://github.com/chromium/chromium/blob/126.0.6478.234/third_party/blink/renderer/core/html/html_element.cc#L2742
+      // Trusted keypress/charCode/click assertions below keep this driver honest
+      // when the Chromium runtime changes; no DOM click fallback is allowed.
       win.webContents.sendInputEvent({ type: 'char', keyCode: code });
       win.webContents.sendInputEvent({ type: 'keyUp', keyCode: code }); released = true;
       await pause(160);
@@ -81,7 +82,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
       if (!released) win.webContents.sendInputEvent({ type: 'keyUp', keyCode: code });
       trace = await run('window.__guangyingButtonInputTrace.stop()');
       buttonActivations.push({ key: code, events: trace });
-      console.log('Windows file button input:', JSON.stringify({ key: code, events: trace }));
+      console.log('Desktop file button input:', JSON.stringify({ key: code, events: trace }));
     }
     assert.deepEqual(trace.filter(event => event.type !== 'click').map(event => event.type), ['keydown', 'keypress', 'keyup'], `${code} has a complete native keyboard sequence`);
     assert.equal(trace.every(event => event.isTrusted), true, `${code} keyboard/click events are Chromium-trusted`);
@@ -90,7 +91,14 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   }
   async function editField(label, value) {
     await clickExpression(field(label), label);
-    await key('a', ['control']);
+    // Selection is input preparation on Mac, not a physical Cmd+A claim.
+    // The native selectAll role also depends on Cocoa; use Chromium's editing
+    // command and prove the entire focused draft is selected before inserting.
+    if (process.platform === 'darwin') win.webContents.selectAll();
+    else await key('a', ['control']);
+    // Number inputs deliberately expose null selectionStart/End. Their exact
+    // replacement is checked below; keep precise selection checks for text.
+    await until(`(() => {const e=${field(label)};return document.activeElement===e&&(e.type==='number'||(e.selectionStart===0&&e.selectionEnd===e.value.length));})()`, `${label} has input focus and, for text controls, an exact full-field selection`);
     if (value) await win.webContents.insertText(value);
     else await key('Backspace');
     await until(`(${field(label)})?.value===${q(value)}`, `${label} accepts real Chromium input`);
@@ -178,17 +186,17 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   }
   async function blockedBackground() {
     const unchanged = await run(`document.querySelector(${q(editor)}).outerHTML`);
-    await key('f', ['control']);
+    await command('f', ['control']);
     menu('查找…'); await pause(100);
-    assert.equal(await run('!!document.querySelector(".find-panel")'), false, 'Native/keyboard Find cannot open behind modal');
+    assert.equal(await run('!!document.querySelector(".find-panel")'), false, 'Production Find command cannot open behind modal');
     for (const label of ['新建剧本', '打开…', '保存', '另存为…', '导入文本剧本…', '导入 Final Draft (FDX)…',
       '导出创作版 PDF（原位卡片）…', '导出 A4 纯文本 PDF…', '导出 FDX…', '导出纯文本…', '导出 Markdown…',
       '标题页…', '显示简介设置…', '故事板卡片', '自由板', '分页预览', '统计报表', '插入场景', '双列对白', '省略 / 恢复']) {
       menu(label); await pause(25);
       assert.equal(await run(`document.querySelector(${q(modal)}).contains(document.activeElement)`), true, `${label} cannot replace the modal or steal focus`);
     }
-    await key('2', ['control', 'alt']);
-    assert.equal(await run(`!!document.querySelector(${q(editor)}) && !document.querySelector('.cards')`), true, 'Native/keyboard view switch is blocked by modal');
+    await command('2', ['control', 'alt']);
+    assert.equal(await run(`!!document.querySelector(${q(editor)}) && !document.querySelector('.cards')`), true, 'Production view command is blocked by modal');
     menu('人物'); await pause(100);
     assert.equal(await run(`document.querySelector(${q(editor)}).outerHTML`), unchanged, 'Native element command cannot mutate background paragraph');
     await run(`document.querySelector(${q(editor)}).focus()`);
@@ -217,7 +225,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
     }
     await escapeModal(); await assertEditorRange(i === 1);
   }
-  pass('Windows modal: native title/Undo/Redo commands, bounded history, input, Tab/Shift+Tab containment, blocked background commands, and three selection-restoring Escape cycles');
+  pass('Desktop modal: native title/Undo/Redo commands, bounded history, input, Tab/Shift+Tab containment, blocked background commands, and three selection-restoring Escape cycles');
 
   await openSettings(); await tabTrap(); await blockedBackground();
   const oldMore = await run(`(${field('「（更多）」文案')}).value`);
@@ -231,20 +239,20 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   }
   await escapeModal();
   assert.equal(await run(`document.activeElement===(${settingsButton})`), true, 'Settings returns focus to its live toolbar trigger');
-  pass('Windows settings: business text persists, every tab remains interactive, focus trap survives dynamic content, Escape restores toolbar trigger');
+  pass('Desktop settings: business text persists, every tab remains interactive, focus trap survives dynamic content, Escape restores toolbar trigger');
 
   // Native menu is deliberately invoked from the editor, independently of the
   // renderer toolbar: this covers the IPC path that DOM-only tests cannot prove.
   await focusEditorRange(); menu('显示简介设置…'); await readyModal('显示简介设置');
   await escapeModal(); await assertEditorRange();
-  pass('Windows native Settings menu follows modal isolation and restores editor selection');
+  pass('Desktop native Settings menu follows modal isolation and restores editor selection');
 
   menu('查找…');
   await until(`document.activeElement===document.querySelector('.find-panel input[aria-label="查找内容"]')`, 'Native Find receives focus before modal');
   await win.webContents.insertText('合成正文');
   await run(`document.activeElement.setSelectionRange(1,3,'backward')`);
   menu('显示简介设置…'); await readyModal('显示简介设置');
-  menu('查找…'); await key('f', ['control']);
+  menu('查找…'); await command('f', ['control']);
   assert.equal(await run(`document.querySelector(${q(modal)}).contains(document.activeElement)`), true, 'Already-open Find cannot steal modal focus');
   await escapeModal();
   assert.deepEqual(await run(`(() => {const e=document.activeElement;return {label:e.getAttribute('aria-label'),value:e.value,start:e.selectionStart,end:e.selectionEnd,direction:e.selectionDirection};})()`),
@@ -257,10 +265,11 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   await assertEditorRange();
   await openSettings(); await clickBackdrop();
   assert.equal(await run(`document.activeElement===(${settingsButton})`), true, 'Backdrop restores live Settings trigger');
-  pass('Windows modal lifecycle: existing Find stays isolated, input selection restores, close button and backdrop release dismiss safely');
+  pass('Desktop modal lifecycle: existing Find stays isolated, input selection restores, close button and backdrop release dismiss safely');
 
   for (const [width, height] of [[1024, 680], [1440, 960]]) {
     win.setSize(width, height); await pause(150);
+    await recordWindowGeometry('UI size acceptance', { width, height });
     assert.deepEqual(win.getSize(), [width, height], 'Evidence window has the requested outer size');
     for (const theme of ['day', 'night']) {
       await openSettings();
@@ -295,7 +304,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
       assert.equal(await run(`document.activeElement===document.querySelector(${q(trigger)})`), true);
     }
   }
-  pass('Windows 1024x680 and 1440x960, day/night: settings/title modals and every file-menu item fit; full forward/reverse Tab cycles keep focus visible/topmost inside scroll clipping bounds (12 screenshots)');
+  pass('Desktop 1024x680 and 1440x960, day/night: settings/title modals and every file-menu item fit; full forward/reverse Tab cycles keep focus visible/topmost inside scroll clipping bounds (12 screenshots)');
 
   const menuItems = `${popup} [role="menuitem"]`;
   await click(trigger); await key('End');
@@ -330,11 +339,13 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   assert.equal(await run(`!!document.querySelector(${q(popup)})`), false, 'Opening modal consumes the file menu');
   await escapeModal();
   assert.equal(await run(`document.activeElement===document.querySelector(${q(trigger)})`), true, 'Modal returns to live file trigger, not an unmounted menu item');
-  pass('Windows file menu: arrows/Home/End, Escape, Tab/Shift+Tab continuation, outside click/window blur, and title action through stable focus handoff');
+  pass('Desktop file menu: arrows/Home/End, Escape, Tab/Shift+Tab continuation, outside click/window blur, and title action through stable focus handoff');
 
   await click(trigger); menu('自由板');
   await until(`!!document.querySelector('.board--workspace')&&!document.querySelector(${q(popup)})`, 'Native Free Board entry switches view and closes the file popup');
   assert.equal(await run(`document.activeElement===document.querySelector(${q(trigger)})`), true, 'Native view switch leaves a live file trigger focused');
+  assert.deepEqual(await run(`Array.from(document.querySelectorAll('.bcard[data-id=windows-image],.bcard[data-id=security-image]')).map(e=>e.style.getPropertyValue('--card-color'))`), ['#fff7d6', '#fff7d6'], 'Untrusted CSS URL colors use the fixed safe fallback on both real board cards');
+  assert.equal(await run(`!!document.querySelector('.bcard[data-id=security-image] .bcard__empty-media')&&!document.querySelector('.bcard[data-id=security-image] img')`), true, 'Free Board keeps blocked image as a readable card without a resource node');
   await click('.bcard[data-id="windows-image"] .bcard__media-img');
   const boardState = `(() => ({mode:document.querySelector('.board').dataset.mode,panning:document.querySelector('.board__canvas').dataset.panning,cards:Array.from(document.querySelectorAll('.bcard')).map(e=>[e.dataset.id,e.classList.contains('is-selected')])}))()`;
   const expectedBoardState = await run(boardState);
@@ -363,7 +374,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   await click(trigger); menu('查找…');
   await until(`!document.querySelector(${q(popup)})&&document.activeElement===document.querySelector('.find-panel input[aria-label="查找内容"]')`, 'Native Find closes file popup and owns focus');
   await key('Escape'); await until(`!document.querySelector('.find-panel')`, 'Find closes after popup handoff');
-  pass('Windows native Free Board and file-menu lifecycle: keyboard button activation, closed/open key isolation on selected card, toolbar/native view and Find/Settings handoffs');
+  pass('Desktop native Free Board and file-menu lifecycle: keyboard button activation, closed/open key isolation on selected card, toolbar/native view and Find/Settings handoffs');
 
   // Restore only through the same visible UI; no store/localStorage test seed.
   await openSettings();
@@ -372,5 +383,53 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   await escapeModal(); win.setBounds(originalBounds); await pause(1200);
   assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(before), 'UI acceptance restores all project fields and leaves original screenplay/card geometry intact');
   await focusEditorRange();
-  return { status: 'passed', assertions, groups, screenshots, buttonActivations, scope: 'Chromium key/pointer input and native MenuItem callback -> production IPC; synthetic fixture only' };
+
+  // This separately identified edit follows the original unchanged-fixture
+  // assertion. The outer smoke runner must save/reopen/recover this exact value.
+  const acceptedLineHeight = 1.75;
+  const settingsBefore = (await snapshot()).project;
+  const originalLineHeight = settingsBefore.settings.lineHeight;
+  assert.ok(originalLineHeight !== acceptedLineHeight, 'Synthetic fixture must exercise an actual settings change');
+  const bodyState = `Array.from(document.querySelectorAll('.script-flow .sc-el')).map(e=>({id:e.dataset.id,type:e.dataset.type,html:e.innerHTML}))`;
+  const bodyBefore = await run(bodyState);
+  menu('显示简介设置…'); await readyModal('显示简介设置');
+  const lineField = field('行距（倍）');
+  const waitLineHeight = async value => {
+    await until(`Number((${lineField}).value)===${value}&&Number(document.querySelector('.script-flow').style.lineHeight)===${value}`, 'Settings input and live writing layout use the accepted line height');
+    await until(async () => (await snapshot())?.project.settings.lineHeight === value, 'Accepted line height reaches actual recovery storage');
+  };
+  await editField('行距（倍）', String(acceptedLineHeight));
+  await waitLineHeight(acceptedLineHeight);
+  // Focus a modal button so Undo/Redo target the project session, not an
+  // uncommitted numeric draft's native editing history.
+  await clickExpression(labelButton('.modal .tabs', '版式'), 'page tab before settings Undo');
+  menu('撤销'); await waitLineHeight(originalLineHeight);
+  assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(settingsBefore), 'One Undo restores the complete pre-settings project');
+
+  await editField('行距（倍）', '0.4');
+  await until(`(${lineField}).getAttribute('aria-invalid')==='true'`, 'Out-of-range line height is explicitly invalid');
+  const invalid = await run(`(() => {const e=${lineField},alert=document.getElementById(e.getAttribute('aria-describedby'));if(alert)alert.scrollIntoView({block:'nearest'});const r=alert?.getBoundingClientRect();return {value:e.value,invalid:e.getAttribute('aria-invalid'),focused:document.activeElement===e,role:alert?.getAttribute('role'),message:alert?.textContent,visible:!!r&&r.width>0&&r.height>0&&r.top>=0&&r.bottom<=innerHeight&&getComputedStyle(alert).visibility!=='hidden',liveLineHeight:Number(document.querySelector('.script-flow').style.lineHeight)};})()`);
+  assert.equal(invalid.value, '0.4'); assert.equal(invalid.invalid, 'true'); assert.equal(invalid.focused, true);
+  assert.equal(invalid.role, 'alert'); assert.equal(invalid.visible, true);
+  assert.ok(invalid.message.includes('0.5') && invalid.message.includes('10') && invalid.message.includes('未应用'), 'Visible error explains the allowed range and rejection');
+  assert.equal(invalid.liveLineHeight, originalLineHeight, 'Rejected value cannot change live writing layout');
+  await pause(1200);
+  assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(settingsBefore), 'Invalid input leaves every recovered project field unchanged');
+  assert.deepEqual(await run(bodyState), bodyBefore, 'Invalid input leaves live paragraph IDs, types and rich text unchanged');
+  await run('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  await screenshot('ui-settings-line-height-rejected.png');
+
+  await clickExpression(labelButton('.modal .tabs', '版式'), 'page tab before settings Redo');
+  menu('重做'); await waitLineHeight(acceptedLineHeight);
+  assert.equal(await run(`(${lineField}).hasAttribute('aria-invalid')||!!(${lineField}).getAttribute('aria-describedby')`), false, 'Valid redo clears the rejected draft and associated error');
+  const settingsAfter = JSON.parse(JSON.stringify(settingsBefore)); settingsAfter.settings.lineHeight = acceptedLineHeight;
+  assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(settingsAfter), 'Rejected input neither creates a project history step nor clears the valid redo');
+  menu('撤销'); await waitLineHeight(originalLineHeight);
+  assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(settingsBefore), 'Undo still restores exactly one accepted settings edit');
+  menu('重做'); await waitLineHeight(acceptedLineHeight);
+  await escapeModal(); await assertEditorRange();
+  assert.deepEqual(await run(bodyState), bodyBefore, 'Accepted layout edit also preserves live paragraph text and types');
+  const settingsValidation = { rejected: invalid, acceptedLineHeight, originalLineHeight, history: 'invalid draft preserves preceding Undo/Redo; only accepted line height changes the project' };
+  pass('Desktop Settings rejects lineHeight 0.4 with a visible error and unchanged writing/layout/recovery/history; accepts 1.75 as one reversible settings edit for disk/restart checks');
+  return { status: 'passed', assertions, groups, screenshots, buttonActivations, settingsValidation, scope: 'Chromium key/pointer input and native MenuItem callback -> production IPC; synthetic fixture only' };
 };

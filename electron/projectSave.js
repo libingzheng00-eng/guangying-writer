@@ -66,7 +66,15 @@ function createProjectSaver({ fileSystem = fs.promises, token = randomUUID, plat
     await fileSystem.access(file, fs.constants.W_OK);
   }
 
-  async function commit(file, content) {
+  async function requireParent(directory, expectedParent) {
+    if (!expectedParent) return;
+    const resolved = await fileSystem.realpath(directory);
+    const parent = await fileSystem.lstat(directory);
+    if (resolved !== expectedParent.path || !parent.isDirectory() || parent.isSymbolicLink() ||
+        parent.dev !== expectedParent.dev || parent.ino !== expectedParent.ino) fail('EUNSAFEPATH');
+  }
+
+  async function commit(file, content, expectedParent) {
     const directory = path.dirname(file);
     const backup = `${file}${SAVE_BACKUP_SUFFIX}`;
     const temporary = new Set();
@@ -100,6 +108,7 @@ function createProjectSaver({ fileSystem = fs.promises, token = randomUUID, plat
     }
 
     try {
+      await requireParent(directory, expectedParent);
       const original = await inspect(file);
       const oldBackup = await inspect(backup);
       if (original && oldBackup && original.dev === oldBackup.dev && original.ino === oldBackup.ino) {
@@ -115,6 +124,7 @@ function createProjectSaver({ fileSystem = fs.promises, token = randomUUID, plat
       if (original) await prepared.handle.chmod(original.mode & 0o777);
       await prepared.handle.sync();
       await close(prepared.handle);
+      await requireParent(directory, expectedParent);
 
       let preparedBackup = null;
       if (original) {
@@ -147,10 +157,12 @@ function createProjectSaver({ fileSystem = fs.promises, token = randomUUID, plat
       }
 
       phase = '核对文件状态';
+      await requireParent(directory, expectedParent);
       await assertUnchanged(file, original);
       await assertUnchanged(backup, oldBackup);
       if (preparedBackup) {
         phase = '保留恢复备份';
+        await requireParent(directory, expectedParent);
         await fileSystem.rename(preparedBackup.name, backup);
         temporary.delete(preparedBackup.name);
       }
@@ -158,6 +170,7 @@ function createProjectSaver({ fileSystem = fs.promises, token = randomUUID, plat
       // active file remains the old version, even if a backup rename has succeeded.
       phase = '替换工程';
       await assertUnchanged(file, original);
+      await requireParent(directory, expectedParent);
       await fileSystem.rename(prepared.name, file);
       temporary.delete(prepared.name);
 
@@ -181,16 +194,25 @@ function createProjectSaver({ fileSystem = fs.promises, token = randomUUID, plat
       for (const handle of handles) await handle.close().catch(() => {});
       // Only paths created by this invocation are eligible for cleanup. A stale or
       // unrelated temp file is never swept; failed cleanup cannot remove the target.
-      for (const name of temporary) await fileSystem.unlink(name).catch(() => {});
+      // A renamed/replaced parent could make the same pathname refer to an
+      // unrelated file. Leave our old temporary file in that case, rather than
+      // deleting through a directory whose authorization was lost.
+      let cleanupAllowed = true;
+      try { await requireParent(directory, expectedParent); } catch { cleanupAllowed = false; }
+      if (cleanupAllowed) for (const name of temporary) await fileSystem.unlink(name).catch(() => {});
     }
   }
 
-  return async function saveProjectFile(file, content) {
+  return async function saveProjectFile(file, content, expectedParent) {
     if (typeof file !== 'string' || !file || typeof content !== 'string') {
       throw saveError({ code: 'EINVAL' }, '检查请求');
     }
     if (path.extname(file).toLowerCase() !== '.zhsp') {
       throw saveError({ code: 'EFORMAT' }, '检查工程格式');
+    }
+    if (expectedParent && (typeof expectedParent.path !== 'string' || !path.isAbsolute(expectedParent.path) ||
+        !Number.isFinite(expectedParent.dev) || !Number.isFinite(expectedParent.ino))) {
+      throw saveError({ code: 'EUNSAFEPATH' }, '检查目录授权');
     }
     // Serialize only path resolution/admission so asynchronous realpath completion
     // cannot reverse two successive snapshots. Actual saves to different files may
@@ -199,6 +221,7 @@ function createProjectSaver({ fileSystem = fs.promises, token = randomUUID, plat
       let destination;
       try {
         const directory = await fileSystem.realpath(path.dirname(path.resolve(file)));
+        await requireParent(directory, expectedParent);
         destination = path.join(directory, path.basename(file));
       } catch (error) {
         throw saveError(error, '检查目录');
@@ -208,7 +231,7 @@ function createProjectSaver({ fileSystem = fs.promises, token = randomUUID, plat
       // this is only conservative serialization; the actual paths stay unchanged.
       const queueKey = platform === 'win32' ? destination.toLowerCase() : destination;
       const previous = queues.get(queueKey) || Promise.resolve();
-      const pending = previous.catch(() => {}).then(() => commit(destination, content));
+      const pending = previous.catch(() => {}).then(() => commit(destination, content, expectedParent));
       queues.set(queueKey, pending);
       // Do not adopt pending here: admission must not wait for a whole disk save.
       return { queueKey, pending };

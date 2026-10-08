@@ -5,6 +5,7 @@ import { isBlank } from '../utils/text';
 import { setCaret, offsetOf, makeTextRange } from '../utils/dom';
 import { useStore } from '../store/store';
 import { runEditHistory } from '../utils/editHistory';
+import { safeDisplayColor } from '../utils/displayValues';
 
 export interface BlockStyleOptions {
   settings: ScriptSettings;
@@ -30,7 +31,7 @@ export function blockStyle(opts: BlockStyleOptions, el: ScriptElement): React.CS
   };
   if (fmt.bold) style.fontWeight = 600;
   if (fmt.uppercase) style.textTransform = 'uppercase';
-  if (revColor) style['--rev-color'] = revColor;
+  if (revColor) style['--rev-color'] = safeDisplayColor(revColor);
   return style as React.CSSProperties;
 }
 

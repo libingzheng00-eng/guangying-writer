@@ -43,7 +43,8 @@ function nativeMenus(platform) {
   const state = { windows: [], sent: [], menus: [] };
   class Window {
     constructor() {
-      this.webContents = { on() {}, send: (...args) => state.sent.push(args) };
+      this.webContents = { on() {}, send: (...args) => state.sent.push(args), setWindowOpenHandler() {},
+        session: { setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, on() {} } };
       state.windows.push(this);
     }
     once() {} on() {} loadFile() {} isDestroyed() { return false; }
@@ -61,10 +62,13 @@ function nativeMenus(platform) {
     require(name) {
       if (name === 'electron') return electron;
       if (name === 'node:path') return platform === 'win32' ? path.win32 : path.posix;
+      if (name === 'node:url') return require('node:url');
       if (name === 'node:fs') return new Proxy({}, { get() { throw new Error('No filesystem access permitted by main mock'); } });
       if (name === './pdf') return { renderPdf() { throw new Error('No PDF export permitted'); } };
       if (name === './projectSave') return { saveProjectFile() { throw new Error('No project save permitted'); } };
       if (name === './platform') return require('../electron/platform');
+      if (name === './security') return require('../electron/security');
+      if (name === './fileAccess') return require('../electron/fileAccess');
       throw new Error(`Unexpected main dependency: ${name}`);
     },
   }, { filename: mainFile });

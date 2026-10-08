@@ -1,5 +1,7 @@
 # Windows 候选的依赖审计
 
+后续安全升级已固定 Electron 44.7.0，旧下载链移除、source-map-js更新为1.2.2，新增parse5 8.0.1；初次升级后审计为2包（1 high / 1 moderate，均开发工具链）。本页余下10包/31.7.7结论是升级前历史，当前解释与最终验证入口见 [SECURITY_UPGRADE.md](SECURITY_UPGRADE.md)。
+
 审计日期：2026-10-08。比较原始 `main` 提交 `dcc097bc324dc081a68c5120a9260530e2278a33` 与 Windows 分支锁文件（首次审计提交 `439e95e940818173118b43298dca3852a866c6b4`）。后续原始入口和 SmartType 验收补丁没有修改依赖。方法是分别运行 `npm audit --json --package-lock-only`，比较 `vulnerabilities` 对象，再按锁文件和 `npm ls` 追踪安装、开发和交付路径。此为有界依赖审查，不是完整渗透测试；公告和计数可能随时间变化。
 
 ## 结果与交付限制

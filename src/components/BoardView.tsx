@@ -6,6 +6,7 @@ import { clampSize, sizeLimitFor, type ResizableKind } from '../model/board';
 import { BOARD_GRID_SIZE, boardBeatPosition, snapBoardPosition, type BoardCardPosition } from '../model/boardWorkspace';
 import { cardCenters, marqueeSel } from '../model/selection';
 import type { Beat, BoardLink, Scene } from '../model/types';
+import { safeDisplayColor, safeEmbeddedImageSource } from '../utils/displayValues';
 
 type Filter = 'both' | 'scenes' | 'beats';
 type Mode = 'select' | 'link';
@@ -397,7 +398,7 @@ function ResizeHandle({ layout, onStart }: { layout: Layout; onStart: CardProps[
 function SceneCard(props: CardProps & { scene: Scene; onOpen: () => void }) {
   const { scene, layout, onSelect } = props;
   return <div className={`${cardClass(props)} bcard--scene`} data-card="scene" data-drag="scene" data-id={scene.elementId} data-kind="scene"
-    style={{ left: layout.x, top: layout.y, width: layout.w, height: layout.h, '--scene-color': scene.color } as React.CSSProperties} onDoubleClick={(event) => { event.stopPropagation(); props.onOpen(); }}>
+    style={{ left: layout.x, top: layout.y, width: layout.w, height: layout.h, '--scene-color': safeDisplayColor(scene.color) } as React.CSSProperties} onDoubleClick={(event) => { event.stopPropagation(); props.onOpen(); }}>
     <div className="bcard__head"><span className="bcard__no">{scene.number}</span><span className="bcard__title" title={scene.title || scene.heading}>{scene.title || scene.heading || '场景标题'}</span></div>
     <textarea className="bcard__scene-notes" aria-label={`第 ${scene.number} 场故事信息`} placeholder="这一场发生了什么？" value={scene.synopsis || ''} onFocus={onSelect}
       onChange={(event) => useStore.getState().updateSceneMeta(scene.elementId, { synopsis: event.target.value })} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel} />
@@ -408,11 +409,12 @@ function BeatCard(props: CardProps & { beat: Beat }) {
   const { beat, layout, onSelect } = props;
   const image = beat.kind === 'image';
   const sound = beat.kind === 'sound';
+  const imageSource = safeEmbeddedImageSource(beat.img);
   const update = (patch: Partial<Beat>) => useStore.getState().updateBeat(beat.id, patch);
   return <div className={`${cardClass(props)} bcard--beat${image ? ' bcard--image' : sound ? ' bcard--sound' : ''}`} data-card="beat" data-id={beat.id} data-kind={beat.kind || 'beat'}
-    style={{ left: layout.x, top: layout.y, width: layout.w, height: layout.h, '--card-color': beat.color } as React.CSSProperties}>
+    style={{ left: layout.x, top: layout.y, width: layout.w, height: layout.h, '--card-color': safeDisplayColor(beat.color) } as React.CSSProperties}>
     {!image && <div className="bcard__head"><CardTitle value={beat.title || ''} label={sound ? '声音标题' : '灵感标题'} placeholder={sound ? '声音标题' : '添加标题'} onSelect={onSelect} onCommit={(title) => useStore.getState().commitBoardCardTitle(beat.id, title)} /></div>}
-    {image && <><div className="bcard__media">{beat.img ? <img className="bcard__media-img" src={beat.img} alt={beat.title || '参考图片'} draggable={false} /> : <div className="bcard__empty-media">暂无图片</div>}</div>
+    {image && <><div className="bcard__media">{imageSource ? <img className="bcard__media-img" src={imageSource} alt={beat.title || '参考图片'} draggable={false} /> : <div className="bcard__empty-media">{beat.img ? '图片来源已阻止，请重新导入本地图片' : '暂无图片'}</div>}</div>
       <input className="bcard__caption" aria-label="图片标题" placeholder="图片标题（可选）" value={beat.title || ''} onFocus={onSelect} onChange={(event) => update({ title: event.target.value })} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel} /></>}
     <textarea className={`bcard__edit${image ? ' bcard__image-notes' : ''}`} aria-label={image ? '图片备注' : sound ? '声音说明' : '灵感内容'}
       placeholder={image ? '图片备注、画面灵感…' : sound ? '声音、音乐或氛围说明…' : '写下灵感、人物动机或事件关系…'} value={beat.text || ''} onFocus={onSelect}

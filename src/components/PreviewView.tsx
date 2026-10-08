@@ -6,6 +6,7 @@ import { fontStackOf } from '../model/elements';
 import { PAPER_MM } from '../model/stats';
 import { deriveScenes } from '../model/project';
 import { stripSceneNumber } from '../utils/text';
+import { safeDisplayColor } from '../utils/displayValues';
 
 const PX_PER_MM = 96 / 25.4;
 
@@ -174,7 +175,7 @@ function PageCard({
         paddingBottom: geo.pb,
         paddingLeft: geo.pl,
         paddingRight: geo.pr,
-        background: page.revColor || '#fff',
+        backgroundColor: safeDisplayColor(page.revColor, '#fff'),
       }}
     >
       {showNum ? (

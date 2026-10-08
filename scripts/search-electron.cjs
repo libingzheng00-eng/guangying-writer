@@ -42,7 +42,7 @@ const current = () => run(`[...CSS.highlights.get('script-find-current')].map(r=
 app.whenReady().then(async () => {
   try {
     const errors = [];
-    const observe = candidate => candidate.webContents.on('console-message', (_event, level, message) => { if (level >= 3) errors.push(message); });
+    const observe = candidate => candidate.webContents.on('console-message', ({ level, message }) => { if (level === 'error') errors.push(message); });
     const project = { id: 'search-qa', name: '合成查找测试', createdAt: 1, updatedAt: 1, titlePage: { show: false },
       settings: {}, acts: [], sceneMeta: [], boardLinks: [], revisions: [], beats: [],
       elements: [

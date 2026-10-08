@@ -24,8 +24,8 @@ async function until(js) {
 app.whenReady().then(async () => {
   try {
     const errors = [];
-    const observe = candidate => candidate.webContents.on('console-message', (_event, level, message) => {
-      if (level >= 3) { errors.push(message); console.error('RENDERER', message); }
+    const observe = candidate => candidate.webContents.on('console-message', ({ level, message }) => {
+      if (level === 'error') { errors.push(message); console.error('RENDERER', message); }
     });
     const project = { id: 'input-qa', name: '合成输入测试', createdAt: 1, updatedAt: 1,
       titlePage: { show: false }, settings: {}, acts: [], sceneMeta: [], boardLinks: [], revisions: [],

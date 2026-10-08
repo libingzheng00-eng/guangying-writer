@@ -1,6 +1,6 @@
 # 光影写手源码维护手册
 
-更新：2026-10-08。适用于当前 `1.3.0-alpha.18.12` 源码。版本号不代表推送、main合并或公开发布已经完成；实际安装附件以对应 GitHub Release 为准。
+更新：2026-10-08。适用于当前 `1.3.0-alpha.18.13` 安全候选源码；安全边界见 [SECURITY_UPGRADE.md](SECURITY_UPGRADE.md)。版本号不代表推送、main合并或公开发布已经完成；实际安装附件以对应 GitHub Release 为准。
 
 这是当前维护入口；历史版本记录保留在 `CHANGELOG.md` / `DEVELOPER_HANDOFF.md`，不要把旧日志中的状态当作当前交付事实。行为契约以 [CORE_FEATURES.md](CORE_FEATURES.md) 为准，本轮SmartType与交付证据见 [SMARTTYPE_QA_20261008.md](SMARTTYPE_QA_20261008.md) / [RELEASE_ALPHA_18_12.md](RELEASE_ALPHA_18_12.md)，历史/剪贴板及智能引号边界见 [EDITING_QA_20261007.md](EDITING_QA_20261007.md) / [SMART_QUOTES_QA_20261007.md](SMART_QUOTES_QA_20261007.md)。
 
@@ -19,13 +19,13 @@
 CI 使用 Node.js 22。`jsdom` 当前锁定版本要求较新的 Node，建议 Node 22.13+；不要只写“Node 18+”。纯源码测试不需要下载 Electron 二进制：
 
 ```bash
-ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
+npm ci
 npm run typecheck
 npm run build
 npm run test:core
 ```
 
-`test:core` 当前顺序执行37套源码专项，包含新增的恢复、工程落盘、保存 IPC 与写作派生检查；任一异常退出、被信号终止或超时立即失败。它不包含原生 Electron 或系统剪贴板实测。两条 CI 也列出这些检查。新增核心测试时同步维护 runner 和两条 CI，不只写在文档里。
+`test:core` 当前顺序执行44套源码专项，包含恢复、工程落盘、保存 IPC、写作派生、模态/菜单、设置读写一致性与工程/显示/IPC安全检查；任一异常退出、被信号终止或超时立即失败。它不包含原生 Electron 或系统剪贴板实测。两条 CI 也列出这些检查。新增核心测试时同步维护 runner 和两条 CI，不只写在文档里。
 
 快速定位可分别运行：
 

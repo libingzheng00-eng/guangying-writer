@@ -18,7 +18,12 @@ VERSION="$(node -p "require('./package.json').version")"
 OUT_DIR="${OUT_DIR:-release}"
 APP_DIR="$OUT_DIR/${APP_NAME}.app"
 ZIP_NAME="${APP_NAME}-macOS-${ARCH}.zip"
-RUNTIME_APP="${RUNTIME_APP:-$DIR/node_modules/electron/dist/Electron.app}"
+if [ -z "${RUNTIME_APP:-}" ]; then
+  # Electron 42+ downloads on first use, not during npm ci. Prepare the exact
+  # installed version before resolving its path; never fetch an npx package.
+  ELECTRON_EXEC="$(node scripts/prepare-electron.cjs)"
+  RUNTIME_APP="$(dirname "$(dirname "$(dirname "$ELECTRON_EXEC")")")"
+fi
 # 只新建，不清理用户现有目录；显式 OUT_DIR 可将候选包放到独立目录。
 if [ -e "$APP_DIR" ] || [ -e "$OUT_DIR/$ZIP_NAME" ]; then
   echo "已有同名产物，已停止。请为 OUT_DIR 指定新的目录；旧产物不会被覆盖。"
@@ -31,6 +36,19 @@ fi
 RUNTIME_EXEC="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$RUNTIME_APP/Contents/Info.plist")"
 if [ ! -x "$RUNTIME_APP/Contents/MacOS/$RUNTIME_EXEC" ]; then
   echo "Electron 运行时不完整，停止打包。"
+  exit 1
+fi
+EXPECTED_ELECTRON="$(node -p "require('./node_modules/electron/package.json').version")"
+ACTUAL_ELECTRON="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$RUNTIME_APP/Contents/Info.plist")"
+if [ "$ACTUAL_ELECTRON" != "$EXPECTED_ELECTRON" ]; then
+  echo "Electron 版本与锁定依赖不符，停止打包。"
+  exit 1
+fi
+RUNTIME_ARCH="$(lipo -archs "$RUNTIME_APP/Contents/MacOS/$RUNTIME_EXEC")"
+EXPECTED_MACH_ARCH="$ARCH"
+if [ "$ARCH" = "x64" ]; then EXPECTED_MACH_ARCH="x86_64"; fi
+if [ "$RUNTIME_ARCH" != "$EXPECTED_MACH_ARCH" ]; then
+  echo "Electron 架构为 $RUNTIME_ARCH，与目标 $ARCH 不符，停止打包。"
   exit 1
 fi
 

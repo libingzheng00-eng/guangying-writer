@@ -91,13 +91,97 @@ function timerClock() {
   check('storage access failure is visible and does not throw', [readRecovery(unavailable).snapshot, !!readRecovery(unavailable).warning], [null, true]);
   check('empty storage has no false corruption warning', readRecovery(memoryStorage()).warning, null);
 
+  // JSON-valid payloads may fail the same schema/HTML admission as file open.
+  // Startup still schedules a blank draft at 900ms; original bytes must first
+  // reach protected storage, or the active recovery must remain untouched.
+  const blank = createProject('合成启动空稿'); blank.elements = [];
+  const blankSnapshot = { project: blank, filePath: null };
+  const blankRaw = JSON.stringify(blankSnapshot);
+  const invalidSnapshots = [
+    ['unsafe geometry', p => { p.settings.lineHeight = 0.1; }],
+    ['HTML resource limit', p => { p.elements[0].text = '文'.repeat(2_000_001); }],
+    ['duplicate element IDs', p => { p.elements.push({ ...p.elements[0] }); }],
+  ].map(([label, mutate]) => {
+    const invalid = JSON.parse(raw); mutate(invalid.project);
+    return { label, invalid, raw: JSON.stringify(invalid) };
+  });
+  for (const { label, invalid, raw: badRaw } of invalidSnapshots) {
+    const rejected = memoryStorage({ [key]: badRaw });
+    const read = readRecovery(rejected);
+    check(`${label}: unreadable snapshot is not restored or changed`,
+      [read.snapshot, !!read.warning, [...rejected.values]], [null, true, [[key, badRaw]]]);
+    const recoveryClock = timerClock();
+    const writer = createRecoveryWriter(() => rejected);
+    const scheduled = subscribeAutosave({ getState: () => ({ ...blankSnapshot, version: 0 }), subscribe: () => () => {} }, writer, recoveryClock);
+    recoveryClock.advance(899);
+    check(`${label}: initial recovery remains pending until 900ms`, [...rejected.values], [[key, badRaw]]);
+    recoveryClock.advance(1);
+    check(`${label}: scheduled blank first protects original bytes`,
+      [rejected.values.get(unreadable), rejected.values.get(key), scheduled.flush()], [badRaw, blankRaw, true]);
+    scheduled();
+    writer(snapshot);
+    check(`${label}: later new draft replaces blank without touching protection`,
+      [rejected.values.get(unreadable), rejected.values.get(key)], [badRaw, raw]);
+    check(`${label}: preserved raw still receives the reader's rejection decision`,
+      readRecovery(memoryStorage({ [key]: rejected.values.get(unreadable) })).snapshot, null);
+
+    for (const failure of ['occupied', 'quota']) {
+      const blocked = memoryStorage({ [key]: badRaw, ...(failure === 'occupied' ? { [unreadable]: '合成已有另一份保护载荷' } : {}) });
+      if (failure === 'quota') blocked.writesFail = 'QuotaExceededError';
+      const before = [...blocked.values];
+      const blockedClock = timerClock();
+      const waiting = subscribeAutosave({ getState: () => ({ ...blankSnapshot, version: 0 }), subscribe: () => () => {} }, createRecoveryWriter(() => blocked), blockedClock);
+      blockedClock.advance(900);
+      check(`${label}/${failure}: scheduled write and retry fail without replacing any raw`,
+        [waiting.flush(), [...blocked.values]], [false, before]);
+      if (failure === 'quota') {
+        blocked.writesFail = null;
+        check(`${label}: retry after quota recovery protects original then writes`,
+          [waiting.flush(), blocked.values.get(unreadable), blocked.values.get(key)], [true, badRaw, blankRaw]);
+      }
+      waiting();
+    }
+    const fallbackStorage = memoryStorage({ [key]: badRaw, [legacy]: raw });
+    check(`${label}: valid legacy remains readable despite current schema failure`,
+      [readRecovery(fallbackStorage).source, readRecovery(fallbackStorage).snapshot.project.name], ['legacy', project.name]);
+    writeRecovery(fallbackStorage, snapshot);
+    check(`${label}: legacy migration protects invalid current and retains legacy original`,
+      [fallbackStorage.values.get(unreadable), fallbackStorage.values.get(legacy), fallbackStorage.values.get(key)], [badRaw, raw, raw]);
+    const outgoingStorage = memoryStorage({ [key]: raw });
+    const outgoingWriter = createRecoveryWriter(() => outgoingStorage);
+    outgoingWriter(snapshot);
+    assert.throws(() => outgoingWriter(invalid), /工程/); checks++;
+    check(`${label}: writer refuses an unreadable next snapshot without overwriting valid recovery`, [...outgoingStorage.values], [[key, raw]]);
+  }
+  const silentProtection = memoryStorage({ [key]: invalidSnapshots[0].raw });
+  silentProtection.setItem = function (name, value) { if (name !== unreadable) this.values.set(name, value); };
+  assert.throws(() => writeRecovery(silentProtection, blankSnapshot), /protection failed/); checks++;
+  check('unconfirmed protection write cannot replace original', [...silentProtection.values], [[key, invalidSnapshots[0].raw]]);
+
+  const mutated = JSON.parse(raw);
+  const mutableStorage = memoryStorage();
+  const mutableWriter = createRecoveryWriter(() => mutableStorage);
+  mutableWriter(mutated);
+  const validMutableRaw = mutableStorage.values.get(key);
+  mutated.project.elements[0].text = '文'.repeat(2_000_001);
+  assert.throws(() => mutableWriter(mutated), /过大或嵌套过深/); checks++;
+  check('same element object with changed text cannot reuse a prior safe-text result', mutableStorage.values.get(key), validMutableRaw);
+  mutated.project.elements[0].text = '重新有效的合成正文';
+  mutated.project.settings.lineHeight = 0.1;
+  assert.throws(() => mutableWriter(mutated), /工程结构格式不正确/); checks++;
+  check('safe-text cache never skips schema/settings validation', mutableStorage.values.get(key), validMutableRaw);
+
   // Count only synchronous writer calls before mounting React. This checks a
   // single writer's actual old-raw parse work, not timings or the user's storage.
   const cachedStorage = memoryStorage({ [key]: raw });
   const cachedWriter = createRecoveryWriter(() => cachedStorage);
   const originalParse = JSON.parse;
   let oldRawParses = 0;
-  JSON.parse = function (...args) { oldRawParses++; return originalParse.apply(this, args); };
+  JSON.parse = function (...args) {
+    // Count image-heavy recovery strings, not tiny default-format cloning.
+    if (typeof args[0] === 'string' && (args[0].startsWith('{"project":') || args[0].startsWith('{synthetic'))) oldRawParses++;
+    return originalParse.apply(this, args);
+  };
   try {
     cachedWriter({ ...snapshot, filePath: '/synthetic/cache-first.zhsp' });
     check('writer validates existing old raw exactly once', oldRawParses, 1);
@@ -280,6 +364,41 @@ function timerClock() {
   check('ordinary search input leaves saved project clean', useStore.getState().dirty, false);
   check('ordinary search input does not block clean successful-save unload', (await unload()).defaultPrevented, false);
   await act(async () => tree.unmount());
+
+  // Actual startup falls back to the empty template when current JSON is valid
+  // but its project is not admissible. Exercise the real 900ms App subscription
+  // and close guard, not just the storage helper in isolation.
+  for (const occupied of [false, true]) {
+    const badRaw = invalidSnapshots[0].raw;
+    const startupStorage = memoryStorage({ [key]: badRaw, ...(occupied ? { [unreadable]: '合成既有保护内容' } : {}) });
+    Object.defineProperty(window, 'localStorage', { configurable: true, value: startupStorage });
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: startupStorage });
+    tree = createRoot(document.getElementById('root'));
+    await act(async () => tree.render(React.createElement(React.StrictMode, null, React.createElement(App))));
+    check(`schema-invalid App startup/${occupied}: rejects recovery while retaining original before timer`,
+      [useStore.getState().project.elements.every(el => !el.text), startupStorage.values.get(key)], [true, badRaw]);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1000)); });
+    if (occupied) {
+      check('actual App cannot overwrite either payload when protection slot belongs to another recovery',
+        [startupStorage.values.get(key), startupStorage.values.get(unreadable), useRecoveryStatus.getState().phase],
+        [badRaw, '合成既有保护内容', 'error']);
+      check('actual empty startup still guards close when original recovery cannot be protected', (await unload()).defaultPrevented);
+    } else {
+      check('actual App protects schema-invalid original before its first empty-template autosave',
+        [startupStorage.values.get(unreadable), JSON.parse(startupStorage.values.get(key)).project.elements.every(el => !el.text), useRecoveryStatus.getState().phase],
+        [badRaw, true, 'saved']);
+      await act(async () => {
+        useStore.getState().newProject();
+        const element = useStore.getState().project.elements[0];
+        useStore.getState().setText(element.id, '保全旧载荷后的合成新稿');
+      });
+      await unload();
+      check('actual new-draft flush works after protection and never replaces the protected original',
+        [startupStorage.values.get(unreadable), JSON.parse(startupStorage.values.get(key)).project.elements[0].text],
+        [badRaw, '保全旧载荷后的合成新稿']);
+    }
+    await act(async () => tree.unmount());
+  }
   dom.window.close();
   console.log(`Autosave recovery: ${checks} assertions passed (memory/jsdom, not native close).`);
 })().catch(error => { console.error(error); dom.window.close(); process.exitCode = 1; });
