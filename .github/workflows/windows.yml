@@ -62,6 +62,8 @@ jobs:
           $signature = Get-AuthenticodeSignature -LiteralPath $exe.FullName
           if ($signature.Status -ne 'NotSigned') { throw "Unexpected candidate signature status: $($signature.Status)" }
           "Signature status: $($signature.Status) (candidate is intentionally unsigned)" | Out-File release/windows/signature-status.txt
+      - name: 未修改交付程序的原始入口启动
+        run: node scripts/windows-launch.cjs --app "$env:WINDOWS_TEST_APP" --output release/windows/launch-evidence
       - name: 真实 Windows Electron 合成数据验收
         run: node scripts/windows-smoke.cjs --app "$env:WINDOWS_TEST_APP" --output release/windows/evidence
       - name: 上传已验证 Windows 便携包
@@ -80,6 +82,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-evidence-${{ github.event.pull_request.head.sha || github.sha }}
-          path: release/windows/evidence/
+          path: |
+            release/windows/evidence/
+            release/windows/launch-evidence/
           if-no-files-found: warn
           retention-days: 30

@@ -180,6 +180,41 @@ app.whenReady().then(async () => {
     pass('Chromium Ctrl+F and Escape operate the production find panel');
 
     fs.mkdirSync(syntheticDir);
+    const smartId = await run(`(() => {
+      const e=document.querySelector('.script-flow .sc-el[data-type="action"]');
+      e.focus(); const r=document.createRange();r.selectNodeContents(e);r.collapse(false);
+      const s=getSelection();s.removeAllRanges();s.addRange(r);return e.dataset.id;
+    })()`);
+    const smartState = () => run(`(() => {const e=document.querySelector('.script-flow [data-id="'+${JSON.stringify(smartId)}+'"]');return {
+      text:e.textContent,type:e.dataset.type,focus:document.activeElement?.dataset.id,
+      count:document.querySelectorAll('.script-flow .sc-el').length};})()`);
+    await win.webContents.insertText('特');
+    await until(`Array.from(document.querySelectorAll('.smarttype__label')).some(e=>e.textContent==='特写')`, 'Windows SmartType shot candidate');
+    assert.equal((await smartState()).type, 'action');
+    await screenshot('smarttype-candidate.png');
+    await key('Enter');
+    assert.deepEqual(await smartState(), { text: '特写', type: 'shot', focus: smartId, count: 2 });
+    assert.equal(await run('document.querySelectorAll(".smarttype__item").length'), 0);
+    await key('z', ['control']);
+    assert.deepEqual(await smartState(), { text: '特', type: 'action', focus: smartId, count: 2 });
+    await key('z', ['control', 'shift']);
+    assert.deepEqual(await smartState(), { text: '特写', type: 'shot', focus: smartId, count: 2 });
+    await key('Enter');
+    const split = await smartState();
+    assert.equal(split.count, 3); assert.notEqual(split.focus, smartId);
+    assert.equal(split.text, '特写'); assert.equal(split.type, 'shot');
+    pass('Windows SmartType first Enter accepts text/type in place, Ctrl undo/redo is atomic, second Enter creates one paragraph');
+    // Save through the real command before opening the next fixture; no dirty
+    // replacement prompt is bypassed or disabled by the test.
+    const smartFile = path.join(syntheticDir, '快捷输入 合成验收.zhsp');
+    saveChoices.push({ path: smartFile, extension: 'zhsp' });
+    await key('s', ['control', 'shift']);
+    await until(() => fs.existsSync(smartFile), 'SmartType synthetic project disk save');
+    await until('document.body.textContent.includes("已保存：")', 'SmartType save completion');
+    const smartSaved = readProject(smartFile);
+    assert.equal(smartSaved.elements.length, 3);
+    assert.equal(smartSaved.elements.find(e => e.id === smartId).text, '特写');
+    assert.equal(smartSaved.elements.find(e => e.id === smartId).type, 'shot');
     // Generated 1x1 RGBA pixel, valid PNG chunk CRCs and zlib stream.
     const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMIqAj4DwAETAIY7NJ6TgAAAABJRU5ErkJggg==';
     const project = { id: 'windows-synthetic', name: 'Windows 合成验收', createdAt: 1, updatedAt: 1,

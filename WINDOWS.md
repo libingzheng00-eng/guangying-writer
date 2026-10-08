@@ -32,6 +32,8 @@ node scripts/windows-smoke.cjs --app release/windows/GuangyingWriter-win32-x64 -
 
 打包使用锁定的 `@electron/packager`，沿用源码锁定的 Electron `31.7.7`，没有在平台适配中混入 Electron 大版本升级。生产 app 只包含 `package.json`、`LICENSE`、`electron/` 和 `dist-renderer/`，不包含测试、node_modules、用户文件或自动恢复。Windows 图标取自现有 ICNS 的 256px PNG；exe 属性使用 Windows 数字版本 `1.3.0.0`，软件内部、manifest 和 ZIP 文件名保留完整 alpha 版本。旧运行时及依赖升级应作为独立回归工作，不把本候选称作正式稳定版。
 
+2026-10-08 的[有界依赖审计](DEPENDENCY_AUDIT_WINDOWS.md)发现 10 个受影响包（5 high / 5 moderate），均继承自基线，新增打包依赖没有新增受影响节点。Electron 本身随程序交付，存在已知运行时风险；正式推广前应优先升级并完成两平台回归。功能 CI 通过不等于这些风险已经修复。
+
 ## 验证范围
 
 | 层级 | 内容 | 证据边界 |
@@ -39,9 +41,10 @@ node scripts/windows-smoke.cjs --app release/windows/GuangyingWriter-win32-x64 -
 | Mac 本地源码 | 类型、renderer 构建、37 套核心回归、发布安全、watcher、包验证器 | 不能证明 Windows 原生行为 |
 | Windows CI 源码 | 同一完整基线、大小写路径队列、中文空格路径、Windows 权限及 junction | 真 Windows Node/文件系统，仍不是用户实机操作 |
 | Windows 打包 | x64 PE、名称/图标、生产白名单、源码匹配、全部文件哈希、ZIP 解压回读 | 未签名，不是安装程序或 SmartScreen 验证 |
+| Windows 原始入口 | 在一次性 GitHub Windows runner 直接启动未经修改的交付 exe，以独立临时 userData 验证原 manifest/main、空白启动、版本、错误及正常关闭 | 使用 Electron 调试协议观测；包文件前后哈希一致，不覆盖个人配置 |
 | Windows 原生载具 | 已打包 exe 的独立副本，执行原生产 main/preload/renderer；两次进程启动、Ctrl/Tab、CDP 组合事件、保存/备份/恢复、关闭保护、实际 PDF 生成 | QA 副本仅改 manifest 入口并加测试壳，生产资源哈希前后匹配；文件选择和关闭按钮响应由 stub 提供 |
 
-原生载具使用新建合成数据及临时 userData，不访问现用应用或真实剧本。证据 artifact 中的 JSON、日志、截图和 PDF 都来自合成内容。测试失败会保留证据且不上传候选 ZIP；不能把脚本已写好称为已通过，实际结果须以目标提交的 CI 为准。
+原生载具使用新建合成数据及临时 userData，不访问现用应用或真实剧本；另实测 SmartType 的候选、第一次 Enter 原位确认、原子撤销重做及第二次 Enter 切段。证据 artifact 中的 JSON、日志、截图和 PDF 都来自合成内容。测试失败会保留证据且不上传候选 ZIP；不能把脚本已写好称为已通过，实际结果须以目标提交的 CI 为准。
 
 尚需人工验证：微软拼音/第三方中文输入法候选确认与 SmartType、真实原生打开/保存/覆盖/取消对话框、系统关闭按钮/Alt+F4、跨应用剪贴板、图片鼠标拖放、故事板与自由板拖拽、不同 DPI/字体/显示器及中文 PDF 视觉布局、长时间写作恢复。自动化 PDF 生成和 CDP 组合事件不能替代这些项目。正式面向用户发布前，应另行完成这些验收并评估代码签名。
 
