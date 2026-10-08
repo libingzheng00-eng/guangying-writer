@@ -110,8 +110,13 @@ async function finishClose(leave) {
   if (leave) closeChoices.push(1);
   win.once('closed', () => {
     // Synchronous evidence is recorded before production window-all-closed quits.
-    assert.deepEqual(closeChoices, [], 'Expected guard did not execute');
-    report.status = 'passed'; journal(); app.quit();
+    try {
+      assert.deepEqual(closeChoices, [], 'Expected guard did not execute');
+      assert.deepEqual(report.errors, [], 'No renderer/main errors during production close');
+      report.status = 'passed'; journal(); app.quit();
+    } catch (error) {
+      report.status = 'failed'; report.error = error.stack || String(error); journal(); app.exit(1);
+    }
   });
   win.close();
 }
@@ -147,7 +152,11 @@ app.whenReady().then(async () => {
       pass('recovered document conservatively remains dirty and default close choice stays open');
       await focusEnd(); await key('s', ['control']); await waitSaved(expected.unsavedText);
       assert.equal(fs.readFileSync(savedFile + '.guangying-backup', 'utf8'), expected.diskBeforeRecovery);
+      // Reading the old localStorage alone would not prove the live model was
+      // restored. Saving it through production IPC verifies every project field.
+      assert.deepEqual(readProject(savedFile), expected.project, 'Full live recovered project must survive process restart and disk save');
       pass('Ctrl+S after process restart writes associated Chinese path and backs up the previous disk version');
+      pass('complete recovered project matches: all paragraphs, formatting, cards, coordinates, settings, and metadata');
       await screenshot('recovered.png');
       pass('saved document closes through production beforeunload without an extra prompt');
       await finishClose(false);
@@ -238,20 +247,33 @@ app.whenReady().then(async () => {
       await until(() => fs.existsSync(destination), 'production PDF export', 30000);
       const bytes = fs.readFileSync(destination);
       assert.equal(bytes.subarray(0, 5).toString(), '%PDF-'); assert.ok(bytes.length > 1000);
+      // Chromium emits page/image dictionaries uncompressed. This is a bounded
+      // fixture check, not a general PDF parser or proof of visual/text fidelity.
+      const pdf = bytes.toString('latin1');
+      assert.equal((pdf.match(/\/Type\s*\/Page\b/g) || []).length, 1, 'This short synthetic fixture must produce one page');
+      const boxes = [...pdf.matchAll(/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)\s*\]/g)];
+      assert.ok(boxes.length > 0, 'PDF must declare page geometry');
+      const images = (pdf.match(/\/Subtype\s*\/Image\b/g) || []).length;
+      if (outputName === 'print-a4.pdf') {
+        for (const box of boxes) assert.ok(Math.abs(Number(box[1]) - 595.28) < 1 && Math.abs(Number(box[2]) - 841.89) < 1, 'Plain-text PDF must use A4 points');
+        assert.equal(images, 0, 'Plain-text PDF must exclude the image card');
+      } else {
+        assert.ok(images > 0, 'Creative PDF must embed the synthetic image');
+      }
       fs.copyFileSync(destination, path.join(config.output, outputName));
       await until('!!document.querySelector(".editor__scroll[data-ready=true]")', 'return from PDF view');
     }
     // A mistaken export-side edit would reach recovery after its 900ms debounce.
     await pause(1200);
     assert.equal(JSON.stringify((await snapshot()).project), beforePdf);
-    pass('both production PDF menu exports produce real PDFs and preserve project (visual layout/font review remains manual)');
+    pass('both production PDFs have one page; A4 geometry excludes cards, creative PDF embeds image, project stays unchanged (visual/text review remains separate)');
     await focusEnd(); await win.webContents.insertText('未保存恢复');
     const unsavedText = diskText + '未保存恢复';
     await until(async () => (await snapshot())?.project.elements.find(e => e.id === 'windows-action').text === unsavedText, 'automatic recovery writes latest text');
     assert.equal(readProject(savedFile).elements[1].text, diskText, 'Autosave must not pretend to save the disk .zhsp');
     await closeAndStay(); assert.equal(await text(), unsavedText);
     pass('dirty close reaches real beforeunload/will-prevent-unload and defaults to continue writing');
-    fs.writeFileSync(expectedPath, JSON.stringify({ unsavedText, image, diskBeforeRecovery: fs.readFileSync(savedFile, 'utf8') }));
+    fs.writeFileSync(expectedPath, JSON.stringify({ unsavedText, image, project: (await snapshot()).project, diskBeforeRecovery: fs.readFileSync(savedFile, 'utf8') }));
     await screenshot('before-restart.png');
     pass('explicit leave choice uses production guard; next phase restarts same QA executable/profile');
     await finishClose(true);

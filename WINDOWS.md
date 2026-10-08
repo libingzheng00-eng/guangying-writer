@@ -28,7 +28,7 @@ node scripts/package-windows.cjs
 node scripts/windows-smoke.cjs --app release/windows/GuangyingWriter-win32-x64 --output release/windows/evidence
 ```
 
-`npm run pack:win` 会先构建 renderer 再打包；`package-windows.cjs` 只接受 Windows x64，已有输出目录会拒绝覆盖。重试可传新的输出目录，例如 `node scripts/package-windows.cjs release/windows-candidate-2`。macOS 继续使用原 `package.sh`，Windows 流程没有发布权限。
+`npm run pack:win` 会先构建 renderer 再打包；`package-windows.cjs` 只接受 Windows x64，源码必须已提交且工作树干净，已有输出目录会拒绝覆盖。重试可传新的输出目录，例如 `node scripts/package-windows.cjs release/windows-candidate-2`。macOS 继续使用原 `package.sh`，Windows 流程没有发布权限。
 
 打包使用锁定的 `@electron/packager`，沿用源码锁定的 Electron `31.7.7`，没有在平台适配中混入 Electron 大版本升级。生产 app 只包含 `package.json`、`LICENSE`、`electron/` 和 `dist-renderer/`，不包含测试、node_modules、用户文件或自动恢复。Windows 图标取自现有 ICNS 的 256px PNG；exe 属性使用 Windows 数字版本 `1.3.0.0`，软件内部、manifest 和 ZIP 文件名保留完整 alpha 版本。旧运行时及依赖升级应作为独立回归工作，不把本候选称作正式稳定版。
 

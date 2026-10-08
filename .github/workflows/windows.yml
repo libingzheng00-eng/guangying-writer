@@ -60,6 +60,7 @@ jobs:
           $exe = Get-Item -LiteralPath (Join-Path $unpacked 'GuangyingWriter.exe')
           if ($exe.VersionInfo.ProductName -ne '光影写手') { throw 'Incorrect Windows executable product name' }
           $signature = Get-AuthenticodeSignature -LiteralPath $exe.FullName
+          if ($signature.Status -ne 'NotSigned') { throw "Unexpected candidate signature status: $($signature.Status)" }
           "Signature status: $($signature.Status) (candidate is intentionally unsigned)" | Out-File release/windows/signature-status.txt
       - name: 真实 Windows Electron 合成数据验收
         run: node scripts/windows-smoke.cjs --app "$env:WINDOWS_TEST_APP" --output release/windows/evidence

@@ -85,6 +85,7 @@ async function main() {
           if (child.pid) spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 10000 });
           teardownDeadline = setTimeout(() => {
             child.stdout.destroy(); child.stderr.destroy(); log.end();
+            child.unref(); // A failed taskkill must not keep this failing CLI alive.
             reject(new Error(`${phase} timed out; owned process-tree teardown did not close its pipes`));
           }, 5000);
         }, 150000);
@@ -99,6 +100,8 @@ async function main() {
       const result = JSON.parse(fs.readFileSync(path.join(output, `${phase}.json`), 'utf8'));
       assert.equal(result.status, 'passed');
       assert.equal(result.platform, 'win32');
+      assert.equal(result.phase, phase);
+      assert.deepEqual(result.errors, [], 'No renderer/main errors may be hidden by a passing phase');
       report.phases.push(result); writeReport();
     }
     assert.deepEqual(treeHashes(sourceApp), sourceHashes, 'Source package was modified');
