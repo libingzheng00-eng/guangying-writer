@@ -17,6 +17,22 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 
+const qaEntries = ['windows-smoke-shell.cjs', 'windows-ui-layers.cjs'];
+const phaseTimeoutMs = { 'first-launch': 360000, recovery: 90000 };
+function copyQaEntries(destination) {
+  const hashes = {};
+  for (const name of qaEntries) {
+    const source = path.join(__dirname, name);
+    const target = path.join(destination, name);
+    fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL);
+    const expected = createHash('sha256').update(fs.readFileSync(source)).digest('hex');
+    const actual = createHash('sha256').update(fs.readFileSync(target)).digest('hex');
+    assert.equal(actual, expected, `QA helper copy differs: ${name}`);
+    hashes[name] = actual;
+  }
+  return hashes;
+}
+
 function treeHashes(root) {
   const result = {};
   function walk(relative) {
@@ -55,17 +71,18 @@ async function main() {
   const qaApp = path.join(candidate, 'resources', 'app');
   assert.deepEqual(treeHashes(qaApp), sourceHashes, 'Copied production resources differ');
   fs.writeFileSync(path.join(qaApp, 'package.json'), JSON.stringify({ ...manifest, name: 'guangying-native-acceptance-qa', main: 'windows-smoke-shell.cjs' }, null, 2));
-  fs.copyFileSync(path.join(__dirname, 'windows-smoke-shell.cjs'), path.join(qaApp, 'windows-smoke-shell.cjs'), fs.constants.COPYFILE_EXCL);
+  const qaHashes = copyQaEntries(qaApp);
   const userData = path.join(temporary, '独立测试数据');
-  const config = { temporary, output, userData, version: manifest.version, expectedPlatform: 'win32' };
+  const config = { temporary, output, userData, version: manifest.version, expectedPlatform: 'win32', phaseTimeoutMs, uiTimeoutMs: 180000 };
   const configPath = path.join(temporary, 'smoke-config.json');
   fs.writeFileSync(configPath, JSON.stringify(config));
   const report = {
     status: 'running', platform: process.platform, architecture: process.arch, version: manifest.version,
     scope: 'instrumented copy of Windows packaged executable and byte-identical production resources',
     limitations: ['Native file/save dialog selections are stubbed', 'CDP composition is not a real system IME',
+      'Native menu callbacks exercise the production IPC route, not Windows system-menu pointer operation',
       'No installer/signature/SmartScreen/cross-machine checks', 'PDF files are generated; full visual/font/layout inspection remains manual'],
-    sourceHashes, phases: [],
+    sourceHashes, qaHashes, phaseTimeoutMs, uiTimeoutMs: config.uiTimeoutMs, phases: [],
   };
   function writeReport() { fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(report, null, 2)); }
   writeReport();
@@ -88,7 +105,7 @@ async function main() {
             child.unref(); // A failed taskkill must not keep this failing CLI alive.
             reject(new Error(`${phase} timed out; owned process-tree teardown did not close its pipes`));
           }, 5000);
-        }, 150000);
+        }, phaseTimeoutMs[phase]);
         for (const stream of [child.stdout, child.stderr]) stream.on('data', data => { log.write(data); process.stdout.write(data); });
         child.on('error', error => { clearTimeout(timeout); clearTimeout(teardownDeadline); log.end(); reject(error); });
         child.on('close', (code, signal) => {
@@ -114,4 +131,4 @@ async function main() {
   console.log(`PASS Windows packaged-payload smoke: ${output}`);
 }
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { treeHashes };
+module.exports = { treeHashes, copyQaEntries, phaseTimeoutMs };

@@ -48,6 +48,8 @@ jobs:
           node scripts/project-save-ipc-test.cjs
           node scripts/writing-derivation-test.cjs
           node scripts/native-draft-history-test.cjs
+          node scripts/modal-ui-test.cjs
+          node scripts/menu-ui-test.cjs
           node scripts/source-integrity-test.cjs
           node scripts/smarttype-test.cjs
           node scripts/smarttype-ui-test.cjs

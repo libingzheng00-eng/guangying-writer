@@ -24,8 +24,13 @@ const report = { status: 'running', phase, platform: process.platform, electron:
 const journal = () => fs.writeFileSync(path.join(config.output, `${phase}.json`), JSON.stringify(report, null, 2));
 const pass = name => { report.checks.push(name); journal(); console.log('PASS', name); };
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+function bounded(task, timeout, label) {
+  let timer;
+  return Promise.race([task, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Timeout: ${label}`)), timeout); })])
+    .finally(() => clearTimeout(timer));
+}
 let win;
-const run = js => win.webContents.executeJavaScript(js);
+const run = js => bounded(win.webContents.executeJavaScript(js), 10000, 'renderer read/focus operation');
 async function until(condition, label, timeout = 12000) {
   const stop = Date.now() + timeout;
   while (Date.now() < stop) {
@@ -96,7 +101,7 @@ async function waitSaved(expectedText) {
     return saved?.filePath === savedFile && saved.project.elements.find(e => e.id === 'windows-action').text === expectedText;
   }, 'autosave latest text and file association');
 }
-async function screenshot(name) { fs.writeFileSync(path.join(config.output, name), (await win.webContents.capturePage()).toPNG()); }
+async function screenshot(name) { fs.writeFileSync(path.join(config.output, name), (await bounded(win.webContents.capturePage(), 8000, `capture ${name}`)).toPNG()); }
 async function closeAndStay() {
   const count = report.dialogs.filter(d => d.kind === 'close').length;
   closeChoices.push(0); win.close();
@@ -229,6 +234,23 @@ app.whenReady().then(async () => {
     assert.equal(await text(), '合成正文');
     await until('document.querySelector(".writing-material-card__image")?.naturalWidth > 0', 'fixture embedded image decodes');
     pass('Ctrl+O reads .zhsp via production file IPC from Chinese path with spaces (dialog selection stubbed)');
+    try {
+      report.uiLayers = { status: 'running', timeoutMs: config.uiTimeoutMs }; journal();
+      report.uiLayers = await bounded(require('./windows-ui-layers.cjs')({ win, run, key, menu, pause, until, screenshot, pass, snapshot }), config.uiTimeoutMs, 'Windows UI layer acceptance');
+      journal();
+      console.log(`Windows UI layers: ${report.uiLayers.assertions} assertions, ${report.uiLayers.groups.length} groups, ${report.uiLayers.screenshots.length} screenshots passed.`);
+    } catch (error) {
+      report.uiLayers = { ...report.uiLayers, status: 'failed', error: error.message }; journal();
+      // Preserve the original assertion even if Chromium is unresponsive. Only
+      // this synthetic QA window is inspected; evidence collection is bounded.
+      const details = await Promise.race([
+        run(`(() => { const read=e=>e?{tag:e.tagName,className:e.className,role:e.getAttribute('role'),label:e.getAttribute('aria-label'),rect:e.getBoundingClientRect().toJSON()}:null;return {viewport:{width:innerWidth,height:innerHeight},active:read(document.activeElement),modal:read(document.querySelector('[aria-modal="true"]')),menu:read(document.querySelector('[role="menu"]')),inert:Array.from(document.querySelectorAll('[inert]')).map(read)};})()`).catch(() => ({ unavailable: true })),
+        pause(2500).then(() => ({ timedOut: true })),
+      ]);
+      fs.writeFileSync(path.join(config.output, 'ui-layer-failure.json'), JSON.stringify(details, null, 2));
+      await Promise.race([screenshot('ui-layer-failure.png').catch(() => {}), pause(5000)]);
+      throw error;
+    }
     openChoices.push({ canceled: true }); await key('o', ['control']);
     assert.equal(await text(), '合成正文');
     pass('canceled open leaves current synthetic document intact');

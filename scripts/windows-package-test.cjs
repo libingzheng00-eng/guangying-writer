@@ -5,9 +5,18 @@ const os = require('node:os');
 const path = require('node:path');
 const { windowsIcon } = require('./package-windows.cjs');
 const { inventory, verifyPackage } = require('./verify-windows-package.cjs');
+const { copyQaEntries, phaseTimeoutMs } = require('./windows-smoke.cjs');
 const root = path.resolve(__dirname, '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-package-test-'));
 try {
+  const qa = path.join(temp, 'qa-only-helpers');
+  fs.mkdirSync(qa);
+  const qaHashes = copyQaEntries(qa);
+  assert.deepEqual(Object.keys(qaHashes), ['windows-smoke-shell.cjs', 'windows-ui-layers.cjs']);
+  for (const name of Object.keys(qaHashes)) assert.equal(fs.readFileSync(path.join(qa, name), 'utf8'), fs.readFileSync(path.join(__dirname, name), 'utf8'));
+  assert.throws(() => copyQaEntries(qa), /EEXIST/, 'QA staging cannot overwrite an existing helper');
+  assert.ok(phaseTimeoutMs['first-launch'] >= 180000 && phaseTimeoutMs['first-launch'] <= 360000);
+  assert.ok(phaseTimeoutMs.recovery > 0 && phaseTimeoutMs.recovery <= 90000);
   const ico = windowsIcon(fs.readFileSync(path.join(root, 'assets/app-icon.icns')));
   assert.equal(ico.readUInt16LE(2), 1);
   assert.equal(ico.readUInt16LE(4), 1);
@@ -49,5 +58,5 @@ try {
   // A directory junction is unprivileged on Windows and remains a symlink to lstat.
   fs.symlinkSync(resources, path.join(temp, 'unsafe-link'), process.platform === 'win32' ? 'junction' : 'dir');
   assert.throws(() => inventory(path.join(temp, 'unsafe-link')), /Symlink forbidden/);
-  console.log('Windows package regression passed: existing icon, production allowlist, exact source/runtime hashes, tamper detection, symlink rejection.');
+  console.log('Windows package regression passed: existing icon, production allowlist, exact source/runtime hashes, tamper detection, symlink rejection, exact QA helper copies, bounded phase budgets.');
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }

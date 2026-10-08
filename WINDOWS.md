@@ -38,11 +38,12 @@ node scripts/windows-smoke.cjs --app release/windows/GuangyingWriter-win32-x64 -
 
 | 层级 | 内容 | 证据边界 |
 | --- | --- | --- |
-| Mac 本地源码 | 类型、renderer 构建、37 套核心回归、发布安全、watcher、包验证器 | 不能证明 Windows 原生行为 |
+| Mac 本地源码 | 类型、renderer 构建、39 套核心回归（含 modal/menu）、发布安全、watcher、包验证器 | 不能证明 Windows 原生行为 |
 | Windows CI 源码 | 同一完整基线、大小写路径队列、中文空格路径、Windows 权限及 junction | 真 Windows Node/文件系统，仍不是用户实机操作 |
 | Windows 打包 | x64 PE、名称/图标、生产白名单、源码匹配、全部文件哈希、ZIP 解压回读 | 未签名，不是安装程序或 SmartScreen 验证 |
 | Windows 原始入口 | 在一次性 GitHub Windows runner 直接启动未经修改的交付 exe，以独立临时 userData 验证原 manifest/main、空白启动、版本、错误及正常关闭 | 使用 Electron 调试协议观测；包文件前后哈希一致，不覆盖个人配置 |
 | Windows 原生载具 | 已打包 exe 的独立副本，执行原生产 main/preload/renderer；两次进程启动、Ctrl/Tab、CDP 组合事件、保存/备份/恢复、关闭保护、实际 PDF 生成 | QA 副本仅改 manifest 入口并加测试壳，生产资源哈希前后匹配；文件选择和关闭按钮响应由 stub 提供 |
+| Windows 模态与菜单 | 同一隔离载具检查标题页/设置焦点、Tab/Shift+Tab/Esc、背景 inert、原生查找与视图命令边界、正文选区恢复、文件菜单键盘与点击命中；日夜两种窗口尺寸保留截图 | Chromium输入与实际绘制；原生 MenuItem 回调由脚本调用，不等于人工操作系统菜单或真实输入法 |
 
 原生载具使用新建合成数据及临时 userData，不访问现用应用或真实剧本；另实测 SmartType 的候选、第一次 Enter 原位确认、原子撤销重做及第二次 Enter 切段。证据 artifact 中的 JSON、日志、截图和 PDF 都来自合成内容。测试失败会保留证据且不上传候选 ZIP；不能把脚本已写好称为已通过，实际结果须以目标提交的 CI 为准。
 

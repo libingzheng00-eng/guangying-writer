@@ -164,6 +164,7 @@ function buildMenu() {
       submenu: [
         { label: '写作', accelerator: 'CmdOrCtrl+Alt+1', click: () => send('view:write') },
         { label: '故事板卡片', accelerator: 'CmdOrCtrl+Alt+2', click: () => send('view:cards') },
+        { label: '自由板', click: () => send('view:board') },
         { label: '分页预览', accelerator: 'CmdOrCtrl+Alt+3', click: () => send('view:preview') },
         { label: '统计报表', accelerator: 'CmdOrCtrl+Alt+4', click: () => send('view:reports') },
         { type: 'separator' },

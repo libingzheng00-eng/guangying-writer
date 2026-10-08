@@ -4,7 +4,9 @@
 
 ## 2026-10-08 Windows x64 适配分支
 
-从最新 main `dcc097b` 开发 Windows x64 便携候选，版本号仍 alpha.18.12。平台改动和 Windows 构建/合成原生验收说明见 [WINDOWS.md](WINDOWS.md)。原 macOS 包和 Release 附件保持原状；本轮不合并、不发布。实际 CI 结果绑定提交，不把本地37套源码回归等同 Windows 实机验收。
+从最新 main `dcc097b` 开发 Windows x64 便携候选，版本号仍 alpha.18.12。平台改动和 Windows 构建/合成原生验收说明见 [WINDOWS.md](WINDOWS.md)。原 macOS 包和 Release 附件保持原状；本轮不合并、不发布。实际 CI 结果绑定提交，不把本地源码回归等同 Windows 实机验收。
+
+同日接续模态与菜单修复：独立工作区从远端 `f4be49e` 接入原工作树的9项未提交/未跟踪源码快照，原工作树保留不动。模态焦点、背景 inert、关闭选区恢复及原生查找边界由 `src/app/modalFocus.ts` 和实际 App 入口协作；文件菜单具备键盘与生命周期管理，原生视图菜单补自由板。`modal-ui-test.cjs` / `menu-ui-test.cjs` 已加入统一39套核心回归。Windows原生载具另运行 `windows-ui-layers.cjs`；helper 必须和 smoke 壳一起复制到隔离工作区。新提交是否通过以其 Actions 日志为准，不沿用下方历史37套或旧包的成功记录。
 
 ## 2026-10-08 SmartType 跨类型输入（当前实现与契约）
 

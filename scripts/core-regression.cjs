@@ -19,6 +19,8 @@ const suites = [
   'project-save-ipc-test.cjs',
   'writing-derivation-test.cjs',
   'native-draft-history-test.cjs',
+  'modal-ui-test.cjs',
+  'menu-ui-test.cjs',
   'source-integrity-test.cjs',
   'smarttype-test.cjs',
   'smarttype-ui-test.cjs',
