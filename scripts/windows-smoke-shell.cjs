@@ -24,6 +24,8 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
 const report = { status: 'running', phase, platform: process.platform, architecture: process.arch, electron: process.versions.electron, commit: config.commit, sourceManifestSHA256: config.sourceManifestSHA256, checks: [], dialogs: [], errors: [], nativeCalls: { save: 0, open: 0, reveal: 0 } };
 const modifier = process.platform === 'darwin' ? 'meta' : 'control';
+report.commandInput = { method: process.platform === 'darwin' ? 'production MenuItem callback with exact accelerator validation' : 'Chromium Control keyboard input', commands: [],
+  limitation: process.platform === 'darwin' ? 'sendInputEvent has no Cocoa NSEvent; physical Command accelerator dispatch is not verified' : null };
 const journal = () => fs.writeFileSync(path.join(config.output, `${phase}.json`), JSON.stringify(report, null, 2));
 const pass = name => { report.checks.push(name); journal(); console.log('PASS', name); };
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -85,11 +87,43 @@ async function key(keyCode, modifiers = []) {
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
   await pause(160);
 }
+function menuItem(label) {
+  const matches = [];
+  const search = items => { for (const item of items) { if (item.label === label) matches.push(item); if (item.submenu) search(item.submenu.items); } };
+  search(Menu.getApplicationMenu().items);
+  assert.equal(matches.length, 1, `Production menu must be unique: ${label}`);
+  const item = matches[0];
+  assert.ok(item.enabled && item.visible && typeof item.click === 'function', `Production menu unavailable: ${label}`);
+  return item;
+}
 function menu(label) {
-  const search = items => { for (const item of items) { if (item.label === label) return item; if (item.submenu) { const found = search(item.submenu.items); if (found) return found; } } };
-  const item = search(Menu.getApplicationMenu().items);
-  assert.ok(item && typeof item.click === 'function', `Production menu missing: ${label}`);
-  item.click(item, win, {});
+  menuItem(label).click({}, win, win.webContents);
+}
+async function verifySettingsUi(label) {
+  menu('显示简介设置…');
+  await until(`!!document.querySelector('.modal input[aria-label="行距（倍）"]')`, label + ' settings opens');
+  assert.deepEqual(await run(`(() => {const e=document.querySelector('.modal input[aria-label="行距（倍）"]');return {value:Number(e.value),invalid:e.getAttribute('aria-invalid'),liveLineHeight:Number(document.querySelector('.script-flow').style.lineHeight)};})()`),
+    { value: 1.75, invalid: null, liveLineHeight: 1.75 }, label + ' retains accepted line height in both Settings and live writing');
+  await key('Escape'); await until(`!document.querySelector('.modal[aria-modal="true"]')`, label + ' settings closes');
+}
+async function command(keyCode, modifiers) {
+  // Electron 44.7.0 sendInputEvent forwards a Blink event without an NSEvent.
+  // Cocoa performKeyEquivalent therefore cannot dispatch these native menus.
+  // Keep Windows keyboard coverage and test the actual Mac MenuItem separately;
+  // never synthesize menu:action or add a production DOM shortcut fallback.
+  const binding = {
+    'control+f': ['查找…', 'CmdOrCtrl+F'], 'control+o': ['打开…', 'CmdOrCtrl+O'],
+    'control+s': ['保存', 'CmdOrCtrl+S'], 'control+shift+s': ['另存为…', 'CmdOrCtrl+Shift+S'],
+    'control+z': ['撤销', 'CmdOrCtrl+Z'], 'control+shift+z': ['重做', 'CmdOrCtrl+Shift+Z'],
+    'control+alt+2': ['故事板卡片', 'CmdOrCtrl+Alt+2'],
+  }[[...modifiers, keyCode].join('+')];
+  assert.ok(binding, 'Every QA native command needs an explicit production binding');
+  const item = menuItem(binding[0]);
+  assert.equal(item.accelerator, binding[1]);
+  assert.ok(!item.role, 'Custom command must exercise its production callback');
+  report.commandInput.commands.push({ label: binding[0], accelerator: item.accelerator });
+  if (process.platform === 'darwin') { item.click({}, win, win.webContents); await pause(160); }
+  else await key(keyCode, modifiers);
 }
 const syntheticDir = path.join(config.temporary, '中文 路径 与空格');
 const sourceFile = path.join(syntheticDir, '原始 合成样例.zhsp');
@@ -167,6 +201,8 @@ app.whenReady().then(async () => {
       const recovered = await snapshot();
       assert.equal(recovered.filePath, savedFile);
       assert.equal(recovered.project.beats[0].img, expected.image);
+      assert.equal(recovered.project.settings.lineHeight, 1.75, 'Actual process restart recovers the accepted UI setting');
+      await verifySettingsUi('Process restart');
       await verifySanitizedProject(run);
       await verifyDisplaySafety(run);
       await until('document.querySelector(".writing-material-card__image")?.naturalWidth > 0', 'recovered embedded image decodes');
@@ -174,12 +210,12 @@ app.whenReady().then(async () => {
       await closeAndStay();
       assert.equal(await text(), expected.unsavedText);
       pass('recovered document conservatively remains dirty and default close choice stays open');
-      await focusEnd(); await key('s', ['control']); await waitSaved(expected.unsavedText);
+      await focusEnd(); await command('s', ['control']); await waitSaved(expected.unsavedText);
       assert.equal(fs.readFileSync(savedFile + '.guangying-backup', 'utf8'), expected.diskBeforeRecovery);
       // Reading the old localStorage alone would not prove the live model was
       // restored. Saving it through production IPC verifies every project field.
       assert.deepEqual(readProject(savedFile), expected.project, 'Full live recovered project must survive process restart and disk save');
-      pass('Cmd/Ctrl+S after process restart writes associated Chinese path and backs up the previous disk version');
+      pass('production Save command after process restart writes associated Chinese path and backs up previous disk version (' + report.commandInput.method + ')');
       pass('complete recovered project matches: all paragraphs, formatting, cards, coordinates, settings, and metadata');
       await screenshot('recovered.png');
       pass('saved document closes through production beforeunload without an extra prompt');
@@ -201,9 +237,9 @@ app.whenReady().then(async () => {
     report.security = await runSecurityChecks({ win, run, until, pause, root, temporary: config.temporary, saveChoices, report, pass });
     journal();
     win.show(); win.focus();
-    await key('f', ['control']); await until('!!document.querySelector(".find-panel")', 'Cmd/Ctrl+F opens find');
+    await command('f', ['control']); await until('!!document.querySelector(".find-panel")', 'production Find command opens find');
     await key('Escape'); await until('!document.querySelector(".find-panel")', 'Escape closes find');
-    pass('Chromium Cmd/Ctrl+F and Escape operate the production find panel');
+    pass('production Find command and Chromium Escape operate the find panel (' + report.commandInput.method + ')');
 
     fs.mkdirSync(syntheticDir);
     const smartId = await run(`(() => {
@@ -221,20 +257,20 @@ app.whenReady().then(async () => {
     await key('Enter');
     assert.deepEqual(await smartState(), { text: '特写', type: 'shot', focus: smartId, count: 2 });
     assert.equal(await run('document.querySelectorAll(".smarttype__item").length'), 0);
-    await key('z', ['control']);
+    await command('z', ['control']);
     assert.deepEqual(await smartState(), { text: '特', type: 'action', focus: smartId, count: 2 });
-    await key('z', ['control', 'shift']);
+    await command('z', ['control', 'shift']);
     assert.deepEqual(await smartState(), { text: '特写', type: 'shot', focus: smartId, count: 2 });
     await key('Enter');
     const split = await smartState();
     assert.equal(split.count, 3); assert.notEqual(split.focus, smartId);
     assert.equal(split.text, '特写'); assert.equal(split.type, 'shot');
-    pass('Desktop SmartType first Enter accepts text/type in place, Cmd/Ctrl undo/redo is atomic, second Enter creates one paragraph');
+    pass('Desktop SmartType first Enter accepts text/type in place, production Undo/Redo is atomic, second Enter creates one paragraph');
     // Save through the real command before opening the next fixture; no dirty
     // replacement prompt is bypassed or disabled by the test.
     const smartFile = path.join(syntheticDir, '快捷输入 合成验收.zhsp');
     saveChoices.push({ path: smartFile, extension: 'zhsp' });
-    await key('s', ['control', 'shift']);
+    await command('s', ['control', 'shift']);
     await until(() => fs.existsSync(smartFile), 'SmartType synthetic project disk save');
     await until('document.body.textContent.includes("已保存：")', 'SmartType save completion');
     const smartSaved = readProject(smartFile);
@@ -253,17 +289,17 @@ app.whenReady().then(async () => {
     fs.writeFileSync(sourceFile, JSON.stringify({ app: 'guangying-writer', fileVersion: 1, savedAt: 1, project }), { flag: 'wx' });
     const sourceBytes = fs.readFileSync(sourceFile, 'utf8');
     const displayObserver = await observeRequests(win);
-    openChoices.push({ path: sourceFile }); await key('o', ['control']);
-    await until(`!!document.querySelector(${JSON.stringify(actionSelector)})`, 'Cmd/Ctrl+O real IPC opens synthetic Chinese filename');
+    openChoices.push({ path: sourceFile }); await command('o', ['control']);
+    await until(`!!document.querySelector(${JSON.stringify(actionSelector)})`, 'production Open command real IPC opens synthetic Chinese filename');
     assert.equal(await text(), '合成正文');
     await verifySanitizedProject(run);
     await verifyDisplaySafety(run);
     pass('untrusted project HTML is sanitized before live rendering; bold/italic/line breaks remain and scripts/events/foreign elements do not execute');
     await until('document.querySelector(".writing-material-card__image")?.naturalWidth > 0', 'fixture embedded image decodes');
-    pass('Cmd/Ctrl+O reads .zhsp via production file IPC from Chinese path with spaces (dialog selection stubbed)');
+    pass('production Open command reads .zhsp via real IPC from Chinese path with spaces (dialog choice stubbed)');
     try {
       report.uiLayers = { status: 'running', timeoutMs: config.uiTimeoutMs }; journal();
-      report.uiLayers = await bounded(require('./windows-ui-layers.cjs')({ win, run, key, menu, pause, until, screenshot, pass, snapshot }), config.uiTimeoutMs, 'Desktop UI layer acceptance');
+      report.uiLayers = await bounded(require('./windows-ui-layers.cjs')({ win, run, key, command, menu, pause, until, screenshot, pass, snapshot }), config.uiTimeoutMs, 'Desktop UI layer acceptance');
       journal();
       console.log(`Desktop UI layers: ${report.uiLayers.assertions} assertions, ${report.uiLayers.groups.length} groups, ${report.uiLayers.screenshots.length} screenshots passed.`);
     } catch (error) {
@@ -280,15 +316,15 @@ app.whenReady().then(async () => {
     } finally { report.displayRequests = displayObserver.stop(); journal(); }
     assert.deepEqual(report.displayRequests, [], 'Untrusted project image/color/HTML metadata must not attempt external or synthetic private-file requests in writing or free-board views');
     pass('real Chromium writing/free-board preserve blocked-image title/notes and safe embedded image, reject CSS URL colors, and make no external resource request');
-    openChoices.push({ canceled: true }); await key('o', ['control']);
+    openChoices.push({ canceled: true }); await command('o', ['control']);
     assert.equal(await text(), '合成正文');
     pass('canceled open leaves current synthetic document intact');
 
     await focusEnd(); await win.webContents.insertText('键盘'); await pause(150);
     assert.equal(await text(), '合成正文键盘');
-    await key('z', ['control']); assert.equal(await text(), '合成正文');
-    await key('z', ['control', 'shift']); assert.equal(await text(), '合成正文键盘');
-    pass('Chromium Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z restore visible Chinese text without a native DOM-only undo');
+    await command('z', ['control']); assert.equal(await text(), '合成正文');
+    await command('z', ['control', 'shift']); assert.equal(await text(), '合成正文键盘');
+    pass('production Undo/Redo restore visible Chinese text without a native DOM-only undo (' + report.commandInput.method + ')');
     const cycle = ['action', 'character', 'parenthetical', 'dialogue', 'transition', 'shot', 'scene_heading', 'general', 'note'];
     for (let index = 1; index <= 11; index++) {
       await key('Tab');
@@ -310,24 +346,38 @@ app.whenReady().then(async () => {
     const firstSavedText = '合成正文键盘中文'; assert.equal(await text(), firstSavedText);
     pass('CDP Chinese composition commits once without leftover pinyin (not real system IME acceptance)');
 
-    saveChoices.push({ canceled: true, extension: 'zhsp' }); await key('s', ['control', 'shift']);
+    saveChoices.push({ canceled: true, extension: 'zhsp' }); await command('s', ['control', 'shift']);
     assert.equal(fs.existsSync(savedFile), false); assert.equal(fs.readFileSync(sourceFile, 'utf8'), sourceBytes);
     assert.equal(await text(), firstSavedText);
     await closeAndStay(); assert.equal(await text(), firstSavedText);
     pass('canceled Save As preserves current content, dirty close protection, and source .zhsp');
-    saveChoices.push({ path: savedFile, extension: 'zhsp' }); await key('s', ['control', 'shift']);
+    saveChoices.push({ path: savedFile, extension: 'zhsp' }); await command('s', ['control', 'shift']);
     await waitSaved(firstSavedText);
+    assert.equal(readProject(savedFile).settings.lineHeight, 1.75, 'Real Save As persists the accepted UI line height');
     const firstSavedBytes = fs.readFileSync(savedFile, 'utf8');
     assert.equal(fs.readFileSync(sourceFile, 'utf8'), sourceBytes);
-    pass('Cmd/Ctrl+Shift+S writes a new Chinese filename through real atomic save IPC and preserves source');
-    await focusEnd(); await win.webContents.insertText('第二版'); await key('s', ['control']);
+    pass('production Save As writes a new Chinese filename through real atomic save IPC and preserves source');
+    await focusEnd(); await win.webContents.insertText('第二版'); await command('s', ['control']);
     const diskText = firstSavedText + '第二版'; await waitSaved(diskText);
     assert.equal(fs.readFileSync(savedFile + '.guangying-backup', 'utf8'), firstSavedBytes);
     assert.equal(readProject(savedFile).beats[0].img, image);
     assert.equal(readProject(savedFile).elements[2].text, '<b>保留</b>段落');
     assert.equal(readProject(savedFile).elements.find(e => e.id === 'security-html').text, safeHtml);
+    assert.equal(readProject(savedFile).settings.lineHeight, 1.75, 'Real subsequent Save retains the accepted UI line height');
     await verifySanitizedProject(run);
-    pass('Cmd/Ctrl+S atomically replaces .zhsp, preserves embedded image/formatting, and retains exact previous-version backup');
+    pass('production Save atomically replaces .zhsp, preserves embedded image/formatting, and retains exact previous-version backup');
+
+    const diskProject = readProject(savedFile);
+    const opensBeforeReopen = report.nativeCalls.open;
+    await until(`!document.body.textContent.includes('已打开剧本')`, 'Any earlier Open notification has ended before disk reopen');
+    openChoices.push({ path: savedFile }); await command('o', ['control']);
+    await until(() => report.nativeCalls.open === opensBeforeReopen + 1 && openChoices.length === 0, 'Disk reopen reaches exactly one real native Open request');
+    await until(`document.body.textContent.includes('已打开剧本')`, 'Production Open reports successful disk parsing/replacement');
+    await until(async () => (await snapshot())?.project.settings.lineHeight === 1.75 && (await snapshot())?.filePath === savedFile, 'Disk reopen restores saved settings and association');
+    assert.equal(await text(), diskText);
+    await verifySettingsUi('Saved project reopen');
+    assert.deepEqual((await snapshot()).project, diskProject, 'Disk reopen retains every saved project field including accepted settings');
+    pass('actual Open of the saved .zhsp restores lineHeight 1.75 in Settings/live layout and preserves every saved field');
 
     const beforePdf = JSON.stringify((await snapshot()).project);
     for (const [label, destination, outputName] of [['导出创作版 PDF（原位卡片）…', creativeFile, 'creative.pdf'], ['导出 A4 纯文本 PDF…', printFile, 'print-a4.pdf']]) {

@@ -2,7 +2,7 @@ import type { Beat, ScriptElement, ScriptProject, ScriptSettings } from '../mode
 import { FILE_VERSION, defaultSettings, emptyTitlePage } from '../model/project';
 import { DEFAULT_INDENT, DEFAULT_REVISIONS, ELEMENT_ORDER } from '../model/elements';
 import { normalizeTargetPages } from '../model/progress';
-import { PAPER_MM } from '../model/stats';
+import { validateProjectSettings } from '../model/projectSettingsValidation';
 import { sanitizeProjectHtml } from '../utils/projectHtml';
 
 export interface ZhspFile {
@@ -16,6 +16,9 @@ type RecordValue = Record<string, unknown>;
 const elementTypes = new Set<string>(ELEMENT_ORDER);
 const reservedIdentifiers = new Set([...Object.getOwnPropertyNames(Object.prototype), 'prototype']);
 const invalidStructure = () => new Error('工程结构格式不正确，原文件未修改');
+// Store snapshots share unchanged immutable elements. Cache only successful
+// text cleaning, not structure decisions; mutated IDs/settings still revalidate.
+const validatedText = new WeakMap<object, { text: string; html: string }>();
 
 function record(value: unknown): RecordValue {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalidStructure();
@@ -79,41 +82,13 @@ function metadataList(value: unknown, kind: 'sceneMeta' | 'boardLinks' | 'acts' 
 }
 
 function validatedSettings(value: unknown): RecordValue {
+  if (validateProjectSettings(value).length) throw invalidStructure();
   const incoming = optionalRecord(value);
-  const defaults = defaultSettings();
-  for (const [name, defaultValue] of Object.entries(defaults)) {
-    // sceneNumber retains its documented legacy fallback below.
-    if (name !== 'indent' && name !== 'sceneNumber') fields(incoming, [name], typeof defaultValue as 'string' | 'number' | 'boolean');
-  }
-  if (incoming.paper !== undefined && incoming.paper !== 'A4' && incoming.paper !== 'letter') throw invalidStructure();
-  // Tiny positive line heights defeat the paginator's positive-number fallback
-  // and turn one measured line into trillions of pages. Keep a generous range
-  // for historical custom layouts and require usable geometry in both writing
-  // and the always-A4 preview, without clamping or rewriting saved values.
-  const layout = { ...defaults, ...incoming } as ScriptSettings;
-  if (layout.fontSize < 1 || layout.fontSize > 144 || layout.lineHeight < 0.5 || layout.lineHeight > 10) throw invalidStructure();
-  for (const margin of [layout.marginTop, layout.marginBottom, layout.marginLeft, layout.marginRight]) {
-    if (margin < -5 || margin > 30) throw invalidStructure();
-  }
-  const lineHeightMm = layout.fontSize * layout.lineHeight * 25.4 / 72;
-  for (const name of new Set(['A4', layout.paper])) {
-    const paper = PAPER_MM[name];
-    if (paper.w - (layout.marginLeft + layout.marginRight) * 10 < 10 ||
-        paper.h - (layout.marginTop + layout.marginBottom) * 10 < Math.max(10, lineHeightMm)) throw invalidStructure();
-  }
   const indent = optionalRecord(incoming.indent);
   const merged = { ...DEFAULT_INDENT };
   for (const name of ELEMENT_ORDER) {
     if (indent[name] === undefined) continue;
     const format = record(indent[name]);
-    fields(format, ['left', 'right', 'spaceBefore'], 'number');
-    // Text export repeats indentation spaces; finite-but-enormous values must
-    // not allocate an unbounded string. Ordinary custom/negative values survive.
-    for (const key of ['left', 'right', 'spaceBefore']) {
-      if (typeof format[key] === 'number' && Math.abs(format[key] as number) > 10_000) throw invalidStructure();
-    }
-    fields(format, ['bold', 'uppercase'], 'boolean');
-    if (format.align !== undefined && !['left', 'right', 'center'].includes(format.align as string)) throw invalidStructure();
     // Old partial formatting records inherit the missing defaults per type.
     merged[name] = { ...DEFAULT_INDENT[name], ...format };
   }
@@ -175,17 +150,30 @@ function normalizeElement(raw: unknown): ScriptElement {
   // Missing old text fields are empty; reject other malformed values instead
   // of coercing an object or silently deleting a paragraph during migration.
   if (element.text != null && typeof element.text !== 'string') throw new Error('工程正文格式不正确');
-  return { ...element, text: sanitizeProjectHtml(element.text ?? '') };
+  const text = element.text ?? '';
+  const cached = validatedText.get(element);
+  const html = cached?.text === text ? cached.html : sanitizeProjectHtml(text);
+  if (cached?.text !== text) validatedText.set(element, { text, html });
+  return { ...element, text: html };
 }
 
 export function serializeProject(p: ScriptProject): string {
+  // Never write a snapshot which the same version would refuse to reopen.
+  // Validation does not rewrite the author's original snapshot or history.
+  parseProjectValue(p);
   const file: ZhspFile = { app: 'guangying-writer', fileVersion: FILE_VERSION, savedAt: Date.now(), project: p };
   return JSON.stringify(file, null, 2);
 }
 
 /** 容错解析：兼容旧版 / 缺少字段的工程文件 */
 export function parseProject(raw: string): ScriptProject {
-  const json = record(JSON.parse(raw));
+  return parseProjectValue(JSON.parse(raw));
+}
+
+/** Shared validation/migration for parsed files, recovery and outgoing saves.
+ * An already parsed object avoids another full image-heavy JSON copy. */
+export function parseProjectValue(value: unknown): ScriptProject {
+  const json = record(value);
   const source = Object.prototype.hasOwnProperty.call(json, 'project') ? record(json.project) : json;
   optionalIdentifiers(source, ['id']);
   fields(source, ['name'], 'string');

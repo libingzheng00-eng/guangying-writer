@@ -1,4 +1,4 @@
-import { parseProject } from '../io/zhsp';
+import { parseProjectValue } from '../io/zhsp';
 import type { ScriptProject } from '../model/types';
 
 export const AUTOSAVE_KEY = 'guangying:autosave';
@@ -9,14 +9,17 @@ export const UNREADABLE_AUTOSAVE_KEY = 'guangying:autosave:unreadable';
 export interface RecoverySnapshot { project: ScriptProject; filePath: string | null }
 type StoragePort = Pick<Storage, 'getItem' | 'setItem'>;
 
-function decode(raw: string): RecoverySnapshot {
-  const saved = JSON.parse(raw);
-  if (!saved || typeof saved.project !== 'object' || !saved.project || !Array.isArray(saved.project.elements)) {
+function validateSnapshot(value: unknown): RecoverySnapshot {
+  const saved = value as Partial<RecoverySnapshot> | null;
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved) ||
+      typeof saved.project !== 'object' || !saved.project || !Array.isArray(saved.project.elements)) {
     throw new Error('Invalid recovery snapshot');
   }
-  return { project: parseProject(raw),
+  return { project: parseProjectValue(saved.project),
     filePath: typeof saved.filePath === 'string' && saved.filePath ? saved.filePath : null };
 }
+
+function decode(raw: string): RecoverySnapshot { return validateSnapshot(JSON.parse(raw)); }
 
 /** Reading/restoring must not depend on a later migration write succeeding. */
 export function readRecovery(storage: StoragePort): {
@@ -48,19 +51,23 @@ export function createRecoveryWriter(getStorage: () => StoragePort) {
   // One result only; do not retain a sequence of image-heavy serialized drafts.
   let validatedRaw: string | null = null;
   return (snapshot: RecoverySnapshot): void => {
+    // Apply exactly the reader's decision to outgoing snapshots as well. This
+    // works on the immutable model without parsing another image-heavy string.
+    // Only a successful, validated write may establish the old-raw cache.
+    validateSnapshot(snapshot);
     const next = JSON.stringify(snapshot);
     const storage = getStorage();
     const current = storage.getItem(AUTOSAVE_KEY);
     if (current && current !== validatedRaw) {
       let invalid = false;
-      try {
-        const envelope = JSON.parse(current);
-        invalid = !envelope?.project || typeof envelope.project !== 'object' || !Array.isArray(envelope.project.elements);
-      } catch { invalid = true; }
+      try { decode(current); } catch { invalid = true; }
       if (invalid) {
         const protectedRaw = storage.getItem(UNREADABLE_AUTOSAVE_KEY);
         if (protectedRaw !== null && protectedRaw !== current) throw new Error('Unreadable recovery already protected');
-        if (protectedRaw === null) storage.setItem(UNREADABLE_AUTOSAVE_KEY, current);
+        if (protectedRaw === null) {
+          storage.setItem(UNREADABLE_AUTOSAVE_KEY, current);
+          if (storage.getItem(UNREADABLE_AUTOSAVE_KEY) !== current) throw new Error('Recovery protection failed');
+        }
         // If protection fails (quota/permissions), do NOT replace the original.
       }
     }

@@ -48,6 +48,7 @@ jobs:
           node scripts/project-html-security-test.cjs
           node scripts/display-security-test.cjs
           node scripts/display-values-test.cjs
+          node scripts/settings-ui-test.cjs
           node scripts/writing-derivation-test.cjs
           node scripts/native-draft-history-test.cjs
           node scripts/modal-ui-test.cjs

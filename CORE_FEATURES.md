@@ -78,7 +78,7 @@ npm run build
 npm run test:core
 ```
 
-`test:core` 当前统一运行43套源码专项，runner与各平台CI必须同步更新；这不等于原生验收通过。单项定位可运行：
+`test:core` 当前统一运行44套源码专项，runner与各平台CI必须同步更新；这不等于原生验收通过。单项定位可运行：
 
 ```bash
 node scripts/core-guard.cjs
@@ -102,6 +102,7 @@ node scripts/electron-security-test.cjs
 node scripts/project-html-security-test.cjs
 node scripts/display-security-test.cjs
 node scripts/display-values-test.cjs
+node scripts/settings-ui-test.cjs
 node scripts/writing-derivation-test.cjs
 node scripts/pagination-safety-test.cjs
 node scripts/pdf-transport-test.cjs

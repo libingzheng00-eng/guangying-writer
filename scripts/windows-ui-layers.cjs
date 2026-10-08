@@ -4,11 +4,13 @@
  * data. Pointer/key input goes through webContents.sendInputEvent; JavaScript
  * only reads layout/state, scrolls controls into view, and prepares focus/ranges.
  * MenuItem.click exercises the production native-menu -> IPC -> App route; it
- * does not claim a human operated the system menu with a mouse.
+ * does not claim system-menu pointer or physical Command-accelerator dispatch.
+ * Mac native commands validate accelerators and call the production MenuItem;
+ * Chromium keys still drive Tab, Escape, arrows, Enter, and button activation.
  */
 const strictAssert = require('node:assert/strict');
 
-module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause, until, screenshot: capture, pass: markPassed, snapshot }) {
+module.exports = async function runWindowsUiLayers({ win, run, key, command, menu, pause, until, screenshot: capture, pass: markPassed, snapshot }) {
   let assertions = 0;
   const groups = [], screenshots = [], buttonActivations = [];
   const assert = Object.fromEntries(['ok', 'equal', 'deepEqual'].map(method => [method, (...args) => { strictAssert[method](...args); assertions++; }]));
@@ -89,7 +91,14 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   }
   async function editField(label, value) {
     await clickExpression(field(label), label);
-    await key('a', ['control']);
+    // Selection is input preparation on Mac, not a physical Cmd+A claim.
+    // The native selectAll role also depends on Cocoa; use Chromium's editing
+    // command and prove the entire focused draft is selected before inserting.
+    if (process.platform === 'darwin') win.webContents.selectAll();
+    else await key('a', ['control']);
+    // Number inputs deliberately expose null selectionStart/End. Their exact
+    // replacement is checked below; keep precise selection checks for text.
+    await until(`(() => {const e=${field(label)};return document.activeElement===e&&(e.type==='number'||(e.selectionStart===0&&e.selectionEnd===e.value.length));})()`, `${label} has input focus and, for text controls, an exact full-field selection`);
     if (value) await win.webContents.insertText(value);
     else await key('Backspace');
     await until(`(${field(label)})?.value===${q(value)}`, `${label} accepts real Chromium input`);
@@ -177,17 +186,17 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   }
   async function blockedBackground() {
     const unchanged = await run(`document.querySelector(${q(editor)}).outerHTML`);
-    await key('f', ['control']);
+    await command('f', ['control']);
     menu('查找…'); await pause(100);
-    assert.equal(await run('!!document.querySelector(".find-panel")'), false, 'Native/keyboard Find cannot open behind modal');
+    assert.equal(await run('!!document.querySelector(".find-panel")'), false, 'Production Find command cannot open behind modal');
     for (const label of ['新建剧本', '打开…', '保存', '另存为…', '导入文本剧本…', '导入 Final Draft (FDX)…',
       '导出创作版 PDF（原位卡片）…', '导出 A4 纯文本 PDF…', '导出 FDX…', '导出纯文本…', '导出 Markdown…',
       '标题页…', '显示简介设置…', '故事板卡片', '自由板', '分页预览', '统计报表', '插入场景', '双列对白', '省略 / 恢复']) {
       menu(label); await pause(25);
       assert.equal(await run(`document.querySelector(${q(modal)}).contains(document.activeElement)`), true, `${label} cannot replace the modal or steal focus`);
     }
-    await key('2', ['control', 'alt']);
-    assert.equal(await run(`!!document.querySelector(${q(editor)}) && !document.querySelector('.cards')`), true, 'Native/keyboard view switch is blocked by modal');
+    await command('2', ['control', 'alt']);
+    assert.equal(await run(`!!document.querySelector(${q(editor)}) && !document.querySelector('.cards')`), true, 'Production view command is blocked by modal');
     menu('人物'); await pause(100);
     assert.equal(await run(`document.querySelector(${q(editor)}).outerHTML`), unchanged, 'Native element command cannot mutate background paragraph');
     await run(`document.querySelector(${q(editor)}).focus()`);
@@ -243,7 +252,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   await win.webContents.insertText('合成正文');
   await run(`document.activeElement.setSelectionRange(1,3,'backward')`);
   menu('显示简介设置…'); await readyModal('显示简介设置');
-  menu('查找…'); await key('f', ['control']);
+  menu('查找…'); await command('f', ['control']);
   assert.equal(await run(`document.querySelector(${q(modal)}).contains(document.activeElement)`), true, 'Already-open Find cannot steal modal focus');
   await escapeModal();
   assert.deepEqual(await run(`(() => {const e=document.activeElement;return {label:e.getAttribute('aria-label'),value:e.value,start:e.selectionStart,end:e.selectionEnd,direction:e.selectionDirection};})()`),
@@ -373,5 +382,53 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   await escapeModal(); win.setBounds(originalBounds); await pause(1200);
   assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(before), 'UI acceptance restores all project fields and leaves original screenplay/card geometry intact');
   await focusEditorRange();
-  return { status: 'passed', assertions, groups, screenshots, buttonActivations, scope: 'Chromium key/pointer input and native MenuItem callback -> production IPC; synthetic fixture only' };
+
+  // This separately identified edit follows the original unchanged-fixture
+  // assertion. The outer smoke runner must save/reopen/recover this exact value.
+  const acceptedLineHeight = 1.75;
+  const settingsBefore = (await snapshot()).project;
+  const originalLineHeight = settingsBefore.settings.lineHeight;
+  assert.ok(originalLineHeight !== acceptedLineHeight, 'Synthetic fixture must exercise an actual settings change');
+  const bodyState = `Array.from(document.querySelectorAll('.script-flow .sc-el')).map(e=>({id:e.dataset.id,type:e.dataset.type,html:e.innerHTML}))`;
+  const bodyBefore = await run(bodyState);
+  menu('显示简介设置…'); await readyModal('显示简介设置');
+  const lineField = field('行距（倍）');
+  const waitLineHeight = async value => {
+    await until(`Number((${lineField}).value)===${value}&&Number(document.querySelector('.script-flow').style.lineHeight)===${value}`, 'Settings input and live writing layout use the accepted line height');
+    await until(async () => (await snapshot())?.project.settings.lineHeight === value, 'Accepted line height reaches actual recovery storage');
+  };
+  await editField('行距（倍）', String(acceptedLineHeight));
+  await waitLineHeight(acceptedLineHeight);
+  // Focus a modal button so Undo/Redo target the project session, not an
+  // uncommitted numeric draft's native editing history.
+  await clickExpression(labelButton('.modal .tabs', '版式'), 'page tab before settings Undo');
+  menu('撤销'); await waitLineHeight(originalLineHeight);
+  assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(settingsBefore), 'One Undo restores the complete pre-settings project');
+
+  await editField('行距（倍）', '0.4');
+  await until(`(${lineField}).getAttribute('aria-invalid')==='true'`, 'Out-of-range line height is explicitly invalid');
+  const invalid = await run(`(() => {const e=${lineField},alert=document.getElementById(e.getAttribute('aria-describedby'));if(alert)alert.scrollIntoView({block:'nearest'});const r=alert?.getBoundingClientRect();return {value:e.value,invalid:e.getAttribute('aria-invalid'),focused:document.activeElement===e,role:alert?.getAttribute('role'),message:alert?.textContent,visible:!!r&&r.width>0&&r.height>0&&r.top>=0&&r.bottom<=innerHeight&&getComputedStyle(alert).visibility!=='hidden',liveLineHeight:Number(document.querySelector('.script-flow').style.lineHeight)};})()`);
+  assert.equal(invalid.value, '0.4'); assert.equal(invalid.invalid, 'true'); assert.equal(invalid.focused, true);
+  assert.equal(invalid.role, 'alert'); assert.equal(invalid.visible, true);
+  assert.ok(invalid.message.includes('0.5') && invalid.message.includes('10') && invalid.message.includes('未应用'), 'Visible error explains the allowed range and rejection');
+  assert.equal(invalid.liveLineHeight, originalLineHeight, 'Rejected value cannot change live writing layout');
+  await pause(1200);
+  assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(settingsBefore), 'Invalid input leaves every recovered project field unchanged');
+  assert.deepEqual(await run(bodyState), bodyBefore, 'Invalid input leaves live paragraph IDs, types and rich text unchanged');
+  await run('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+  await screenshot('ui-settings-line-height-rejected.png');
+
+  await clickExpression(labelButton('.modal .tabs', '版式'), 'page tab before settings Redo');
+  menu('重做'); await waitLineHeight(acceptedLineHeight);
+  assert.equal(await run(`(${lineField}).hasAttribute('aria-invalid')||!!(${lineField}).getAttribute('aria-describedby')`), false, 'Valid redo clears the rejected draft and associated error');
+  const settingsAfter = JSON.parse(JSON.stringify(settingsBefore)); settingsAfter.settings.lineHeight = acceptedLineHeight;
+  assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(settingsAfter), 'Rejected input neither creates a project history step nor clears the valid redo');
+  menu('撤销'); await waitLineHeight(originalLineHeight);
+  assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(settingsBefore), 'Undo still restores exactly one accepted settings edit');
+  menu('重做'); await waitLineHeight(acceptedLineHeight);
+  await escapeModal(); await assertEditorRange();
+  assert.deepEqual(await run(bodyState), bodyBefore, 'Accepted layout edit also preserves live paragraph text and types');
+  const settingsValidation = { rejected: invalid, acceptedLineHeight, originalLineHeight, history: 'invalid draft preserves preceding Undo/Redo; only accepted line height changes the project' };
+  pass('Desktop Settings rejects lineHeight 0.4 with a visible error and unchanged writing/layout/recovery/history; accepts 1.75 as one reversible settings edit for disk/restart checks');
+  return { status: 'passed', assertions, groups, screenshots, buttonActivations, settingsValidation, scope: 'Chromium key/pointer input and native MenuItem callback -> production IPC; synthetic fixture only' };
 };

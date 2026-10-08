@@ -21,6 +21,7 @@ const suites = [
   'project-html-security-test.cjs',
   'display-security-test.cjs',
   'display-values-test.cjs',
+  'settings-ui-test.cjs',
   'writing-derivation-test.cjs',
   'native-draft-history-test.cjs',
   'modal-ui-test.cjs',

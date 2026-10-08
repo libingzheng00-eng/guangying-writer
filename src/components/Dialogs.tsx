@@ -7,6 +7,35 @@ import { DEFAULT_FONT_COLOR, resolveFontColor } from '../model/appearance';
 import { isHexColor } from '../utils/color';
 import { containModal, createModalSession, type ModalSession } from '../app/modalFocus';
 import { ownsNativeHistory } from '../utils/editHistory';
+import { validateProjectSettings } from '../model/projectSettingsValidation';
+
+/** Invalid numeric edits stay in this control, never in a project snapshot.
+ * Valid edits keep the existing immediate store/history behavior. */
+function SettingsNumberInput({ value, label, validate, commit, step }: {
+  value: number; label: string; validate: (value: number) => string | undefined;
+  commit: (value: number) => void; step?: number;
+}) {
+  const errorId = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  // Undo/redo and document changes must repaint the current model value.
+  useLayoutEffect(() => setDraft(null), [value]);
+  const message = (raw: string) => raw.trim() === '' || !Number.isFinite(Number(raw))
+    ? '请输入有限的数字，原设置未改变。' : validate(Number(raw));
+  // Changing another field can make a rejected geometry draft admissible. It
+  // still has not been committed: keep that distinction visible until edited.
+  const error = draft === null ? undefined : message(draft) || '此输入尚未应用，请重新输入以确认。';
+  return <>
+    <input type="number" step={step} aria-label={label} value={draft ?? value}
+      aria-invalid={error ? true : undefined} aria-describedby={error ? errorId : undefined}
+      data-native-edit-history={draft !== null ? '' : undefined}
+      onChange={event => {
+        const raw = event.target.value;
+        if (message(raw)) setDraft(raw);
+        else { setDraft(null); commit(Number(raw)); }
+      }} />
+    {error ? <span id={errorId} className="hint" role="alert">{error}</span> : null}
+  </>;
+}
 
 /** 可选自定义颜色；默认值另用 auto 跟随日夜主题。 */
 const FONT_COLOR_PRESETS = [
@@ -139,10 +168,28 @@ export function SettingsDialog({ onClose, session }: DialogProps) {
   const setAppTheme = useStore((s) => s.setAppTheme);
   const [tab, setTab] = useState<'page' | 'indent' | 'revision' | 'appearance' | 'general'>('page');
 
-  const num = (v: string, fallback = 0) => {
-    const n = parseFloat(v);
-    return Number.isFinite(n) ? n : fallback;
+  const [paperError, setPaperError] = useState<string | undefined>();
+  const paperErrorId = useId();
+  useLayoutEffect(() => setPaperError(undefined), [settings]);
+  const settingError = (field: string, candidate: unknown) => {
+    const errors = validateProjectSettings(candidate);
+    return (errors.find(error => error.field === field) || errors[0])?.message;
   };
+  const numberInput = (field: 'fontSize' | 'lineHeight' | 'marginTop' | 'marginBottom' | 'marginLeft' | 'marginRight' | 'startPageAt' | 'wordsPerMinute', label: string, step?: number) =>
+    <SettingsNumberInput value={settings[field]} label={label} step={step}
+      validate={value => {
+        // Preserve these controls' existing positive UI limits, but reject an
+        // invalid draft explicitly instead of silently replacing its value.
+        if (field === 'startPageAt' && value < 1) return '页码起始须至少为 1，原设置未改变。';
+        if (field === 'wordsPerMinute' && value < 50) return '每分钟字数须至少为 50，原设置未改变。';
+        return settingError(field, { ...useStore.getState().project.settings, [field]: value });
+      }} commit={value => update({ [field]: value })} />;
+  const indentInput = (type: ElementType, field: 'left' | 'right' | 'spaceBefore', label: string) =>
+    <SettingsNumberInput value={settings.indent[type][field]} label={`${ELEMENT_META[type].label}${label}`}
+      validate={value => {
+        const current = useStore.getState().project.settings;
+        return settingError(`indent.${type}.${field}`, { ...current, indent: { ...current.indent, [type]: { ...current.indent[type], [field]: value } } });
+      }} commit={value => updateIndent(type, { [field]: value })} />;
 
   return (
     <Modal title="显示简介设置" onClose={onClose} session={session} wide>
@@ -176,18 +223,24 @@ export function SettingsDialog({ onClose, session }: DialogProps) {
           </div>
           <div className="field">
             <label>字号（pt）</label>
-            <input type="number" value={settings.fontSize} onChange={(e) => update({ fontSize: num(e.target.value, 12) })} />
+            {numberInput('fontSize', '字号（pt）')}
           </div>
           <div className="field">
             <label>行距（倍）</label>
-            <input type="number" step="0.05" value={settings.lineHeight} onChange={(e) => update({ lineHeight: num(e.target.value, 1.6) })} />
+            {numberInput('lineHeight', '行距（倍）', 0.05)}
           </div>
           <div className="field">
             <label>纸张</label>
-            <select value={settings.paper} onChange={(e) => update({ paper: e.target.value as 'A4' | 'letter' })}>
+            <select aria-label="纸张" value={settings.paper} aria-invalid={paperError ? true : undefined} aria-describedby={paperError ? paperErrorId : undefined} onChange={e => {
+              const paper = e.target.value as 'A4' | 'letter';
+              const error = settingError('paper', { ...useStore.getState().project.settings, paper });
+              setPaperError(error);
+              if (!error) update({ paper });
+            }}>
               <option value="A4">A4</option>
               <option value="letter">Letter</option>
             </select>
+            {paperError ? <span id={paperErrorId} className="hint" role="alert">{paperError}</span> : null}
           </div>
           {(
             [
@@ -199,7 +252,7 @@ export function SettingsDialog({ onClose, session }: DialogProps) {
           ).map(([k, label]) => (
             <div className="field" key={k}>
               <label>{label}</label>
-              <input type="number" step="0.1" value={settings[k]} onChange={(e) => update({ [k]: num(e.target.value, 2.5) })} />
+              {numberInput(k, label, 0.1)}
             </div>
           ))}
           <div className="field">
@@ -213,7 +266,7 @@ export function SettingsDialog({ onClose, session }: DialogProps) {
           </div>
           <div className="field">
             <label>页码起始</label>
-            <input type="number" value={settings.startPageAt} onChange={(e) => update({ startPageAt: Math.max(1, num(e.target.value, 1)) })} />
+            {numberInput('startPageAt', '页码起始')}
           </div>
           <div className="field">
             <label>「（更多）」文案</label>
@@ -225,7 +278,7 @@ export function SettingsDialog({ onClose, session }: DialogProps) {
           </div>
           <div className="field">
             <label>字数 / 每分钟（时长估算）</label>
-            <input type="number" value={settings.wordsPerMinute} onChange={(e) => update({ wordsPerMinute: Math.max(50, num(e.target.value, 220)) })} />
+            {numberInput('wordsPerMinute', '字数 / 每分钟（时长估算）')}
           </div>
           <div className="field field--checks">
             <label className="checkbox">
@@ -276,18 +329,10 @@ export function SettingsDialog({ onClose, session }: DialogProps) {
                   <tr key={t}>
                     <td>{ELEMENT_META[t].label}</td>
                     <td>
-                      <input
-                        type="number"
-                        value={f.left}
-                        onChange={(e) => updateIndent(t, { left: num(e.target.value, 0) })}
-                      />
+                      {indentInput(t, 'left', '左缩进')}
                     </td>
                     <td>
-                      <input
-                        type="number"
-                        value={f.right}
-                        onChange={(e) => updateIndent(t, { right: num(e.target.value, 0) })}
-                      />
+                      {indentInput(t, 'right', '右缩进')}
                     </td>
                     <td>
                       <select value={f.align} onChange={(e) => updateIndent(t, { align: e.target.value as TextAlign })}>
@@ -297,11 +342,7 @@ export function SettingsDialog({ onClose, session }: DialogProps) {
                       </select>
                     </td>
                     <td>
-                      <input
-                        type="number"
-                        value={f.spaceBefore}
-                        onChange={(e) => updateIndent(t, { spaceBefore: num(e.target.value, 0) })}
-                      />
+                      {indentInput(t, 'spaceBefore', '前空行')}
                     </td>
                   </tr>
                 );

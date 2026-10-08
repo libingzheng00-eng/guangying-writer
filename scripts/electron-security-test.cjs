@@ -121,7 +121,9 @@ async function ipcTests() {
 }
 
 async function filesystemTests() {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-security-synthetic-')));
+  const nativeRealpath = fs.realpathSync.native || fs.realpathSync;
+  const requestedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-security-synthetic-'));
+  const root = nativeRealpath(requestedRoot);
   const data = path.join(root, 'userData');
   const docs = path.join(root, 'documents');
   const app = path.join(root, 'application');
@@ -131,9 +133,28 @@ async function filesystemTests() {
   const save = createProjectSaver();
   const file = path.join(docs, '合成工程.zhsp');
   try {
+    const requestedDirectory = path.join(requestedRoot, 'documents');
+    const legacyDirectory = fs.realpathSync(requestedDirectory);
+    const nativeDirectory = nativeRealpath(requestedDirectory);
+    const promiseDirectory = await fs.promises.realpath(requestedDirectory);
+    const identity = (canonical, stat) => ({ path: canonical, dev: stat.dev, ino: stat.ino });
+    const canonicalEvidence = {
+      platform: process.platform,
+      requested: identity(requestedDirectory, fs.statSync(requestedDirectory)),
+      legacy: identity(legacyDirectory, fs.statSync(legacyDirectory)),
+      native: identity(nativeDirectory, fs.statSync(nativeDirectory)),
+      async: identity(promiseDirectory, await fs.promises.lstat(promiseDirectory)),
+    };
+    console.log(`synthetic-directory-canonicalization: ${JSON.stringify(canonicalEvidence)}`);
+    eq(canonicalEvidence.native, canonicalEvidence.async,
+      'native sync and async resolve the newly-created synthetic directory to the same path and identity');
     eq(access.authorizedProject(file), null, 'filename alone conveys no capability');
     const picked = access.selected(file, 'zhsp');
     const expectedParent = { path: path.dirname(picked.canonical), ...picked.parent };
+    const asyncDirectory = await fs.promises.realpath(path.dirname(picked.canonical));
+    const asyncParent = await fs.promises.lstat(asyncDirectory);
+    eq({ path: asyncDirectory, dev: asyncParent.dev, ino: asyncParent.ino }, expectedParent,
+      'native sync selection and async save agree on canonical directory and identity');
     await save(picked.canonical, body, expectedParent); access.grantProject(picked);
     await save(access.authorizedProject(file).canonical, 'synthetic next version', expectedParent);
     eq(fs.readFileSync(file, 'utf8'), 'synthetic next version');
@@ -152,6 +173,43 @@ async function filesystemTests() {
     const project2 = path.join(docs, 'opened.zhsp'); fs.writeFileSync(project2, body);
     eq(reopened.readSelected(project2).content, body);
     eq(reopened.authorizedProject(project2).canonical, project2, 'native open grants project Save');
+
+    // Windows legacy realpathSync can preserve an 8.3 spelling while native /
+    // Promise realpath expands it. Model that API difference on every platform,
+    // keeping real disk identities and writes rather than weakening comparisons.
+    const aliasRoot = path.join(path.dirname(root), 'GUANGY~1');
+    const actualPath = input => input === aliasRoot || input.startsWith(`${aliasRoot}${path.sep}`)
+      ? root + input.slice(aliasRoot.length) : input;
+    const legacyRealpath = input => {
+      const canonical = nativeRealpath(actualPath(input));
+      return canonical === root || canonical.startsWith(`${root}${path.sep}`)
+        ? aliasRoot + canonical.slice(root.length) : canonical;
+    };
+    legacyRealpath.native = input => nativeRealpath(actualPath(input));
+    const aliasFs = new Proxy(fs, { get(api, property) {
+      if (property === 'realpathSync') return legacyRealpath;
+      if (property === 'statSync' || property === 'lstatSync') return (input, ...args) => api[property](actualPath(input), ...args);
+      const member = api[property]; return typeof member === 'function' ? member.bind(api) : member;
+    } });
+    const aliasedAccess = createFileAccess({ ...options, fileSystem: aliasFs });
+    const aliasedRequest = path.join(aliasRoot, 'documents', 'native-canonical.zhsp');
+    const canonicalFile = path.join(docs, 'native-canonical.zhsp');
+    const nativePick = aliasedAccess.selected(aliasedRequest, 'zhsp');
+    eq(nativePick.canonical, canonicalFile, 'legacy short spelling is resolved natively before granting access');
+    const nativeParent = { path: path.dirname(nativePick.canonical), ...nativePick.parent };
+    await save(nativePick.canonical, body, nativeParent); aliasedAccess.grantProject(nativePick);
+    eq(fs.readFileSync(canonicalFile, 'utf8'), body, 'native canonical grant works with actual async atomic save');
+    const aliasReopened = createFileAccess({ ...options, fileSystem: aliasFs });
+    eq(aliasReopened.authorizedProject(aliasedRequest).canonical, canonicalFile, 'native canonical grant survives restart and alias spelling');
+    rejected(() => aliasedAccess.selected(path.join(aliasRoot, 'application', 'index.html'), 'html'),
+      'native canonicalization also protects application directories through aliases');
+    rejected(() => aliasedAccess.selected(path.join(aliasRoot, 'userData', 'project.zhsp'), 'zhsp'),
+      'native canonicalization also protects userData through aliases');
+    await assert.rejects(() => save(canonicalFile, 'must not overwrite', { ...nativeParent, path: aliasRoot }),
+      error => error.code === 'EUNSAFEPATH'); checks++;
+    await assert.rejects(() => save(canonicalFile, 'must not overwrite', { ...nativeParent, ino: -1 }),
+      error => error.code === 'EUNSAFEPATH'); checks++;
+    eq(fs.readFileSync(canonicalFile, 'utf8'), body, 'canonical spelling and inode mismatches still fail closed without changing the file');
 
     const outside = path.join(root, 'outside.txt'); fs.writeFileSync(outside, 'untouched');
     const hardlink = path.join(docs, 'hardlink.txt'); fs.linkSync(outside, hardlink);

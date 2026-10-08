@@ -114,6 +114,16 @@ const deferred = () => {
   check('completed exact snapshot binds path and clears dirty', [state().filePath, state().dirty], ['/synthetic/saved.zhsp', false]);
   check('save does not create history, version or document epoch', [state().past, state().future, state().version, state().documentEpoch], [start.past, start.future, start.version, start.documentEpoch]);
 
+  const invalidSave = fixture(); invalidSave.settings.lineHeight = 0.1;
+  reset(invalidSave);
+  const beforeInvalidSave = state();
+  check('unreadable outgoing schema is reported as a handled save failure', await commands.save(false), null);
+  check('invalid outgoing snapshot never invokes disk IPC or marks the draft saved',
+    [calls.length, state().dirty, state().filePath, state().project === beforeInvalidSave.project, state().past === beforeInvalidSave.past],
+    [0, true, '/synthetic/original.zhsp', true, true]);
+  check('schema save failure releases saving state and provides a visible error',
+    [commands.isSaving(), state().toast.kind, state().toast.text.startsWith('保存失败：')], [false, 'error', true]);
+
   reset();
   check('normal saveAs returns path', await commands.save(true), '/synthetic/saved-as.zhsp');
   check('saveAs sends project format and base name', [calls[0].method, calls[0].payload.name, calls[0].payload.ext], ['saveProjectAs', '合成文件命令', 'zhsp']);

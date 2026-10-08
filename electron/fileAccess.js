@@ -15,6 +15,10 @@ function createFileAccess({ fileSystem = fs, pathApi = path, platform = process.
   const shown = new Map();
   let loaded = false;
   const ledger = () => pathApi.join(userData(), LEDGER_NAME);
+  // Match fs.promises.realpath used by the asynchronous project saver. The
+  // legacy synchronous implementation can retain Windows 8.3/case spellings
+  // that native realpath expands, even for the same directory identity.
+  const realpath = file => (fileSystem.realpathSync.native || fileSystem.realpathSync)(file);
   // Do not case-fold capabilities: Windows permits case-sensitive directories.
   // A differently-spelled path can be a different file and must be reselected.
   const key = value => value;
@@ -34,7 +38,7 @@ function createFileAccess({ fileSystem = fs, pathApi = path, platform = process.
   function inspect(file, extension) {
     const requested = validPath(file);
     if (extension && pathApi.extname(requested).toLowerCase() !== `.${extension.toLowerCase()}`) rejectRequest();
-    const directory = fileSystem.realpathSync(pathApi.dirname(requested));
+    const directory = realpath(pathApi.dirname(requested));
     const parent = fileSystem.statSync(directory);
     if (!parent.isDirectory()) rejectRequest();
     const canonical = pathApi.join(directory, pathApi.basename(requested));
@@ -50,7 +54,7 @@ function createFileAccess({ fileSystem = fs, pathApi = path, platform = process.
     // recovery store. Resolve roots too, so a directory alias cannot bypass this.
     for (const root of [...protectedRoots, userData()]) {
       let resolved;
-      try { resolved = fileSystem.realpathSync(root); } catch { resolved = pathApi.resolve(root); }
+      try { resolved = realpath(root); } catch { resolved = pathApi.resolve(root); }
       const relative = pathApi.relative(platform === 'win32' ? resolved.toLowerCase() : resolved,
         platform === 'win32' ? selection.canonical.toLowerCase() : selection.canonical);
       if (!relative || (!relative.startsWith(`..${pathApi.sep}`) && relative !== '..' && !pathApi.isAbsolute(relative))) rejectRequest();

@@ -136,6 +136,7 @@ async function main(platform) {
     ...provenance, runtimeBeforeQA: sourceInventory, preparedQaInventory,
     limitations: ['Native file/save dialog selections are stubbed', 'CDP composition is not a real system IME',
       'Native menu callbacks exercise the production IPC route, not system-menu pointer operation',
+      ...(platform === 'darwin' ? ['Mac native commands validate exact accelerators and invoke production MenuItem callbacks; physical Command-key dispatch through Cocoa is not verified', 'Mac modal field selection uses Chromium selectAll as input preparation, not a physical Cmd+A check'] : []),
       'No installer/signature/SmartScreen/cross-machine checks', 'PDF files are generated; full visual/font/layout inspection remains manual'],
     sourceHashes, qaHashes, phaseTimeoutMs, uiTimeoutMs: config.uiTimeoutMs, phases: [],
   };
