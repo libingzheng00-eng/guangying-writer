@@ -43,7 +43,7 @@ function sameFile(a, b) {
  * Atomic rename is not a distributed lock: external writers must not concurrently
  * edit this file. Detectable changes during preparation are rejected conservatively.
  */
-function createProjectSaver({ fileSystem = fs.promises, token = randomUUID } = {}) {
+function createProjectSaver({ fileSystem = fs.promises, token = randomUUID, platform = process.platform } = {}) {
   const queues = new Map();
   let admissions = Promise.resolve();
 
@@ -203,18 +203,22 @@ function createProjectSaver({ fileSystem = fs.promises, token = randomUUID } = {
       } catch (error) {
         throw saveError(error, '检查目录');
       }
-      const previous = queues.get(destination) || Promise.resolve();
+      // On ordinary Windows volumes, differently cased names address one file.
+      // Serialize those aliases too. On opt-in case-sensitive Windows directories
+      // this is only conservative serialization; the actual paths stay unchanged.
+      const queueKey = platform === 'win32' ? destination.toLowerCase() : destination;
+      const previous = queues.get(queueKey) || Promise.resolve();
       const pending = previous.catch(() => {}).then(() => commit(destination, content));
-      queues.set(destination, pending);
+      queues.set(queueKey, pending);
       // Do not adopt pending here: admission must not wait for a whole disk save.
-      return { destination, pending };
+      return { queueKey, pending };
     });
     admissions = admission.then(() => {}, () => {});
-    const { destination, pending } = await admission;
+    const { queueKey, pending } = await admission;
     try {
       return await pending;
     } finally {
-      if (queues.get(destination) === pending) queues.delete(destination);
+      if (queues.get(queueKey) === pending) queues.delete(queueKey);
     }
   };
 }

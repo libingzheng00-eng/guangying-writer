@@ -18,7 +18,7 @@ PDF 有两个独立出口：**创作版**保留写作画布上正文与素材的
 
 ## 当前源码状态
 
-`package.json` 版本为 `1.3.0-alpha.18.12`，在alpha.18.11基线上完成2026-10-08 SmartType升级。普通用户请到 [本版安装包下载页](https://github.com/libingzheng00-eng/guangying-writer/releases/tag/v1.3.0-alpha.18.12) 选择DMG，不要把源码ZIP当作安装包。macOS Apple Silicon应用、DMG和ZIP完成本地核验；桌面独立安装alpha.18.12，不强制退出旧用户应用或删除用户资料。GitHub main与公开附件是两项独立交付，实际状态分别以仓库和对应Release为准。这仍是alpha测试版，不是正式1.3.0或Windows版；Release发布不会自动替换他人已安装应用。
+`package.json` 版本为 `1.3.0-alpha.18.12`，在alpha.18.11基线上完成2026-10-08 SmartType升级。普通用户请到 [本版安装包下载页](https://github.com/libingzheng00-eng/guangying-writer/releases/tag/v1.3.0-alpha.18.12) 选择DMG，不要把源码ZIP当作安装包。macOS Apple Silicon应用、DMG和ZIP完成本地核验；桌面独立安装alpha.18.12，不强制退出旧用户应用或删除用户资料。GitHub main与公开附件是两项独立交付，实际状态分别以仓库和对应Release为准。该 macOS Release 仍是alpha测试版，不是正式1.3.0；Release发布不会自动替换他人已安装应用。
 
 在新空段直接输入“特”可推荐“特写 · 镜头”，输入“小明”可同时选择“小明 · 人物”“小明妈妈 · 人物”；明确选中才一起补全文字并修改属性。**第一次 Enter 确认并留在同段，第二次 Enter 再切段**；未新输入不反复弹候选。旧正文、粘贴、拆行尾文和双列不启用新跨类型识别，原同类型字段补全保留；九类Tab、组合输入安全及一次撤销保护不变。此新规则覆盖旧版“Enter接受后立即下一段”，不影响PDF、卡片、归幕或工程格式。维护者以 [核心契约](CORE_FEATURES.md) 为准，不能将历史日志中的旧规则恢复回来。
 
@@ -27,6 +27,10 @@ PDF 有两个独立出口：**创作版**保留写作画布上正文与素材的
 本轮37套源码专项全部退出0，SmartType模型132项、UI511项通过，独立发布安全675项通过；最终源码六组真实Electron SmartType/editing/input/search/image/PDF专项退出0。完整保存模型和可见正文快照确认拖图不改正文。实际PDF核对第五场旁图片/声音卡原位、A4与短对白；长稿250及双列170个唯一标签均恰好一次，逐页目视范围详见 [SmartType验收记录](SMARTTYPE_QA_20261008.md)，不把代表页检查描述成所有长稿逐页验收。包白名单、独立空白首次启动与签名完整性通过，附件说明见 [alpha.18.12交付记录](RELEASE_ALPHA_18_12.md)。真实macOS中文输入法、跨机器安装、Windows与其他架构没有因此得到验证。
 
 自动化、真实浏览器、真实Electron、原生剪贴板和实际PDF是不同验收层，不承诺所有平台均已稳定。2026-10-07历史证据保留在 [编辑验收记录](EDITING_QA_20261007.md)、[界面验收记录](design-qa.md) 与 [恢复及原生验收记录](RELIABILITY_QA_20261007.md)，不能当作本轮所有项目均已重新实测。发布包空白启动、生产资源、签名与实际下载附件也须分别核对。
+
+## Windows x64 候选
+
+本分支加入 Windows x64 免安装包、专用 Windows CI 与隔离原生验收。下载方式、构建命令、保存路径及未验证项见 [Windows 说明](WINDOWS.md)。产物随提交上传为 Actions artifact，不替换以上 macOS Release；是否通过以目标提交的 Windows CI 为准。
 
 ## 开发与维护
 

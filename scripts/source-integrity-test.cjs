@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Module = require('node:module');
 const vm = require('node:vm');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 const { JSDOM } = require('jsdom');
 const root = path.resolve(__dirname, '..');
 
@@ -28,41 +30,48 @@ function freeze(value) {
   Object.freeze(value);
 }
 
-function checkLauncher(childResult) {
+function checkLauncher(childResult, pathApi) {
   const writes = [], spawns = [], exits = [], directories = [];
-  const qaRoot = '/synthetic/tmp/guangying-smoke-unique';
+  const tempRoot = pathApi === path.win32 ? 'C:\\synthetic\\临时 QA' : '/synthetic/临时 QA';
+  const qaRoot = pathApi.join(tempRoot, 'guangying-smoke-unique');
+  const scriptDir = pathApi.join(tempRoot, 'synthetic-repo', 'scripts');
+  const electron = pathApi.join(tempRoot, 'synthetic runtime', 'electron');
   const fakeFs = {
-    mkdtempSync(prefix) { assert.equal(prefix, '/synthetic/tmp/guangying-smoke-'); return qaRoot; },
+    mkdtempSync(prefix) { assert.equal(prefix, pathApi.join(tempRoot, 'guangying-smoke-')); return qaRoot; },
     mkdirSync(target) { directories.push(target); },
     writeFileSync(target, content) { writes.push({ target, content }); },
     readFileSync() { throw new Error('Smoke launcher must not read the repository package or user data'); },
   };
   const fakeProcess = { env: { EXISTING_ENV: 'kept' }, exit(code) { exits.push(code); } };
   vm.runInNewContext(fs.readFileSync(path.join(root, 'scripts/run-smoke.cjs'), 'utf8'), {
-    __dirname: path.join(root, 'scripts'), process: fakeProcess, console: { log() {}, error() {} },
+    __dirname: scriptDir, process: fakeProcess, console: { log() {}, error() {} },
     require(name) {
       if (name === 'fs') return fakeFs;
-      if (name === 'path') return path;
-      if (name === 'os') return { tmpdir: () => '/synthetic/tmp' };
+      if (name === 'path') return pathApi;
+      if (name === 'os') return { tmpdir: () => tempRoot };
+      if (name === 'electron') return electron;
       if (name === 'child_process') return { spawnSync(...args) { spawns.push(args); return childResult; } };
       throw new Error(`Unexpected launcher dependency ${name}`);
     },
   });
-  assert.deepEqual(directories, [path.join(qaRoot, 'shell')]);
+  assert.deepEqual(directories, [pathApi.join(qaRoot, 'shell')]);
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].target, path.join(qaRoot, 'shell/package.json'));
+  assert.equal(writes[0].target, pathApi.join(qaRoot, 'shell/package.json'));
   const manifest = JSON.parse(writes[0].content);
-  assert.equal(manifest.main, path.join(root, 'scripts/smoke.js'));
+  assert.equal(manifest.main, pathApi.join(scriptDir, 'smoke.js'));
   assert.equal(manifest.name, 'guangying-smoke-qa');
   assert.equal(spawns.length, 1);
-  assert.deepEqual(Array.from(spawns[0][1]), [path.join(qaRoot, 'shell')]);
+  assert.equal(spawns[0][0], electron, 'Use the platform runtime supplied by the Electron package');
+  assert.deepEqual(Array.from(spawns[0][1]), [pathApi.join(qaRoot, 'shell')]);
+  assert.equal(spawns[0][2].cwd, pathApi.dirname(scriptDir));
   assert.equal(spawns[0][2].env.GUANGYING_SMOKE_ROOT, qaRoot);
   assert.equal(spawns[0][2].env.EXISTING_ENV, 'kept');
   return exits[0];
 }
 
-function smokePaths() {
+function smokePaths(pathApi) {
   const source = fs.readFileSync(path.join(root, 'scripts/smoke.js'), 'utf8');
+  const tempRoot = pathApi === path.win32 ? 'C:\\synthetic\\临时 QA' : '/synthetic/临时 QA';
   let unique = 0;
   const probe = (env) => {
     const calls = [];
@@ -80,10 +89,10 @@ function smokePaths() {
           },
           BrowserWindow() { throw new Error('This regression must not launch Electron'); },
         };
-        if (name === 'node:path') return path;
-        if (name === 'node:os') return { tmpdir: () => '/synthetic/tmp' };
+        if (name === 'node:path') return pathApi;
+        if (name === 'node:os') return { tmpdir: () => tempRoot };
         if (name === 'node:fs') return {
-          mkdtempSync(prefix) { assert.equal(prefix, '/synthetic/tmp/guangying-smoke-'); return `${prefix}${++unique}`; },
+          mkdtempSync(prefix) { assert.equal(prefix, pathApi.join(tempRoot, 'guangying-smoke-')); return `${prefix}${++unique}`; },
         };
         throw new Error(`Unexpected smoke dependency ${name}`);
       },
@@ -91,11 +100,43 @@ function smokePaths() {
     assert.equal(calls[0].key, 'userData');
     return calls[0].target;
   };
-  assert.equal(probe({ GUANGYING_SMOKE_ROOT: '/synthetic/tmp/launcher' }), '/synthetic/tmp/launcher/userData');
+  const launcherRoot = pathApi.join(tempRoot, 'launcher');
+  assert.equal(probe({ GUANGYING_SMOKE_ROOT: launcherRoot }), pathApi.join(launcherRoot, 'userData'));
   const first = probe({}), second = probe({});
   assert.notEqual(first, second, 'Direct invocation must also create a fresh temporary userData');
-  assert.ok(first.startsWith('/synthetic/tmp/guangying-smoke-'));
+  assert.ok(first.startsWith(pathApi.join(tempRoot, 'guangying-smoke-')));
 };
+
+function packageGuardPaths() {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-package-guard-'));
+  try {
+    for (const resources of ['Resources', 'resources']) {
+      // Keep the two fixtures separate even on case-insensitive volumes.
+      const appRoot = path.join(fixtureRoot, resources === 'Resources' ? 'mac-layout' : 'windows-layout', resources, 'app');
+      fs.mkdirSync(path.join(appRoot, 'electron', 'nested'), { recursive: true });
+      fs.mkdirSync(path.join(appRoot, 'dist-renderer'));
+      fs.writeFileSync(path.join(appRoot, 'package.json'), '{"name":"synthetic-package-fixture"}\n');
+      fs.writeFileSync(path.join(appRoot, 'LICENSE'), 'Synthetic test fixture\n');
+      const run = () => spawnSync(process.execPath, [path.join(root, 'scripts/core-guard.cjs'), '--package', appRoot], {
+        cwd: root, encoding: 'utf8', timeout: 30000,
+      });
+      const clean = run();
+      assert.equal(clean.status, 0, `${resources}/app production layout is accepted: ${clean.stderr}`);
+      for (const relative of ['electron/nested/Local Storage/LOG', 'electron/nested/synthetic.zhsp']) {
+        const prohibited = path.join(appRoot, relative);
+        fs.mkdirSync(path.dirname(prohibited), { recursive: true });
+        fs.writeFileSync(prohibited, 'Synthetic forbidden artifact\n');
+        const rejected = run();
+        assert.equal(rejected.status, 1, `${resources}/app must reject nested private-data/artifact paths`);
+        assert.match(rejected.stderr, /禁止纳入发布\/源码的路径/);
+        fs.unlinkSync(prohibited);
+        if (relative.endsWith('/LOG')) fs.rmdirSync(path.dirname(prohibited));
+      }
+    }
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
 
 (async () => {
   const api = await load();
@@ -247,12 +288,15 @@ function smokePaths() {
     assert.ok(api.toPlainText(p).includes('粗体<提示>\n& <img src=x onerror="示例">'));
   });
 
-  check('smoke启动壳只写独立临时manifest，保留退出状态，不改仓库package', () => {
-    assert.equal(checkLauncher({ status: 0 }), 0);
-    assert.equal(checkLauncher({ status: 4 }), 4);
-    assert.equal(checkLauncher({ status: null, signal: 'SIGTERM' }), 1);
-    assert.equal(checkLauncher({ status: null, error: new Error('synthetic missing runtime') }), 1);
-  });
-  check('smoke直调与启动器都在app ready之前隔离userData，不启动Electron', smokePaths);
+  for (const [platform, pathApi] of [['POSIX', path.posix], ['Windows', path.win32]]) {
+    check(`${platform}: smoke启动壳只写独立临时manifest，保留退出状态，不改仓库package`, () => {
+      assert.equal(checkLauncher({ status: 0 }, pathApi), 0);
+      assert.equal(checkLauncher({ status: 4 }, pathApi), 4);
+      assert.equal(checkLauncher({ status: null, signal: 'SIGTERM' }, pathApi), 1);
+      assert.equal(checkLauncher({ status: null, error: new Error('synthetic missing runtime') }, pathApi), 1);
+    });
+    check(`${platform}: smoke直调与启动器都在app ready之前隔离userData，不启动Electron`, () => smokePaths(pathApi));
+  }
+  check('macOS/Windows生产资源目录可检查，嵌套自动保存与工程文件仍被包守护拒绝', packageGuardPaths);
   console.log(`Source integrity passed: ${groups} synthetic groups; no Electron or user data accessed.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

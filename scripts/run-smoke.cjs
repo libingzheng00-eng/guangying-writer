@@ -10,7 +10,9 @@ const path = require('path');
 const os = require('os');
 
 const root = path.resolve(__dirname, '..');
-const electron = path.join(root, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron');
+// The Electron package resolves the installed runtime on macOS, Windows and
+// Linux; do not assume the macOS application-bundle layout in the QA launcher.
+const electron = require('electron');
 const qaRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-smoke-'));
 const shellRoot = path.join(qaRoot, 'shell');
 fs.mkdirSync(shellRoot);

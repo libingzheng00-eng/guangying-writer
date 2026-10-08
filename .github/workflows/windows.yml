@@ -1,0 +1,84 @@
+name: Windows x64 构建与验收
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-x64-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-x64:
+    name: windows-x64
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Test and identify the exact PR head, not an undocumented merge commit.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 安装锁定依赖
+        run: npm ci
+      - name: 完整源码基线与发布安全检查
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm run build
+          npm run test:core
+          node scripts/release-assets-test.cjs
+          node scripts/dev-watch-test.cjs
+          node scripts/windows-package-test.cjs
+      - name: 打包 Windows x64 生产白名单
+        run: node scripts/package-windows.cjs
+      - name: 压缩、校验与解压回读
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $app = Join-Path $PWD 'release/windows/GuangyingWriter-win32-x64'
+          $zip = Join-Path $PWD "release/windows/GuangyingWriter-Windows-x64-v$version.zip"
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($app, $zip, [System.IO.Compression.CompressionLevel]::Optimal, $true)
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          "$hash  $([System.IO.Path]::GetFileName($zip))" | Set-Content -Encoding ascii release/windows/SHA256SUMS.txt
+          $unzip = Join-Path $env:RUNNER_TEMP 'guangying-unzipped'
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $unzip)
+          $unpacked = Join-Path $unzip 'GuangyingWriter-win32-x64'
+          node scripts/verify-windows-package.cjs $unpacked release/windows/build-manifest.json
+          if ($LASTEXITCODE -ne 0) { throw 'Archive integrity verification failed' }
+          "WINDOWS_TEST_APP=$unpacked" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $exe = Get-Item -LiteralPath (Join-Path $unpacked 'GuangyingWriter.exe')
+          if ($exe.VersionInfo.ProductName -ne '光影写手') { throw 'Incorrect Windows executable product name' }
+          $signature = Get-AuthenticodeSignature -LiteralPath $exe.FullName
+          "Signature status: $($signature.Status) (candidate is intentionally unsigned)" | Out-File release/windows/signature-status.txt
+      - name: 真实 Windows Electron 合成数据验收
+        run: node scripts/windows-smoke.cjs --app "$env:WINDOWS_TEST_APP" --output release/windows/evidence
+      - name: 上传已验证 Windows 便携包
+        uses: actions/upload-artifact@v4
+        with:
+          name: GuangyingWriter-Windows-x64-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            release/windows/*.zip
+            release/windows/SHA256SUMS.txt
+            release/windows/build-manifest.json
+            release/windows/signature-status.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: 保留合成验收证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: release/windows/evidence/
+          if-no-files-found: warn
+          retention-days: 30

@@ -55,8 +55,11 @@ async function until(label, condition, timeout = 8000) {
   const outsideFile = path.join(external, 'outside.txt');
   fs.writeFileSync(outsideFile, 'external synthetic fixture\n', { flag: 'wx' });
   // Both targets are this test's sibling temporary directory, NOT /Applications.
-  fs.symlinkSync(external, path.join(fixture, 'release/dmg-content/Applications'), 'dir');
-  fs.symlinkSync(external, path.join(fixture, 'src/ExternalFixtures'), 'dir');
+  // A directory junction exercises the same lstat/followSymlinks boundary on
+  // Windows without requiring Developer Mode or elevated symlink privileges.
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+  fs.symlinkSync(external, path.join(fixture, 'release/dmg-content/Applications'), linkType);
+  fs.symlinkSync(external, path.join(fixture, 'src/ExternalFixtures'), linkType);
 
   const loaded = await loadConfigFromFile({ command: 'serve', mode: 'development' }, path.join(repo, 'vite.config.ts'), repo, 'silent');
   assert.ok(loaded, 'Actual vite.config.ts must load successfully');

@@ -18,7 +18,9 @@ const packageData = /(?:^|\/)(?:node_modules|\.git|Local Storage|Session Storage
 const maxBytes = 50 * 1024 * 1024;
 
 function checkFile(base, relative, prohibited) {
-  if (prohibited.test(relative)) fail(`禁止纳入发布/源码的路径: ${relative}`);
+  // git ls-files uses '/', while the package walker uses the host separator.
+  // Apply the same privacy rules to Windows nested directories and artifacts.
+  if (prohibited.test(relative.replace(/\\/g, '/'))) fail(`禁止纳入发布/源码的路径: ${relative}`);
   const absolute = path.join(base, relative);
   if (!fs.existsSync(absolute)) { fail(`跟踪文件不存在: ${relative}`); return; }
   const stat = fs.lstatSync(absolute);
@@ -61,7 +63,7 @@ function checkFile(base, relative, prohibited) {
   if (args.length) {
     assert.ok(args.length === 2 && args[0] === '--package', '用法: node scripts/core-guard.cjs [--package /explicit/Resources/app]');
     const packageRoot = path.resolve(args[1]);
-    assert.ok(path.basename(packageRoot) === 'app' && path.basename(path.dirname(packageRoot)) === 'Resources', '仅允许明确的 Resources/app 生产资源目录');
+    assert.ok(path.basename(packageRoot) === 'app' && ['Resources', 'resources'].includes(path.basename(path.dirname(packageRoot))), '仅允许明确的 Resources/app 或 resources/app 生产资源目录');
     assert.ok(fs.statSync(packageRoot).isDirectory(), '包检查目标必须是 Resources/app 目录');
     assert.ok(!fs.lstatSync(packageRoot).isSymbolicLink(), '包检查根不得是符号链接');
     const allowed = new Set(['package.json', 'LICENSE', 'electron', 'dist-renderer']);

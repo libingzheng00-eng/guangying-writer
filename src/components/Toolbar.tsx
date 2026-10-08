@@ -102,19 +102,19 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
             </option>
           ))}
         </select>
-        <button className="icon-btn" title="加粗 ⌘B" onMouseDown={e => e.preventDefault()} onClick={() => fmt('bold')}>
+        <button className="icon-btn" title="加粗 ⌘/Ctrl+B" onMouseDown={e => e.preventDefault()} onClick={() => fmt('bold')}>
           <b>B</b>
         </button>
-        <button className="icon-btn" title="斜体 ⌘I" onMouseDown={e => e.preventDefault()} onClick={() => fmt('italic')}>
+        <button className="icon-btn" title="斜体 ⌘/Ctrl+I" onMouseDown={e => e.preventDefault()} onClick={() => fmt('italic')}>
           <i>I</i>
         </button>
-        <button className="icon-btn" title="下划线 ⌘U" onMouseDown={e => e.preventDefault()} onClick={() => fmt('underline')}>
+        <button className="icon-btn" title="下划线 ⌘/Ctrl+U" onMouseDown={e => e.preventDefault()} onClick={() => fmt('underline')}>
           <u>U</u>
         </button>
-        <button className="icon-btn" title="插入新场景 ⌘↩" onClick={commands.insertScene}>
+        <button className="icon-btn" title="插入新场景 ⌘/Ctrl+Enter" onClick={commands.insertScene}>
           ＋场
         </button>
-        <button className="icon-btn" title="双列对白 ⌘D" onClick={commands.makeDual}>
+        <button className="icon-btn" title="双列对白 ⌘/Ctrl+D" onClick={commands.makeDual}>
           ⇄
         </button>
         <button
@@ -164,10 +164,10 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle }: { commands: R
 
       <div className="toolbar__group toolbar__file-actions">
         <button className="icon-btn" title="查找正文 ⌘/Ctrl+F" onClick={commands.openFind}>查找</button>
-        <button className="icon-btn" disabled={!canUndo} title="撤销 ⌘Z" onMouseDown={e => e.preventDefault()} onClick={undo}>
+        <button className="icon-btn" disabled={!canUndo} title="撤销 ⌘/Ctrl+Z" onMouseDown={e => e.preventDefault()} onClick={undo}>
           ↶
         </button>
-        <button className="icon-btn" disabled={!canRedo} title="重做 ⇧⌘Z" onMouseDown={e => e.preventDefault()} onClick={redo}>
+        <button className="icon-btn" disabled={!canRedo} title="重做 ⌘/Ctrl+Shift+Z" onMouseDown={e => e.preventDefault()} onClick={redo}>
           ↷
         </button>
         <button className="btn btn--ghost" onClick={() => commands.save(false)}>
