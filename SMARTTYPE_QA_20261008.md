@@ -53,6 +53,7 @@ Poppler报告过字体类型警告，已查看的页面无缺字、黑块或裁�
 2. 发布包空白启动夹具最初误期待仅一个action，与既有空scene_heading＋空action模板不符；按源码原契约修正测试，没有改样本或产品。另一次测试字符串语法错误也只修夹具。
 3. 独立复核发现旧内/INT识别前缀跨epoch、同字粘贴残留，已清理临时refs并增加真实组件断言。
 4. 独立复核发现whole-heading fallback可能把完整“夜”强扩“夜晚”，已限制完整字段只匹配精确整场次并增模型断言。
+5. 发布收尾关闭开发预览时，观察到Vite watcher沿DMG暂存目录的 `Applications → /Applications` 链接扫描外部应用资源，预览进程因约2GB堆上限退出134。此为开发服务器事故，不是已通过六组原生验收的桌面应用崩溃。后续仅收紧 `server.watch`：followSymlinks:false，加lstat入口过滤，按仓库顶层忽略release、release-*、tmp和.app树；不改构建配置、renderer或公开附件。macOS初扫仍可能先解析链接元数据，但不递归扫描其后代；外部源码symlink不再自动热更新。独立合成专项 `scripts/dev-watch-test.cjs` 保留真实源码HMR正例和外部链接后代负例。最初夹具暴露临时路径canonical与ready绑定时机问题；单靠false也确实无法阻止macOS初扫后代，故补入口剪枝，不用polling掩盖。最终macOS原生FSEvents后端实跑25/25通过、退出0，两次源码改动均产生真实HMR；链接后代无登记/事件，outsideDirectories为空。构建与桌面已安装包白名单文件逐字节一致，公开tag/附件固定，不因这一开发配置维护重打或覆盖。
 
 最后边界修正后再次执行typecheck/build/37套核心回归、六组原生回归，全部退出0。六组最终日志为 `tmp/editing-review/*-postguard-native-final.log`，最新合成输出后缀依次为 `AaK7rm`、`t5rW6C`、`wHDGTC`、`CKn8b1`、`9S3cPI`、`x90HnE`。这些本机临时产物不入Git或安装包。中间失败日志保留，不能把修正测试误报描述为用户剧本已被改动，也不能隐藏真实产品边界修正。
 

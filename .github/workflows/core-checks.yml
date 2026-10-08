@@ -27,6 +27,7 @@ jobs:
         run: |
           node scripts/core-guard.cjs
           node scripts/release-assets-test.cjs
+          node scripts/dev-watch-test.cjs
       - name: 类型和构建
         run: |
           npm run typecheck
