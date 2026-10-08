@@ -241,6 +241,8 @@ app.whenReady().then(async () => {
       fs.copyFileSync(destination, path.join(config.output, outputName));
       await until('!!document.querySelector(".editor__scroll[data-ready=true]")', 'return from PDF view');
     }
+    // A mistaken export-side edit would reach recovery after its 900ms debounce.
+    await pause(1200);
     assert.equal(JSON.stringify((await snapshot()).project), beforePdf);
     pass('both production PDF menu exports produce real PDFs and preserve project (visual layout/font review remains manual)');
     await focusEnd(); await win.webContents.insertText('未保存恢复');

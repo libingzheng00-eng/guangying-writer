@@ -78,15 +78,20 @@ async function main() {
         delete env.ZS_DEV;
         const child = spawn(path.join(candidate, 'GuangyingWriter.exe'), [], { cwd: candidate, env, stdio: ['ignore', 'pipe', 'pipe'] });
         let timedOut = false;
+        let teardownDeadline;
         const timeout = setTimeout(() => {
           timedOut = true;
           // This PID belongs solely to this synthetic test; never find/kill by app name.
           if (child.pid) spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 10000 });
+          teardownDeadline = setTimeout(() => {
+            child.stdout.destroy(); child.stderr.destroy(); log.end();
+            reject(new Error(`${phase} timed out; owned process-tree teardown did not close its pipes`));
+          }, 5000);
         }, 150000);
         for (const stream of [child.stdout, child.stderr]) stream.on('data', data => { log.write(data); process.stdout.write(data); });
-        child.on('error', error => { clearTimeout(timeout); log.end(); reject(error); });
+        child.on('error', error => { clearTimeout(timeout); clearTimeout(teardownDeadline); log.end(); reject(error); });
         child.on('close', (code, signal) => {
-          clearTimeout(timeout); log.end();
+          clearTimeout(timeout); clearTimeout(teardownDeadline); log.end();
           if (timedOut || code !== 0) reject(new Error(`${phase} failed: ${timedOut ? 'timeout (owned process terminated)' : `exit ${code}, signal ${signal}`}`));
           else resolve();
         });
