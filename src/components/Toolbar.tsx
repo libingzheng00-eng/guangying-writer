@@ -4,6 +4,7 @@ import { ELEMENT_META, ELEMENT_ORDER } from '../model/elements';
 import type { ElementType } from '../model/types';
 import type { useCommands } from '../app/useCommands';
 import { runEditHistory } from '../utils/editHistory';
+import { safeDisplayColor } from '../utils/displayValues';
 
 const VIEWS: { key: ViewMode; label: string }[] = [
   { key: 'write', label: '写作' },
@@ -212,7 +213,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, modalOpen = fal
             <button
               key={r.id}
               className={`rev-chip ${activeRev === r.id ? 'is-active' : ''}`}
-              style={{ background: r.color }}
+              style={{ backgroundColor: safeDisplayColor(r.color) }}
               title={`把新输入的内容标记为 ${r.label} 稿`}
               onClick={() => {
                 useStore.setState({ activeRev: activeRev === r.id ? null : r.id });

@@ -6,14 +6,14 @@
 set -eu
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-ELECTRON="$DIR/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+cd "$DIR"
+ELECTRON="$(node scripts/prepare-electron.cjs)"
 
 if [ ! -x "$ELECTRON" ]; then
-  echo "缺少完整 Electron 运行时。请在项目目录执行 npm install 后重试。"
+  echo "缺少完整 Electron 运行时。请保留错误输出并检查锁定依赖的安装。"
   exit 1
 fi
 
-cd "$DIR"
 echo "构建光影写手…"
 npm run build
 echo "启动开发版…"

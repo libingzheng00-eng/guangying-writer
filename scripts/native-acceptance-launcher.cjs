@@ -8,6 +8,7 @@
 const { app } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 
 const manifest = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8'));
 if (manifest.name !== 'guangying-native-acceptance-qa') {
@@ -33,4 +34,24 @@ if (!Object.prototype.hasOwnProperty.call(entries, mode)) {
 const root = path.resolve(__dirname, '..');
 process.env.GUANGYING_TEST_ROOT = root;
 process.env.GUANGYING_TEST_RENDERER = path.join(root, 'dist-renderer', 'index.html');
+if (app.isReady()) throw new Error('Native QA launcher must run at cold startup before Electron ready.');
 require(path.join(__dirname, entries[mode]));
+
+// Each fixed mode synchronously creates its own temp root and sets userData,
+// then registers asynchronous whenReady work. Bind Chromium storage before
+// that work can create a window; do not rely on runtime-specific path defaults.
+const userData = app.getPath('userData');
+const temporary = fs.realpathSync(os.tmpdir());
+const parent = fs.realpathSync(path.dirname(userData));
+const relative = path.relative(temporary, parent);
+if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+  throw new Error('Native QA mode did not select a dedicated temporary userData.');
+}
+app.setPath('sessionData', userData);
+app.whenReady().then(() => {
+  if (app.getPath('userData') !== userData || app.getPath('sessionData') !== userData) {
+    throw new Error('Native QA userData/sessionData isolation changed before ready.');
+  }
+  console.log('QA_ISOLATION', JSON.stringify({ mode, electron: process.versions.electron,
+    platform: process.platform, architecture: process.arch, userData, sessionData: app.getPath('sessionData') }));
+});

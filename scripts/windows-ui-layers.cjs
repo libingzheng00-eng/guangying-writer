@@ -1,10 +1,10 @@
 /**
- * Actual Chromium UI-layer acceptance inside windows-smoke's owned QA window.
+ * Actual Chromium UI-layer acceptance inside desktop-smoke's owned QA window.
  * No store injection, synthetic React events, beforeunload removal, or real user
  * data. Pointer/key input goes through webContents.sendInputEvent; JavaScript
  * only reads layout/state, scrolls controls into view, and prepares focus/ranges.
  * MenuItem.click exercises the production native-menu -> IPC -> App route; it
- * does not claim a human operated the Windows system menu with a mouse.
+ * does not claim a human operated the system menu with a mouse.
  */
 const strictAssert = require('node:assert/strict');
 
@@ -14,7 +14,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   const assert = Object.fromEntries(['ok', 'equal', 'deepEqual'].map(method => [method, (...args) => { strictAssert[method](...args); assertions++; }]));
   const pass = label => { groups.push(label); markPassed(label); };
   const screenshot = async name => { await capture(name); screenshots.push(name); };
-  assert.equal(process.platform, 'win32', 'UI layer acceptance is Windows-only');
+  assert.ok(['win32', 'darwin'].includes(process.platform), 'UI layer acceptance requires a real Mac/Windows desktop runtime');
   const editor = '.script-flow [data-id="windows-action"]';
   const modal = '.modal[role="dialog"][aria-modal="true"]';
   const trigger = '.toolbar [aria-haspopup="menu"]';
@@ -68,12 +68,11 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
       win.webContents.sendInputEvent({ type: 'keyDown', keyCode: code });
       await until(`window.__guangyingButtonInputTrace.events.some(e=>e.type==='keydown')`, `${code} reaches the file button`);
       assert.equal(await run(`document.activeElement===document.querySelector(${q(trigger)})&&!window.__guangyingButtonInputTrace.events.find(e=>e.type==='keydown').defaultPrevented`), true, 'Button keydown keeps focus and permits its native default');
-      // Electron 31.7.7 explicitly requires a char event for keypress. Its
-      // Chromium 126 button activation handles Enter on keypress '\r' and Space
+      // Explicit char input supplies Chromium keypress: Enter activates on '\r', Space
       // on keyup. Keep this sequence local: editor Enter stays on key() and must
       // not receive forced character input after its preventDefault handler.
-      // https://github.com/electron/electron/blob/v31.7.7/spec/api-web-contents-spec.ts#L916
-      // https://github.com/chromium/chromium/blob/126.0.6478.234/third_party/blink/renderer/core/html/html_element.cc#L2742
+      // Trusted keypress/charCode/click assertions below keep this driver honest
+      // when the Chromium runtime changes; no DOM click fallback is allowed.
       win.webContents.sendInputEvent({ type: 'char', keyCode: code });
       win.webContents.sendInputEvent({ type: 'keyUp', keyCode: code }); released = true;
       await pause(160);
@@ -81,7 +80,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
       if (!released) win.webContents.sendInputEvent({ type: 'keyUp', keyCode: code });
       trace = await run('window.__guangyingButtonInputTrace.stop()');
       buttonActivations.push({ key: code, events: trace });
-      console.log('Windows file button input:', JSON.stringify({ key: code, events: trace }));
+      console.log('Desktop file button input:', JSON.stringify({ key: code, events: trace }));
     }
     assert.deepEqual(trace.filter(event => event.type !== 'click').map(event => event.type), ['keydown', 'keypress', 'keyup'], `${code} has a complete native keyboard sequence`);
     assert.equal(trace.every(event => event.isTrusted), true, `${code} keyboard/click events are Chromium-trusted`);
@@ -217,7 +216,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
     }
     await escapeModal(); await assertEditorRange(i === 1);
   }
-  pass('Windows modal: native title/Undo/Redo commands, bounded history, input, Tab/Shift+Tab containment, blocked background commands, and three selection-restoring Escape cycles');
+  pass('Desktop modal: native title/Undo/Redo commands, bounded history, input, Tab/Shift+Tab containment, blocked background commands, and three selection-restoring Escape cycles');
 
   await openSettings(); await tabTrap(); await blockedBackground();
   const oldMore = await run(`(${field('「（更多）」文案')}).value`);
@@ -231,13 +230,13 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   }
   await escapeModal();
   assert.equal(await run(`document.activeElement===(${settingsButton})`), true, 'Settings returns focus to its live toolbar trigger');
-  pass('Windows settings: business text persists, every tab remains interactive, focus trap survives dynamic content, Escape restores toolbar trigger');
+  pass('Desktop settings: business text persists, every tab remains interactive, focus trap survives dynamic content, Escape restores toolbar trigger');
 
   // Native menu is deliberately invoked from the editor, independently of the
   // renderer toolbar: this covers the IPC path that DOM-only tests cannot prove.
   await focusEditorRange(); menu('显示简介设置…'); await readyModal('显示简介设置');
   await escapeModal(); await assertEditorRange();
-  pass('Windows native Settings menu follows modal isolation and restores editor selection');
+  pass('Desktop native Settings menu follows modal isolation and restores editor selection');
 
   menu('查找…');
   await until(`document.activeElement===document.querySelector('.find-panel input[aria-label="查找内容"]')`, 'Native Find receives focus before modal');
@@ -257,7 +256,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   await assertEditorRange();
   await openSettings(); await clickBackdrop();
   assert.equal(await run(`document.activeElement===(${settingsButton})`), true, 'Backdrop restores live Settings trigger');
-  pass('Windows modal lifecycle: existing Find stays isolated, input selection restores, close button and backdrop release dismiss safely');
+  pass('Desktop modal lifecycle: existing Find stays isolated, input selection restores, close button and backdrop release dismiss safely');
 
   for (const [width, height] of [[1024, 680], [1440, 960]]) {
     win.setSize(width, height); await pause(150);
@@ -295,7 +294,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
       assert.equal(await run(`document.activeElement===document.querySelector(${q(trigger)})`), true);
     }
   }
-  pass('Windows 1024x680 and 1440x960, day/night: settings/title modals and every file-menu item fit; full forward/reverse Tab cycles keep focus visible/topmost inside scroll clipping bounds (12 screenshots)');
+  pass('Desktop 1024x680 and 1440x960, day/night: settings/title modals and every file-menu item fit; full forward/reverse Tab cycles keep focus visible/topmost inside scroll clipping bounds (12 screenshots)');
 
   const menuItems = `${popup} [role="menuitem"]`;
   await click(trigger); await key('End');
@@ -330,11 +329,13 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   assert.equal(await run(`!!document.querySelector(${q(popup)})`), false, 'Opening modal consumes the file menu');
   await escapeModal();
   assert.equal(await run(`document.activeElement===document.querySelector(${q(trigger)})`), true, 'Modal returns to live file trigger, not an unmounted menu item');
-  pass('Windows file menu: arrows/Home/End, Escape, Tab/Shift+Tab continuation, outside click/window blur, and title action through stable focus handoff');
+  pass('Desktop file menu: arrows/Home/End, Escape, Tab/Shift+Tab continuation, outside click/window blur, and title action through stable focus handoff');
 
   await click(trigger); menu('自由板');
   await until(`!!document.querySelector('.board--workspace')&&!document.querySelector(${q(popup)})`, 'Native Free Board entry switches view and closes the file popup');
   assert.equal(await run(`document.activeElement===document.querySelector(${q(trigger)})`), true, 'Native view switch leaves a live file trigger focused');
+  assert.deepEqual(await run(`Array.from(document.querySelectorAll('.bcard[data-id=windows-image],.bcard[data-id=security-image]')).map(e=>e.style.getPropertyValue('--card-color'))`), ['#fff7d6', '#fff7d6'], 'Untrusted CSS URL colors use the fixed safe fallback on both real board cards');
+  assert.equal(await run(`!!document.querySelector('.bcard[data-id=security-image] .bcard__empty-media')&&!document.querySelector('.bcard[data-id=security-image] img')`), true, 'Free Board keeps blocked image as a readable card without a resource node');
   await click('.bcard[data-id="windows-image"] .bcard__media-img');
   const boardState = `(() => ({mode:document.querySelector('.board').dataset.mode,panning:document.querySelector('.board__canvas').dataset.panning,cards:Array.from(document.querySelectorAll('.bcard')).map(e=>[e.dataset.id,e.classList.contains('is-selected')])}))()`;
   const expectedBoardState = await run(boardState);
@@ -363,7 +364,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   await click(trigger); menu('查找…');
   await until(`!document.querySelector(${q(popup)})&&document.activeElement===document.querySelector('.find-panel input[aria-label="查找内容"]')`, 'Native Find closes file popup and owns focus');
   await key('Escape'); await until(`!document.querySelector('.find-panel')`, 'Find closes after popup handoff');
-  pass('Windows native Free Board and file-menu lifecycle: keyboard button activation, closed/open key isolation on selected card, toolbar/native view and Find/Settings handoffs');
+  pass('Desktop native Free Board and file-menu lifecycle: keyboard button activation, closed/open key isolation on selected card, toolbar/native view and Find/Settings handoffs');
 
   // Restore only through the same visible UI; no store/localStorage test seed.
   await openSettings();

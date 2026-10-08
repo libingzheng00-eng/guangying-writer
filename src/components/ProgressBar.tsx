@@ -9,6 +9,7 @@ import {
   type SceneBand,
 } from '../model/progress';
 import typewriterPointer from '../assets/typewriter-pointer.png';
+import { safeDisplayColor } from '../utils/displayValues';
 
 export function ProgressBar({ children }: { children?: React.ReactNode }) {
   const project = useStore((s) => s.project);
@@ -179,7 +180,7 @@ export function ProgressBar({ children }: { children?: React.ReactNode }) {
                   role="listitem"
                   key={scene.elementId}
                   className={'write-progress__scene' + (index === activeSceneIndex ? ' is-active' : '')}
-                  style={{ flex: `0 0 ${renderPct}%`, background: scene.color }}
+                style={{ flex: `0 0 ${renderPct}%`, backgroundColor: safeDisplayColor(scene.color) }}
                   title={`第 ${scene.number} 场 · ${scaleLabel}${percentText}${scene.heading ? ' · ' + scene.heading : ''} · 点击跳转`}
                   aria-label={`第 ${scene.number} 场，${scaleLabel}${percentText}`}
                   onClick={() => requestFocus(scene.elementId, 'start', 'start')}

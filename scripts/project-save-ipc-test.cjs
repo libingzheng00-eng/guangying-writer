@@ -6,25 +6,34 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { pathToFileURL } = require('node:url');
 
 let checks = 0;
 function eq(actual, expected, message) { assert.equal(actual, expected, message || 'expected values to match'); checks++; }
 function deep(actual, expected, message) { assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected, message); checks++; }
 function ok(value, message) { assert.ok(value, message || 'expected truthy value'); checks++; }
 
-function harness(platform = 'darwin') {
+function harness(platform = 'darwin', initialDisk) {
   const handlers = new Map();
   const state = {
-    disk: new Map(), writes: [], helperCalls: [], pdfCalls: [], errors: [], dialogs: [], warnings: [],
+    disk: initialDisk || new Map(), writes: [], helperCalls: [], pdfCalls: [], errors: [], dialogs: [], warnings: [],
     saves: [], choice: 0, closeDialogs: [], windows: [], menus: [], appEvents: new Map(),
-    nextHelper: null, nextPdf: null, throwOnWarn: false,
+    nextHelper: null, nextPdf: null, throwOnWarn: false, opens: [], shown: [],
   };
+  const pathApi = platform === 'win32' ? path.win32 : path.posix;
   class Window {
     constructor(options) {
       this.options = options;
       this.events = new Map();
       this.webEvents = new Map();
-      this.webContents = { on: (event, callback) => this.webEvents.set(event, callback), send() {} };
+      this.webContents = {
+        on: (event, callback) => this.webEvents.set(event, callback), send() {}, isDestroyed: () => false,
+        mainFrame: { url: '' }, getURL: () => this.webContents.mainFrame.url,
+        setWindowOpenHandler: callback => { this.openHandler = callback; },
+        session: { setPermissionRequestHandler: callback => { this.permissionRequest = callback; },
+          setPermissionCheckHandler: callback => { this.permissionCheck = callback; },
+          on: (event, callback) => this.webEvents.set(`session:${event}`, callback) },
+      };
       state.windows.push(this);
     }
     once(event, callback) { this.events.set(event, callback); }
@@ -33,17 +42,41 @@ function harness(platform = 'darwin') {
     focus() {}
     isDestroyed() { return false; }
     isMinimized() { return false; }
-    loadFile(file) { this.loadedFile = file; return Promise.resolve(); }
-    loadURL(url) { this.loadedUrl = url; return Promise.resolve(); }
+    loadFile(file) { this.loadedFile = file; this.webContents.mainFrame.url = pathToFileURL(file).href; return Promise.resolve(); }
+    loadURL(url) { this.loadedUrl = url; this.webContents.mainFrame.url = url; return Promise.resolve(); }
     static getAllWindows() { return state.windows; }
   }
+  let descriptor = 10;
+  const handles = new Map();
+  const identity = file => [...file].reduce((sum, char) => sum + char.charCodeAt(0), 1);
+  const stat = (file, directory = false) => ({ dev: 1, ino: identity(file), size: Buffer.byteLength(state.disk.get(file) || ''), nlink: 1,
+    isFile: () => !directory, isDirectory: () => directory, isSymbolicLink: () => false });
+  const absent = () => Object.assign(new Error('synthetic missing'), { code: 'ENOENT' });
   const fakeFs = {
+    constants: fs.constants,
+    realpathSync: file => pathApi.resolve(file),
+    statSync: file => stat(file, true),
+    lstatSync(file) { if (!state.disk.has(file)) throw absent(); return stat(file); },
+    openSync(file, flags) {
+      if (!state.disk.has(file) && !(flags & fs.constants.O_CREAT)) throw absent();
+      if (state.disk.has(file) && (flags & fs.constants.O_EXCL)) throw Object.assign(new Error('exists'), { code: 'EEXIST' });
+      if (!state.disk.has(file)) state.disk.set(file, '');
+      handles.set(++descriptor, file); return descriptor;
+    },
+    closeSync: fd => handles.delete(fd),
+    fsyncSync() {},
+    fstatSync: fd => stat(handles.get(fd)),
+    ftruncateSync: fd => state.disk.set(handles.get(fd), ''),
+    renameSync: (from, to) => { state.disk.set(to, state.disk.get(from)); state.disk.delete(from); },
+    unlinkSync: file => state.disk.delete(file),
     readFileSync(file) {
+      if (typeof file === 'number') file = handles.get(file);
       if (!state.disk.has(file)) throw Object.assign(new Error('synthetic missing'), { code: 'ENOENT' });
       return state.disk.get(file);
     },
     writeFileSync(file, data, encoding) {
-      state.writes.push({ file, data, encoding });
+      if (typeof file === 'number') file = handles.get(file);
+      if (!pathApi.basename(file).startsWith('.file-authorizations-')) state.writes.push({ file, data, encoding });
       state.disk.set(file, data);
     },
   };
@@ -61,12 +94,12 @@ function harness(platform = 'darwin') {
         state.dialogs.push(options);
         return state.saves.shift() || { canceled: true };
       },
-      showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
+      showOpenDialog: async () => state.opens.shift() || ({ canceled: true, filePaths: [] }),
       showErrorBox: (title, message) => state.errors.push({ title, message }),
       showMessageBoxSync: (_window, options) => { state.closeDialogs.push(options); return state.choice; },
     },
     ipcMain: { handle: (name, fn) => handlers.set(name, fn) },
-    shell: { showItemInFolder() {} },
+    shell: { showItemInFolder: file => state.shown.push(file) },
   };
   const moduleObject = { exports: {} };
   const mainFile = path.join(__dirname, '../electron/main.js');
@@ -81,7 +114,10 @@ function harness(platform = 'darwin') {
       if (name === 'electron') return electron;
       if (name === 'node:fs') return fakeFs;
       if (name === 'node:path') return platform === 'win32' ? path.win32 : path.posix;
+      if (name === 'node:url') return require('node:url');
       if (name === './platform') return require('../electron/platform');
+      if (name === './security') return require('../electron/security');
+      if (name === './fileAccess') return require('../electron/fileAccess');
       if (name === './projectSave') return {
         saveProjectFile(file, content) {
           state.helperCalls.push({ file, content });
@@ -99,7 +135,8 @@ function harness(platform = 'darwin') {
       throw new Error(`Unexpected dependency in synthetic main harness: ${name}`);
     },
   }, { filename: mainFile });
-  return { state, invoke: (name, payload) => handlers.get(name)({}, payload), handlers };
+  const event = () => ({ sender: state.windows[0].webContents, senderFrame: state.windows[0].webContents.mainFrame });
+  return { state, event, invoke: (name, payload, sender = event()) => handlers.get(name)(sender, payload), handlers };
 }
 
 async function main() {
@@ -112,6 +149,11 @@ async function main() {
   eq(s.windows[0].options.titleBarStyle, 'hiddenInset', 'macOS keeps its existing inset title bar');
   deep(s.windows[0].options.trafficLightPosition, { x: 16, y: 20 });
   ok(h.handlers.has('dialog:save') && h.handlers.has('dialog:saveAs') && h.handlers.has('pdf:export'));
+  // Establish write authority through the real native-open handler, not by
+  // trusting an arbitrary renderer path or seeding the authorization ledger.
+  s.disk.set(file, content); s.opens.push({ canceled: false, filePaths: [file] });
+  eq((await h.invoke('dialog:open')).path, file);
+  s.writes.length = 0;
 
   let finish;
   s.nextHelper = new Promise(resolve => { finish = resolve; });
@@ -174,6 +216,10 @@ async function main() {
       const destination = '/synthetic-durability.zhsp';
       const warningBefore = s.warnings.length, errorBefore = s.errors.length;
       const writeBefore = s.writes.length;
+      if (route === 'dialog:save' && !s.disk.has(destination)) {
+        s.disk.set(destination, content); s.opens.push({ canceled: false, filePaths: [destination] });
+        await h.invoke('dialog:open'); s.writes.splice(writeBefore);
+      }
       s.nextHelper = Promise.resolve({ path: destination, directorySynced: false, durabilityWarning: warning });
       if (route === 'dialog:saveAs') s.saves.push({ canceled: false, filePath: destination });
       eq(await h.invoke(route, { path: destination, content, name: '合成同步', ext: 'zhsp' }), destination,
@@ -189,6 +235,10 @@ async function main() {
     }
     const destination = '/synthetic-no-log.zhsp';
     const errorBefore = s.errors.length;
+    if (route === 'dialog:save') {
+      s.disk.set(destination, content); s.opens.push({ canceled: false, filePaths: [destination] });
+      await h.invoke('dialog:open');
+    }
     s.nextHelper = Promise.resolve({ path: destination, directorySynced: false, durabilityWarning: 'directory-sync-EIO' });
     if (route === 'dialog:saveAs') s.saves.push({ canceled: false, filePath: destination });
     s.throwOnWarn = true;
@@ -226,7 +276,7 @@ async function main() {
   }
 
   for (const mode of ['creative', 'print']) {
-    const opts = { mode, name: '合成PDF.pdf', html: mode === 'creative' ? '<section>synthetic canvas</section>' : undefined };
+    const opts = { mode, name: '合成PDF.pdf', pageSize: { width: 210000, height: 297000 }, html: mode === 'creative' ? '<section class="export-sheet">synthetic canvas</section>' : undefined };
     const helperBefore = s.helperCalls.length;
     const picked = `/synthetic-${mode}.pdf`;
     s.saves.push({ canceled: false, filePath: picked });
@@ -241,7 +291,7 @@ async function main() {
 
   const pdfCallsBefore = s.pdfCalls.length, pdfWritesBefore = s.writes.length;
   s.saves.push({ canceled: true });
-  eq(await h.invoke('pdf:export', { mode: 'creative', name: '合成取消.pdf' }), null);
+  eq(await h.invoke('pdf:export', { mode: 'creative', name: '合成取消.pdf', html: '<section class="export-sheet"></section>', pageSize: { width: 210000, height: 297000 } }), null);
   eq(s.pdfCalls.length, pdfCallsBefore);
   eq(s.writes.length, pdfWritesBefore);
 
@@ -279,8 +329,9 @@ async function main() {
     ['dialog:saveAs', { content, name: '合成/稿件', ext: 'txt' }, '合成_稿件.txt'],
     ['pdf:export', { mode: 'print', name: '合成<稿件>.pdf' }, '合成_稿件_.pdf'],
   ]) {
-    ws.saves.push({ canceled: false, filePath: windowsPath });
-    eq(await windows.invoke(route, payload), windowsPath, 'chosen Windows path is never rewritten');
+    const selectedPath = windowsPath.replace(/\.zhsp$/, `.${route === 'pdf:export' ? 'pdf' : payload.ext || 'zhsp'}`);
+    ws.saves.push({ canceled: false, filePath: selectedPath });
+    eq(await windows.invoke(route, payload), selectedPath, 'chosen Windows path is never rewritten');
     eq(ws.dialogs.at(-1).defaultPath, expected, 'only the suggested filename is Windows-safe');
   }
   const suggestionsBefore = ws.dialogs.length;
@@ -307,4 +358,5 @@ async function main() {
   console.log(`project-save-ipc: ${checks} assertions passed (real main.js in VM; synthetic dialogs/fs/helper; no native Electron)`);
 }
 
-main().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = { harness };
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

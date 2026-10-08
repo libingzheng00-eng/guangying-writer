@@ -4,6 +4,10 @@
 
 采用 [MIT License](LICENSE)。这是源码仓库；普通用户请到 [GitHub Releases 下载已公开的安装附件](https://github.com/libingzheng00-eng/guangying-writer/releases)。下载源码 ZIP 不等于下载桌面应用。目前公开包的系统、架构和签名状态以对应 Release 说明为准。
 
+## alpha.18.13 安全候选
+
+当前分支在 PR #13 上独立升级 Electron 44.7.0，并加固工程 HTML、显示/导出和原生 IPC 文件权限。候选最低要求为 macOS 13+ Apple Silicon / Windows 10+ x64；新版本尚不代表已发布或安装。安全边界、剩余依赖告警和验收分层见 [安全升级说明](SECURITY_UPGRADE.md)。下方 alpha.18.12 的 Release 记录保留为历史交付。
+
 ## 主要能力
 
 - 九类剧本元素与 Tab / Shift+Tab 闭环切换，新空段跨类型 SmartType 与人物/场景/镜头/转场分字段补全，双列对白及同人物续说提示。
@@ -16,9 +20,9 @@
 
 PDF 有两个独立出口：**创作版**保留写作画布上正文与素材的实际位置；**A4 纯文本**用于标准纸张打印，不带素材。不能把所有图片移到文末来代替原位导出。
 
-## 当前源码状态
+## 已发布 alpha.18.12 的历史记录
 
-`package.json` 版本为 `1.3.0-alpha.18.12`，在alpha.18.11基线上完成2026-10-08 SmartType升级。普通用户请到 [本版安装包下载页](https://github.com/libingzheng00-eng/guangying-writer/releases/tag/v1.3.0-alpha.18.12) 选择DMG，不要把源码ZIP当作安装包。macOS Apple Silicon应用、DMG和ZIP完成本地核验；桌面独立安装alpha.18.12，不强制退出旧用户应用或删除用户资料。GitHub main与公开附件是两项独立交付，实际状态分别以仓库和对应Release为准。该 macOS Release 仍是alpha测试版，不是正式1.3.0；Release发布不会自动替换他人已安装应用。
+已发布的 `1.3.0-alpha.18.12` 在alpha.18.11基线上完成2026-10-08 SmartType升级。普通用户请到 [本版安装包下载页](https://github.com/libingzheng00-eng/guangying-writer/releases/tag/v1.3.0-alpha.18.12) 选择DMG，不要把源码ZIP当作安装包。macOS Apple Silicon应用、DMG和ZIP完成本地核验；桌面独立安装alpha.18.12，不强制退出旧用户应用或删除用户资料。GitHub main与公开附件是两项独立交付，实际状态分别以仓库和对应Release为准。该 macOS Release 仍是alpha测试版，不是正式1.3.0；Release发布不会自动替换他人已安装应用。
 
 在新空段直接输入“特”可推荐“特写 · 镜头”，输入“小明”可同时选择“小明 · 人物”“小明妈妈 · 人物”；明确选中才一起补全文字并修改属性。**第一次 Enter 确认并留在同段，第二次 Enter 再切段**；未新输入不反复弹候选。旧正文、粘贴、拆行尾文和双列不启用新跨类型识别，原同类型字段补全保留；九类Tab、组合输入安全及一次撤销保护不变。此新规则覆盖旧版“Enter接受后立即下一段”，不影响PDF、卡片、归幕或工程格式。维护者以 [核心契约](CORE_FEATURES.md) 为准，不能将历史日志中的旧规则恢复回来。
 
@@ -34,17 +38,17 @@ PDF 有两个独立出口：**创作版**保留写作画布上正文与素材的
 
 ## 开发与维护
 
-使用 Node.js 22.13+（CI 为 Node 22），依赖以 `package-lock.json` 为准。只检查 renderer 和合成测试时，可跳过 Electron 下载：
+使用 Node.js 22.13+（CI 为 Node 22），依赖以 `package-lock.json` 为准。Electron 42+ 的 npm ci 不下载二进制；源码检查可直接运行：
 
 ```bash
-ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci
+npm ci
 npm run typecheck
 npm run build
 npm run test:core
 npm run dev
 ```
 
-当前39套源码回归的统一入口是 `test:core`，包含恢复、工程落盘、保存IPC、写作派生，以及模态焦点和文件菜单专项。它不启动原生 Electron，不读取用户剧本或系统剪贴板；原生验收须独立进行。
+当前43套源码回归的统一入口是 `test:core`，包含恢复、工程落盘、保存IPC、写作派生，模态焦点、文件菜单及工程/显示/IPC安全专项。它不启动原生 Electron，不读取用户剧本或系统剪贴板；原生验收须独立进行。
 
 维护前请依次阅读：
 
@@ -54,7 +58,7 @@ npm run dev
 4. [DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md) / [CHANGELOG.md](CHANGELOG.md)：交接与版本记录。
 5. [MIGRATION.md](MIGRATION.md)：回迁背景与历史兼容说明。
 
-正式包使用完整可信的 Electron 运行时与 `package.sh`；macOS 发布流水线另生成 DMG。ad-hoc 签名不等于 Apple 签名/公证，本机能打开也不等于其他电脑都能打开。不要修改系统安全设置来绕过测试失败。
+运行或打包前，`node scripts/prepare-electron.cjs` 显式下载已锁定的 Electron。候选 Mac 包使用 `node scripts/package-macos.cjs <新目录>`，额外生成提交清单、SHA-256和签名报告；底层仍使用 `package.sh`；macOS 发布流水线另生成 DMG。ad-hoc 签名不等于 Apple 签名/公证，本机能打开也不等于其他电脑都能打开。不要修改系统安全设置来绕过测试失败。
 
 贡献时请使用合成稿，不提交用户剧本、自动保存或私人图片；不要删除核心断言或降低 CI 来掩盖回归。已安装应用、个人文档与他人已有工作区变更不在一般代码优化的修改范围内。
 

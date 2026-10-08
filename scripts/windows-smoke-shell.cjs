@@ -1,10 +1,11 @@
-/** QA-only entry copied into a temporary package by windows-smoke.cjs. */
+/** Shared QA-only entry copied into a temporary Mac/Windows package by desktop-smoke.cjs. */
 const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { pathToFileURL } = require('node:url');
+const { runSecurityChecks, verifySanitizedProject, verifyDisplaySafety, verifyHtmlExport, observeRequests, hostileHtml, safeHtml, hostileMetadata, hostileImage, hostileColor } = require('./desktop-security-qa.cjs');
 
 const config = JSON.parse(fs.readFileSync(process.env.GUANGYING_WINDOWS_SMOKE_CONFIG, 'utf8'));
 const phase = process.env.GUANGYING_WINDOWS_SMOKE_PHASE;
@@ -17,10 +18,12 @@ assert.ok(tempRelative && tempRelative !== '..' && !tempRelative.startsWith('..'
 assert.equal(path.dirname(config.userData), config.temporary);
 fs.mkdirSync(config.userData, { recursive: true });
 app.setPath('userData', config.userData);
+app.setPath('sessionData', config.userData);
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
-const report = { status: 'running', phase, platform: process.platform, electron: process.versions.electron, checks: [], dialogs: [], errors: [] };
+const report = { status: 'running', phase, platform: process.platform, architecture: process.arch, electron: process.versions.electron, commit: config.commit, sourceManifestSHA256: config.sourceManifestSHA256, checks: [], dialogs: [], errors: [], nativeCalls: { save: 0, open: 0, reveal: 0 } };
+const modifier = process.platform === 'darwin' ? 'meta' : 'control';
 const journal = () => fs.writeFileSync(path.join(config.output, `${phase}.json`), JSON.stringify(report, null, 2));
 const pass = name => { report.checks.push(name); journal(); console.log('PASS', name); };
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -43,6 +46,7 @@ const saveChoices = [];
 const openChoices = [];
 const closeChoices = [];
 dialog.showSaveDialog = async (_window, options) => {
+  report.nativeCalls.save++;
   assert.ok(saveChoices.length, 'Unexpected save/export dialog');
   const choice = saveChoices.shift();
   assert.ok(options.filters.some(filter => filter.extensions.includes(choice.extension)), 'Incorrect dialog extension');
@@ -50,6 +54,7 @@ dialog.showSaveDialog = async (_window, options) => {
   return choice.canceled ? { canceled: true } : { canceled: false, filePath: choice.path };
 };
 dialog.showOpenDialog = async (_window, options) => {
+  report.nativeCalls.open++;
   assert.ok(openChoices.length, 'Unexpected open dialog');
   assert.ok(options.properties.includes('openFile'));
   const choice = openChoices.shift();
@@ -67,7 +72,7 @@ dialog.showMessageBoxSync = (_window, options) => {
 };
 dialog.showErrorBox = (title, message) => { report.errors.push({ title, message }); journal(); };
 // Prevent Explorer windows from taking focus. Export IPC itself remains real.
-shell.showItemInFolder = file => { assert.ok(file.startsWith(config.temporary + path.sep)); };
+shell.showItemInFolder = file => { report.nativeCalls.reveal++; assert.ok(file.startsWith(config.temporary + path.sep)); };
 const actionSelector = '.script-flow [data-id="windows-action"]';
 const text = () => run(`document.querySelector(${JSON.stringify(actionSelector)}).textContent`);
 async function focusEnd() {
@@ -75,6 +80,7 @@ async function focusEnd() {
   await run(`(() => { const e=document.querySelector(${JSON.stringify(actionSelector)});e.scrollIntoView({block:'center'});e.focus();const r=document.createRange();r.selectNodeContents(e);r.collapse(false);const s=getSelection();s.removeAllRanges();s.addRange(r); })()`);
 }
 async function key(keyCode, modifiers = []) {
+  modifiers = modifiers.map(value => value === 'control' ? modifier : value);
   win.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
   win.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
   await pause(160);
@@ -130,7 +136,11 @@ app.on('browser-window-created', (_event, candidate) => {
   if (win) return; // Secondary production PDF window must not replace the editor.
   win = candidate;
   candidate.webContents.on('render-process-gone', (_event, details) => { report.errors.push({ rendererGone: details.reason }); journal(); });
-  candidate.webContents.on('console-message', (_event, level, message) => { if (level >= 3) { report.errors.push({ renderer: message }); journal(); } });
+  candidate.webContents.on('console-message', (details, legacyLevel, legacyMessage) => {
+    const isError = details.level === 'error' || (details.level === undefined && legacyLevel >= 3);
+    if (isError) { report.errors.push({ renderer: details.message ?? legacyMessage }); journal(); }
+  });
+  candidate.webContents.on('preload-error', (_event, _file, error) => { report.errors.push({ preload: error.message }); journal(); });
 });
 require(path.join(root, 'electron', 'main.js'));
 
@@ -141,7 +151,14 @@ app.whenReady().then(async () => {
     assert.equal(win.webContents.getURL(), pathToFileURL(path.join(root, 'dist-renderer', 'index.html')).href);
     const info = await run('window.api.getInfo()');
     assert.equal(info.version, config.version); assert.equal(info.platform, config.expectedPlatform);
-    assert.equal(app.getPath('userData'), config.userData);
+    assert.equal(fs.realpathSync(app.getPath('userData')), fs.realpathSync(config.userData));
+    assert.equal(fs.realpathSync(app.getPath('sessionData')), fs.realpathSync(config.userData));
+    assert.equal(fs.realpathSync(process.execPath), fs.realpathSync(config.expectedExecutable));
+    assert.equal(process.arch, config.expectedArch);
+    assert.equal(process.versions.electron, config.expectedElectron);
+    assert.equal(app.isPackaged, true);
+    report.runtime = { execPath: process.execPath, appPath: app.getAppPath(), main: path.join(root, 'electron', 'main.js'), userData: app.getPath('userData'), sessionData: app.getPath('sessionData'), isPackaged: app.isPackaged };
+    journal();
     pass('packaged production main/preload/renderer start with isolated userData');
     if (phase === 'recovery') {
       const expected = JSON.parse(fs.readFileSync(expectedPath, 'utf8'));
@@ -150,6 +167,8 @@ app.whenReady().then(async () => {
       const recovered = await snapshot();
       assert.equal(recovered.filePath, savedFile);
       assert.equal(recovered.project.beats[0].img, expected.image);
+      await verifySanitizedProject(run);
+      await verifyDisplaySafety(run);
       await until('document.querySelector(".writing-material-card__image")?.naturalWidth > 0', 'recovered embedded image decodes');
       pass('actual process restart recovers unsaved Chinese text, embedded image, and .zhsp association without reseeding');
       await closeAndStay();
@@ -160,7 +179,7 @@ app.whenReady().then(async () => {
       // Reading the old localStorage alone would not prove the live model was
       // restored. Saving it through production IPC verifies every project field.
       assert.deepEqual(readProject(savedFile), expected.project, 'Full live recovered project must survive process restart and disk save');
-      pass('Ctrl+S after process restart writes associated Chinese path and backs up the previous disk version');
+      pass('Cmd/Ctrl+S after process restart writes associated Chinese path and backs up the previous disk version');
       pass('complete recovered project matches: all paragraphs, formatting, cards, coordinates, settings, and metadata');
       await screenshot('recovered.png');
       pass('saved document closes through production beforeunload without an extra prompt');
@@ -179,10 +198,12 @@ app.whenReady().then(async () => {
     assert.deepEqual(await run('window.api.getRecent()'), []);
     pass('first launch is blank: two empty editable paragraphs, no cards, prior text, associated file, or recent files');
     await screenshot('first-launch.png');
+    report.security = await runSecurityChecks({ win, run, until, pause, root, temporary: config.temporary, saveChoices, report, pass });
+    journal();
     win.show(); win.focus();
-    await key('f', ['control']); await until('!!document.querySelector(".find-panel")', 'Ctrl+F opens find');
+    await key('f', ['control']); await until('!!document.querySelector(".find-panel")', 'Cmd/Ctrl+F opens find');
     await key('Escape'); await until('!document.querySelector(".find-panel")', 'Escape closes find');
-    pass('Chromium Ctrl+F and Escape operate the production find panel');
+    pass('Chromium Cmd/Ctrl+F and Escape operate the production find panel');
 
     fs.mkdirSync(syntheticDir);
     const smartId = await run(`(() => {
@@ -194,7 +215,7 @@ app.whenReady().then(async () => {
       text:e.textContent,type:e.dataset.type,focus:document.activeElement?.dataset.id,
       count:document.querySelectorAll('.script-flow .sc-el').length};})()`);
     await win.webContents.insertText('特');
-    await until(`Array.from(document.querySelectorAll('.smarttype__label')).some(e=>e.textContent==='特写')`, 'Windows SmartType shot candidate');
+    await until(`Array.from(document.querySelectorAll('.smarttype__label')).some(e=>e.textContent==='特写')`, 'Desktop SmartType shot candidate');
     assert.equal((await smartState()).type, 'action');
     await screenshot('smarttype-candidate.png');
     await key('Enter');
@@ -208,7 +229,7 @@ app.whenReady().then(async () => {
     const split = await smartState();
     assert.equal(split.count, 3); assert.notEqual(split.focus, smartId);
     assert.equal(split.text, '特写'); assert.equal(split.type, 'shot');
-    pass('Windows SmartType first Enter accepts text/type in place, Ctrl undo/redo is atomic, second Enter creates one paragraph');
+    pass('Desktop SmartType first Enter accepts text/type in place, Cmd/Ctrl undo/redo is atomic, second Enter creates one paragraph');
     // Save through the real command before opening the next fixture; no dirty
     // replacement prompt is bypassed or disabled by the test.
     const smartFile = path.join(syntheticDir, '快捷输入 合成验收.zhsp');
@@ -223,22 +244,28 @@ app.whenReady().then(async () => {
     // Generated 1x1 RGBA pixel, valid PNG chunk CRCs and zlib stream.
     const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMIqAj4DwAETAIY7NJ6TgAAAABJRU5ErkJggg==';
     const project = { id: 'windows-synthetic', name: 'Windows 合成验收', createdAt: 1, updatedAt: 1,
-      titlePage: { show: false }, settings: { smartQuotes: true }, acts: [], sceneMeta: [], boardLinks: [], revisions: [],
+      titlePage: { show: false, title: hostileMetadata }, settings: { smartQuotes: true, fontKey: hostileMetadata }, acts: [], sceneMeta: [], boardLinks: [], revisions: [],
       elements: [{ id: 'windows-scene', type: 'scene_heading', text: '内景 合成测试房间 日' },
-        { id: 'windows-action', type: 'action', text: '合成正文' }, { id: 'windows-keep', type: 'action', text: '<b>保留</b>段落' }],
-      beats: [{ id: 'windows-image', kind: 'image', title: '合成像素', text: '仅用于测试', img: image, color: '#fff', x: 850, y: 90, w: 120, h: 100 }] };
+        { id: 'windows-action', type: 'action', text: '合成正文' }, { id: 'windows-keep', type: 'action', text: '<b>保留</b>段落' },
+        { id: 'security-html', type: 'action', text: hostileHtml }],
+      beats: [{ id: 'windows-image', kind: 'image', title: '合成像素', text: '仅用于测试', img: image, color: hostileColor, x: 850, y: 90, boardX: 480, boardY: 100, w: 120, h: 100 },
+        { id: 'security-image', kind: 'image', title: '合成阻止外部图片', text: '外部地址必须保留为备注，不能请求资源。', img: hostileImage, color: hostileColor, x: 1090, y: 90, boardX: 780, boardY: 100, w: 120, h: 100 }] };
     fs.writeFileSync(sourceFile, JSON.stringify({ app: 'guangying-writer', fileVersion: 1, savedAt: 1, project }), { flag: 'wx' });
     const sourceBytes = fs.readFileSync(sourceFile, 'utf8');
+    const displayObserver = await observeRequests(win);
     openChoices.push({ path: sourceFile }); await key('o', ['control']);
-    await until(`!!document.querySelector(${JSON.stringify(actionSelector)})`, 'Ctrl+O real IPC opens synthetic Chinese filename');
+    await until(`!!document.querySelector(${JSON.stringify(actionSelector)})`, 'Cmd/Ctrl+O real IPC opens synthetic Chinese filename');
     assert.equal(await text(), '合成正文');
+    await verifySanitizedProject(run);
+    await verifyDisplaySafety(run);
+    pass('untrusted project HTML is sanitized before live rendering; bold/italic/line breaks remain and scripts/events/foreign elements do not execute');
     await until('document.querySelector(".writing-material-card__image")?.naturalWidth > 0', 'fixture embedded image decodes');
-    pass('Ctrl+O reads .zhsp via production file IPC from Chinese path with spaces (dialog selection stubbed)');
+    pass('Cmd/Ctrl+O reads .zhsp via production file IPC from Chinese path with spaces (dialog selection stubbed)');
     try {
       report.uiLayers = { status: 'running', timeoutMs: config.uiTimeoutMs }; journal();
-      report.uiLayers = await bounded(require('./windows-ui-layers.cjs')({ win, run, key, menu, pause, until, screenshot, pass, snapshot }), config.uiTimeoutMs, 'Windows UI layer acceptance');
+      report.uiLayers = await bounded(require('./windows-ui-layers.cjs')({ win, run, key, menu, pause, until, screenshot, pass, snapshot }), config.uiTimeoutMs, 'Desktop UI layer acceptance');
       journal();
-      console.log(`Windows UI layers: ${report.uiLayers.assertions} assertions, ${report.uiLayers.groups.length} groups, ${report.uiLayers.screenshots.length} screenshots passed.`);
+      console.log(`Desktop UI layers: ${report.uiLayers.assertions} assertions, ${report.uiLayers.groups.length} groups, ${report.uiLayers.screenshots.length} screenshots passed.`);
     } catch (error) {
       report.uiLayers = { ...report.uiLayers, status: 'failed', error: error.message }; journal();
       // Preserve the original assertion even if Chromium is unresponsive. Only
@@ -250,7 +277,9 @@ app.whenReady().then(async () => {
       fs.writeFileSync(path.join(config.output, 'ui-layer-failure.json'), JSON.stringify(details, null, 2));
       await Promise.race([screenshot('ui-layer-failure.png').catch(() => {}), pause(5000)]);
       throw error;
-    }
+    } finally { report.displayRequests = displayObserver.stop(); journal(); }
+    assert.deepEqual(report.displayRequests, [], 'Untrusted project image/color/HTML metadata must not attempt external or synthetic private-file requests in writing or free-board views');
+    pass('real Chromium writing/free-board preserve blocked-image title/notes and safe embedded image, reject CSS URL colors, and make no external resource request');
     openChoices.push({ canceled: true }); await key('o', ['control']);
     assert.equal(await text(), '合成正文');
     pass('canceled open leaves current synthetic document intact');
@@ -259,7 +288,7 @@ app.whenReady().then(async () => {
     assert.equal(await text(), '合成正文键盘');
     await key('z', ['control']); assert.equal(await text(), '合成正文');
     await key('z', ['control', 'shift']); assert.equal(await text(), '合成正文键盘');
-    pass('Chromium Ctrl+Z / Ctrl+Shift+Z restore visible Chinese text without a native DOM-only undo');
+    pass('Chromium Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z restore visible Chinese text without a native DOM-only undo');
     const cycle = ['action', 'character', 'parenthetical', 'dialogue', 'transition', 'shot', 'scene_heading', 'general', 'note'];
     for (let index = 1; index <= 11; index++) {
       await key('Tab');
@@ -290,13 +319,15 @@ app.whenReady().then(async () => {
     await waitSaved(firstSavedText);
     const firstSavedBytes = fs.readFileSync(savedFile, 'utf8');
     assert.equal(fs.readFileSync(sourceFile, 'utf8'), sourceBytes);
-    pass('Ctrl+Shift+S writes a new Chinese filename through real atomic save IPC and preserves source');
+    pass('Cmd/Ctrl+Shift+S writes a new Chinese filename through real atomic save IPC and preserves source');
     await focusEnd(); await win.webContents.insertText('第二版'); await key('s', ['control']);
     const diskText = firstSavedText + '第二版'; await waitSaved(diskText);
     assert.equal(fs.readFileSync(savedFile + '.guangying-backup', 'utf8'), firstSavedBytes);
     assert.equal(readProject(savedFile).beats[0].img, image);
     assert.equal(readProject(savedFile).elements[2].text, '<b>保留</b>段落');
-    pass('Ctrl+S atomically replaces .zhsp, preserves embedded image/formatting, and retains exact previous-version backup');
+    assert.equal(readProject(savedFile).elements.find(e => e.id === 'security-html').text, safeHtml);
+    await verifySanitizedProject(run);
+    pass('Cmd/Ctrl+S atomically replaces .zhsp, preserves embedded image/formatting, and retains exact previous-version backup');
 
     const beforePdf = JSON.stringify((await snapshot()).project);
     for (const [label, destination, outputName] of [['导出创作版 PDF（原位卡片）…', creativeFile, 'creative.pdf'], ['导出 A4 纯文本 PDF…', printFile, 'print-a4.pdf']]) {
@@ -326,6 +357,9 @@ app.whenReady().then(async () => {
     await pause(1200);
     assert.equal(JSON.stringify((await snapshot()).project), beforePdf);
     pass('both production PDFs have one page; A4 geometry excludes cards, creative PDF embeds image, project stays unchanged (visual/text review remains separate)');
+    await verifyHtmlExport({ win, run, until, pause, root, temporary: config.temporary, output: config.output, saveChoices, screenshot, pass });
+    await pause(1200);
+    assert.equal(JSON.stringify((await snapshot()).project), beforePdf, 'HTML export cannot mutate the project or its hostile source metadata');
     await focusEnd(); await win.webContents.insertText('未保存恢复');
     const unsavedText = diskText + '未保存恢复';
     await until(async () => (await snapshot())?.project.elements.find(e => e.id === 'windows-action').text === unsavedText, 'automatic recovery writes latest text');

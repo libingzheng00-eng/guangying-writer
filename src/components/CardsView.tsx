@@ -4,6 +4,7 @@ import { deriveScenes, newElement } from '../model/project';
 import { CARD_COLORS } from '../model/elements';
 import { storyboardPageCounts, type StoryboardPlacement } from '../model/storyboard';
 import { usePagination } from '../hooks/PaginationProvider';
+import { safeDisplayColor } from '../utils/displayValues';
 
 type DragState = { elementId: string; ids: string[] } | null;
 
@@ -82,7 +83,7 @@ export function CardsView() {
     <section
       key={actId || '__ungrouped__'}
       data-act-id={actId || ''}
-      style={{ '--act-color': color || 'var(--muted)' } as React.CSSProperties}
+      style={{ '--act-color': color ? safeDisplayColor(color) : 'var(--muted)' } as React.CSSProperties}
       className={`cards__act${actId ? '' : ' cards__act--ungrouped'}${dropTarget === (actId || '__ungrouped__') ? ' is-drop-target' : ''}`}
       onDragOver={(e) => {
         if (!dragRef.current) return;
@@ -247,7 +248,7 @@ function Card(p: CardProps) {
         scene.omit ? 'is-omit' : ''
       }`}
       data-scene-id={scene.elementId}
-      style={{ background: scene.color }}
+      style={{ backgroundColor: safeDisplayColor(scene.color) }}
       draggable
       onDragStart={(e) => {
         if ((e.target as HTMLElement).closest('button, select')) { e.preventDefault(); return; }

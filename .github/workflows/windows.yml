@@ -41,6 +41,8 @@ jobs:
           node scripts/windows-package-test.cjs
       - name: 打包 Windows x64 生产白名单
         run: node scripts/package-windows.cjs
+      - name: 保存最终依赖审计
+        run: node scripts/dependency-audit.cjs release/windows/dependency-audit.json
       - name: 压缩、校验与解压回读
         shell: pwsh
         run: |
@@ -63,10 +65,10 @@ jobs:
           if ($signature.Status -ne 'NotSigned') { throw "Unexpected candidate signature status: $($signature.Status)" }
           "Signature status: $($signature.Status) (candidate is intentionally unsigned)" | Out-File release/windows/signature-status.txt
       - name: 未修改交付程序的原始入口启动
-        run: node scripts/windows-launch.cjs --app "$env:WINDOWS_TEST_APP" --output release/windows/launch-evidence
+        run: node scripts/windows-launch.cjs --app "$env:WINDOWS_TEST_APP" --output release/windows/launch-evidence --manifest release/windows/build-manifest.json
       - name: 真实 Windows Electron 合成数据与 UI 层级验收
         timeout-minutes: 9
-        run: node scripts/windows-smoke.cjs --app "$env:WINDOWS_TEST_APP" --output release/windows/evidence
+        run: node scripts/windows-smoke.cjs --app "$env:WINDOWS_TEST_APP" --output release/windows/evidence --manifest release/windows/build-manifest.json
       - name: 上传已验证 Windows 便携包
         uses: actions/upload-artifact@v4
         with:
@@ -76,6 +78,7 @@ jobs:
             release/windows/SHA256SUMS.txt
             release/windows/build-manifest.json
             release/windows/signature-status.txt
+            release/windows/dependency-audit.json
           if-no-files-found: error
           retention-days: 30
       - name: 保留合成验收证据
@@ -86,5 +89,6 @@ jobs:
           path: |
             release/windows/evidence/
             release/windows/launch-evidence/
+            release/windows/dependency-audit.json
           if-no-files-found: warn
           retention-days: 30

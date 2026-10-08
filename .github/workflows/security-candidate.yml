@@ -1,0 +1,82 @@
+name: macOS 安全候选验收
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-candidate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-security:
+    name: security-macos-arm64
+    # Standard macos-14 is arm64; additionally verify the actual Node architecture.
+    runs-on: macos-14
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 锁定依赖及最终源码基线
+        run: |
+          set -euo pipefail
+          node -e "require('node:assert/strict').equal(process.arch, 'arm64')"
+          npm ci
+          npm run typecheck
+          npm run build
+          npm run test:core
+          node scripts/release-assets-test.cjs
+          node scripts/dev-watch-test.cjs
+          node scripts/windows-package-test.cjs
+      - name: 明确准备 Electron 44 运行时并打包
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/install-electron
+          node scripts/package-macos.cjs release/macos-security
+      - name: 保存最终依赖审计
+        run: node scripts/dependency-audit.cjs release/macos-security/dependency-audit.json
+      - name: ZIP 回读与签名完整性
+        run: |
+          set -euo pipefail
+          unpacked="$RUNNER_TEMP/guangying-security-unzipped"
+          mkdir "$unpacked"
+          ditto -xk release/macos-security/GuangyingWriter-macOS-arm64.zip "$unpacked"
+          node scripts/verify-macos-package.cjs "$unpacked/GuangyingWriter.app" release/macos-security/build-manifest.json
+          echo "DESKTOP_TEST_APP=$unpacked/GuangyingWriter.app" >> "$GITHUB_ENV"
+      - name: 真实未修改 .app 原入口
+        run: node scripts/macos-launch.cjs --app "$DESKTOP_TEST_APP" --output release/macos-security/launch-evidence --manifest release/macos-security/build-manifest.json
+      - name: 生产 IPC 安全及完整桌面行为
+        timeout-minutes: 9
+        run: node scripts/macos-smoke.cjs --app "$DESKTOP_TEST_APP" --output release/macos-security/evidence --manifest release/macos-security/build-manifest.json
+      - name: 上传通过验收的候选包（不发布 Release）
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-macOS-arm64-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            release/macos-security/*.zip
+            release/macos-security/SHA256SUMS.txt
+            release/macos-security/build-manifest.json
+            release/macos-security/signature-status.txt
+            release/macos-security/dependency-audit.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: 保留成功或失败的原始证据
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-macos-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            release/macos-security/evidence/
+            release/macos-security/launch-evidence/
+            release/macos-security/build-manifest.json
+            release/macos-security/dependency-audit.json
+          if-no-files-found: warn
+          retention-days: 30

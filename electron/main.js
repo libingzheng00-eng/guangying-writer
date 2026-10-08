@@ -1,9 +1,12 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const { pathToFileURL } = require('node:url');
 const { renderPdf } = require('./pdf');
 const { saveProjectFile } = require('./projectSave');
 const { dialogFileName } = require('./platform');
+const { senderGuard, secureWindow, savePayload, pdfPayload, rejectRequest } = require('./security');
+const { createFileAccess } = require('./fileAccess');
 
 /* ---------------------------- 主进程崩溃兜底 ---------------------------- */
 /* 任何未捕获的同步异常 / 未处理的 Promise 拒绝，默认会让 Electron 直接退出且无提示。
@@ -22,16 +25,24 @@ function logFatal(where, err) {
 process.on('uncaughtException', (err) => logFatal('uncaughtException', err));
 process.on('unhandledRejection', (reason) => logFatal('unhandledRejection', reason));
 
-const DEV = process.env.ZS_DEV === '1';
+const DEV = process.env.ZS_DEV === '1' && !app.isPackaged;
+const RENDERER_FILE = path.join(__dirname, '..', 'dist-renderer', 'index.html');
+const RENDERER_URL = DEV ? 'http://localhost:5178/' : pathToFileURL(RENDERER_FILE).href;
 const RECENT_FILE = () => path.join(app.getPath('userData'), 'recent.json');
 
 let win = null;
+const fileAccess = createFileAccess({
+  fileSystem: fs, pathApi: path, platform: process.platform,
+  userData: () => app.getPath('userData'), protectedRoots: [path.resolve(__dirname, '..')],
+  warn: message => { try { console.warn('[光影写手]', message); } catch { /* diagnostics only */ } },
+});
 
 function readRecent() {
   try {
     const raw = fs.readFileSync(RECENT_FILE(), 'utf8');
     const list = JSON.parse(raw);
-    return Array.isArray(list) ? list.slice(0, 12) : [];
+    return Array.isArray(list) ? list.filter(entry => entry && typeof entry.path === 'string' &&
+      typeof entry.name === 'string' && Number.isFinite(entry.updatedAt)).slice(0, 12) : [];
   } catch {
     return [];
   }
@@ -69,9 +80,14 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
       spellcheck: false,
     },
   });
+  secureWindow(win);
 
   win.once('ready-to-show', () => win.show());
   // beforeunload first flushes the latest recovery point in the renderer.
@@ -93,7 +109,7 @@ function createWindow() {
   if (DEV) {
     win.loadURL('http://localhost:5178');
   } else {
-    win.loadFile(path.join(__dirname, '..', 'dist-renderer', 'index.html'));
+    win.loadFile(RENDERER_FILE);
   }
 }
 
@@ -206,7 +222,28 @@ function warnProjectSaveDurability(result) {
   } catch { /* logging failure cannot undo an already successful save */ }
 }
 
-ipcMain.handle('dialog:open', async () => {
+function handle(channel, action) {
+  ipcMain.handle(channel, async (event, payload) => {
+    try {
+      const checkSender = senderGuard(event, () => win, RENDERER_URL);
+      return await action(payload, checkSender);
+    } catch {
+      // Do not forward filesystem paths, project text or arbitrary native errors
+      // through rejected IPC promises. Rejections stay distinct from cancellation.
+      rejectRequest();
+    }
+  });
+}
+
+function rememberSaved(selection) {
+  try { fileAccess.grantProject(selection); }
+  catch {
+    try { console.warn('[光影写手] 文件已保存；保存位置授权未能更新，下次保存可能需要重新确认。'); }
+    catch { /* logging cannot undo a successful save */ }
+  }
+}
+
+handle('dialog:open', async (_payload, checkSender) => {
   const res = await dialog.showOpenDialog(win, {
     properties: ['openFile'],
     filters: [
@@ -217,76 +254,99 @@ ipcMain.handle('dialog:open', async () => {
       { name: '所有文件', extensions: ['*'] },
     ],
   });
+  checkSender();
   if (res.canceled || !res.filePaths.length) return null;
   const file = res.filePaths[0];
   try {
-    const content = fs.readFileSync(file, 'utf8');
+    const { content } = fileAccess.readSelected(file);
     pushRecent({ path: file, name: path.basename(file), updatedAt: Date.now() });
     return { path: file, content };
   } catch (err) {
-    dialog.showErrorBox('打开失败', `无法读取文件：${file}\n${err && err.message ? err.message : err}`);
+    dialog.showErrorBox('打开失败', '无法安全读取所选文件。请检查文件是否可用，或重新选择。');
     return null;
   }
 });
 
-ipcMain.handle('dialog:save', async (_e, { content, path: target, name }) => {
-  let file = target;
-  if (!file) {
+handle('dialog:save', async (payload, checkSender) => {
+  const { content, path: target, name } = savePayload(payload);
+  let selection = target ? fileAccess.authorizedProject(target) : null;
+  if (!selection) {
     const res = await dialog.showSaveDialog(win, {
-      defaultPath: dialogFileName(name || '未命名剧本.zhsp', process.platform),
+      ...(target ? { title: '确认恢复工程的保存位置', buttonLabel: '确认并保存' } : {}),
+      defaultPath: target || dialogFileName(name || '未命名剧本.zhsp', process.platform),
       filters: [{ name: '光影写手工程', extensions: ['zhsp'] }],
     });
+    checkSender();
     if (res.canceled || !res.filePath) return null;
-    file = res.filePath;
+    selection = fileAccess.selected(res.filePath, 'zhsp');
   }
+  const file = selection.requested;
   try {
-    warnProjectSaveDurability(await saveProjectFile(file, content));
+    checkSender();
+    const current = fileAccess.check(selection, 'zhsp');
+    warnProjectSaveDurability(await saveProjectFile(current.canonical, content, { path: path.dirname(current.canonical), ...current.parent }));
+    checkSender();
+    rememberSaved(current);
   } catch (err) {
-    dialog.showErrorBox('保存失败', `无法写入文件：${file}\n${err && err.message ? err.message : err}`);
+    if (err?.code === 'ESECURITY') throw err;
+    dialog.showErrorBox('保存失败', '工程保存未完成。请检查保存位置、文件权限和可用空间后重试。');
     return null;
   }
   pushRecent({ path: file, name: path.basename(file), updatedAt: Date.now() });
   return file;
 });
 
-ipcMain.handle('dialog:saveAs', async (_e, { content, name, ext }) => {
+handle('dialog:saveAs', async (payload, checkSender) => {
+  const { content, name, ext } = savePayload(payload, true);
   const res = await dialog.showSaveDialog(win, {
-    defaultPath: dialogFileName(`${name}.${ext || 'zhsp'}`, process.platform),
+    defaultPath: dialogFileName(`${name || '未命名剧本'}.${ext || 'zhsp'}`, process.platform),
     filters: [{ name: '导出文件', extensions: [ext || 'zhsp'] }],
   });
+  checkSender();
   if (res.canceled || !res.filePath) return null;
+  const selection = fileAccess.selected(res.filePath, ext || 'zhsp');
   try {
-    if ((ext || 'zhsp').toLowerCase() === 'zhsp') warnProjectSaveDurability(await saveProjectFile(res.filePath, content));
-    else fs.writeFileSync(res.filePath, content, 'utf8');
+    if ((ext || 'zhsp').toLowerCase() === 'zhsp') {
+      const current = fileAccess.check(selection, 'zhsp');
+      warnProjectSaveDurability(await saveProjectFile(current.canonical, content, { path: path.dirname(current.canonical), ...current.parent }));
+      checkSender();
+      rememberSaved(selection);
+    } else fileAccess.writeExport(selection, content, 'utf8');
   } catch (err) {
-    dialog.showErrorBox('导出失败', `无法写入文件：${res.filePath}\n${err && err.message ? err.message : err}`);
+    if (err?.code === 'ESECURITY') throw err;
+    dialog.showErrorBox('导出失败', '无法写入所选文件。请检查保存位置、文件权限和可用空间后重试。');
     return null;
   }
   return res.filePath;
 });
 
-ipcMain.handle('pdf:export', async (_e, opts) => {
+handle('pdf:export', async (payload, checkSender) => {
+  const opts = pdfPayload(payload);
   const res = await dialog.showSaveDialog(win, {
     defaultPath: dialogFileName(opts?.name || '剧本.pdf', process.platform),
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
+  checkSender();
   if (res.canceled || !res.filePath) return null;
+  const selection = fileAccess.selected(res.filePath, 'pdf');
   try {
     const data = await renderPdf(win, opts);
-    fs.writeFileSync(res.filePath, data);
+    checkSender();
+    fileAccess.writeExport(selection, data);
     return res.filePath;
   } catch (err) {
-    dialog.showErrorBox('导出失败', String(err && err.message ? err.message : err));
+    if (err?.code === 'ESECURITY') throw err;
+    dialog.showErrorBox('导出失败', 'PDF 导出未完成。请检查保存位置后重试；工程内容没有被修改。');
     return null;
   }
 });
 
-ipcMain.handle('file:show', async (_e, p) => {
-  if (p) shell.showItemInFolder(p);
+handle('file:show', async (p) => {
+  shell.showItemInFolder(fileAccess.shownPath(p));
 });
 
-ipcMain.handle('app:recent', () => readRecent());
-ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform }));
+handle('app:recent', () => readRecent());
+handle('app:info', () => ({ version: app.getVersion(), platform: process.platform }));
 
 /* ---------------------------- 生命周期 ---------------------------- */
 
