@@ -10,7 +10,7 @@ const strictAssert = require('node:assert/strict');
 
 module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause, until, screenshot: capture, pass: markPassed, snapshot }) {
   let assertions = 0;
-  const groups = [], screenshots = [];
+  const groups = [], screenshots = [], buttonActivations = [];
   const assert = Object.fromEntries(['ok', 'equal', 'deepEqual'].map(method => [method, (...args) => { strictAssert[method](...args); assertions++; }]));
   const pass = label => { groups.push(label); markPassed(label); };
   const screenshot = async name => { await capture(name); screenshots.push(name); };
@@ -48,6 +48,46 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
     await pause(100);
   }
   const click = selector => clickExpression(element(selector), selector);
+  async function activateFileButton(code) {
+    assert.ok(code === 'Space' || code === 'Enter', 'Only native button activation keys use this driver');
+    assert.equal(win.isFocused(), true, 'Owned QA window must be focused for native button input');
+    const ready = await run(`(() => {const e=document.querySelector(${q(trigger)}),r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return {
+      focused:document.activeElement===e,enabled:!e.disabled,closed:!document.querySelector(${q(popup)}),
+      visible:r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight,topmost:!!hit&&(hit===e||e.contains(hit))};})()`);
+    assert.deepEqual(ready, { focused: true, enabled: true, closed: true, visible: true, topmost: true }, `${code} starts on the visible, focused, enabled file button`);
+    // Observe trusted Chromium events only; no DOM dispatch/click, focus change,
+    // or application/store mutation. Restore this temporary observer afterward.
+    await run(`(() => {
+      const target=document.querySelector(${q(trigger)}),events=[];
+      const listen=event=>{const item={type:event.type,key:event.key||null,charCode:event.charCode||0,isTrusted:event.isTrusted,fileTarget:event.target===target||target.contains(event.target),defaultPrevented:event.defaultPrevented};events.push(item);queueMicrotask(()=>{item.defaultPrevented=event.defaultPrevented;});};
+      const types=['keydown','keypress','keyup','click'];types.forEach(type=>document.addEventListener(type,listen,true));
+      window.__guangyingButtonInputTrace={events,stop(){types.forEach(type=>document.removeEventListener(type,listen,true));delete window.__guangyingButtonInputTrace;return events;}};
+    })()`);
+    let released = false, trace;
+    try {
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: code });
+      await until(`window.__guangyingButtonInputTrace.events.some(e=>e.type==='keydown')`, `${code} reaches the file button`);
+      assert.equal(await run(`document.activeElement===document.querySelector(${q(trigger)})&&!window.__guangyingButtonInputTrace.events.find(e=>e.type==='keydown').defaultPrevented`), true, 'Button keydown keeps focus and permits its native default');
+      // Electron 31.7.7 explicitly requires a char event for keypress. Its
+      // Chromium 126 button activation handles Enter on keypress '\r' and Space
+      // on keyup. Keep this sequence local: editor Enter stays on key() and must
+      // not receive forced character input after its preventDefault handler.
+      // https://github.com/electron/electron/blob/v31.7.7/spec/api-web-contents-spec.ts#L916
+      // https://github.com/chromium/chromium/blob/126.0.6478.234/third_party/blink/renderer/core/html/html_element.cc#L2742
+      win.webContents.sendInputEvent({ type: 'char', keyCode: code });
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: code }); released = true;
+      await pause(160);
+    } finally {
+      if (!released) win.webContents.sendInputEvent({ type: 'keyUp', keyCode: code });
+      trace = await run('window.__guangyingButtonInputTrace.stop()');
+      buttonActivations.push({ key: code, events: trace });
+      console.log('Windows file button input:', JSON.stringify({ key: code, events: trace }));
+    }
+    assert.deepEqual(trace.filter(event => event.type !== 'click').map(event => event.type), ['keydown', 'keypress', 'keyup'], `${code} has a complete native keyboard sequence`);
+    assert.equal(trace.every(event => event.isTrusted), true, `${code} keyboard/click events are Chromium-trusted`);
+    assert.deepEqual(trace.filter(event => event.type === 'keypress').map(event => [event.fileTarget, event.charCode]), [[true, code === 'Enter' ? 13 : 32]], `${code} delivers the expected character to the button`);
+    assert.deepEqual(trace.filter(event => event.type === 'click').map(event => event.fileTarget), [true], `${code} activates the file button exactly once`);
+  }
   async function editField(label, value) {
     await clickExpression(field(label), label);
     await key('a', ['control']);
@@ -305,7 +345,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
     assert.deepEqual(await run(boardState), expectedBoardState, `Closed file trigger ${code} cannot change board mode, selection or cards`);
   }
   for (const code of ['Space', 'Enter']) {
-    await key(code);
+    await activateFileButton(code);
     await until(`!!document.querySelector(${q(popup)})`, `${code} activates the closed file button through Chromium`);
     assert.deepEqual(await run(boardState), expectedBoardState, `${code} button activation cannot operate the board`);
     for (const blocked of ['Delete', 'Backspace', 'l']) {
@@ -332,5 +372,5 @@ module.exports = async function runWindowsUiLayers({ win, run, key, menu, pause,
   await escapeModal(); win.setBounds(originalBounds); await pause(1200);
   assert.deepEqual(withoutTimestamp((await snapshot()).project), withoutTimestamp(before), 'UI acceptance restores all project fields and leaves original screenplay/card geometry intact');
   await focusEditorRange();
-  return { status: 'passed', assertions, groups, screenshots, scope: 'Chromium key/pointer input and native MenuItem callback -> production IPC; synthetic fixture only' };
+  return { status: 'passed', assertions, groups, screenshots, buttonActivations, scope: 'Chromium key/pointer input and native MenuItem callback -> production IPC; synthetic fixture only' };
 };
