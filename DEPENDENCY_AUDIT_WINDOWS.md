@@ -1,10 +1,10 @@
 # Windows 候选的依赖审计
 
-审计日期：2026-10-08。比较原始 `main` 提交 `dcc097bc324dc081a68c5120a9260530e2278a33` 与 Windows 分支锁文件（首次审计提交 `439e95e940818173118b43298dca3852a866c6b4`）。后续原始入口和 SmartType 验收补丁没有修改依赖。方法是分别运行 `npm audit --json`，比较 `vulnerabilities` 对象，再按锁文件和 `npm ls` 追踪安装、开发和交付路径。此为有界依赖审查，不是完整渗透测试；公告和计数可能随时间变化。
+审计日期：2026-10-08。比较原始 `main` 提交 `dcc097bc324dc081a68c5120a9260530e2278a33` 与 Windows 分支锁文件（首次审计提交 `439e95e940818173118b43298dca3852a866c6b4`）。后续原始入口和 SmartType 验收补丁没有修改依赖。方法是分别运行 `npm audit --json --package-lock-only`，比较 `vulnerabilities` 对象，再按锁文件和 `npm ls` 追踪安装、开发和交付路径。此为有界依赖审查，不是完整渗透测试；公告和计数可能随时间变化。
 
 ## 结果与交付限制
 
-两份审计的受影响包对象完全相同：**10 个受影响包，5 high / 5 moderate / 0 critical**。这是包数量，不是漏洞数量；这些包关联 46 条直接公告，Electron 关联其中 37 条（11 条 high）。Windows 打包新增 44 条锁定包记录，没有改动既有包记录，新增记录没有被本次 audit 列为受影响节点。
+两份审计的受影响包对象完全相同：**10 个受影响包，5 high / 5 moderate / 0 critical**。这是包数量，不是漏洞数量；这些包关联 46 条直接公告，Electron 关联其中 37 条（11 条 high）。Windows 打包新增 44 条锁定包记录，除根项目 manifest 记录外，没有改动既有依赖包记录，新增记录没有被本次 audit 列为受影响节点。
 
 **Electron 31.7.7 是随 EXE 交付的运行时，不能因它位于 devDependencies 就忽略其风险。** 本次继续沿用 Mac 基线运行时，Windows 功能验收通过也不表示运行时漏洞已修复。本候选应保持 alpha / draft 状态；面向普通用户正式推广前，优先安排受支持 Electron 版本升级和 Mac、Windows 的保存、恢复、PDF、输入法回归。
 
