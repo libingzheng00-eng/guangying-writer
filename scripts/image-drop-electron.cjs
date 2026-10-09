@@ -73,12 +73,26 @@ async function screenshot(name) {
   await pause(200);
   fs.writeFileSync(path.join(out, name), (await win.webContents.capturePage()).toPNG());
 }
+async function clickStartupButton(selector) {
+  win.show(); win.focus();
+  const point = await run(`(() => { const e=document.querySelector(${JSON.stringify(selector)});
+    if(!e||e.disabled)throw Error('Missing or disabled startup button');
+    e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+    const hit=document.elementFromPoint(x,y);return {x,y,visible:r.width>0&&r.height>0&&x>=0&&y>=0&&x<innerWidth&&y<innerHeight,hit:!!hit&&(hit===e||e.contains(hit))};})()`);
+  assert.ok(point.visible && point.hit, 'Startup entry must be visible and topmost');
+  for (const type of ['mouseMove', 'mouseDown', 'mouseUp']) win.webContents.sendInputEvent({ type,
+    x: Math.round(point.x), y: Math.round(point.y), ...(type === 'mouseMove' ? {} : { button: 'left', clickCount: 1 }) });
+}
 app.whenReady().then(async () => {
   try {
     win = await createFixtureWindow({ out, renderer, preload: path.join(root, 'electron/preload.js') });
+    await until('!!document.querySelector(".startup") && !!document.querySelector(".startup__action:not(:disabled)")');
+    check('独立用户目录首次启动显示首页且尚未生成正文或恢复点', await run(`!!document.querySelector('.startup__preference input[value="home"]:checked') && !document.querySelector('.script-flow') && localStorage.getItem('guangying:autosave')===null`));
+    check('首页首个工程入口是新建剧本', await run(`document.querySelector('.startup__action')?.textContent.includes('新建剧本')`));
+    await clickStartupButton('.startup__action');
     await until('!!document.querySelector(".script-flow [contenteditable]")');
     win.webContents.debugger.attach('1.3');
-    check('独立用户目录首次启动为空白正文', await run(`!document.querySelector('.script-flow [contenteditable]').textContent.trim()`));
+    check('真实首页新建入口创建空白正文', await run(`!document.querySelector('.script-flow [contenteditable]').textContent.trim()`));
     await run(`document.querySelector('.script-flow [contenteditable]').focus()`);
     const originalId = await run(`document.activeElement.closest('[data-id]').dataset.id`);
     const cycle = ['action','character','parenthetical','dialogue','transition','shot','scene_heading','general','note'];
@@ -141,6 +155,9 @@ app.whenReady().then(async () => {
     await pause(1000);
     win = await createFixtureWindow({ out, renderer, previous: win, restore: true,
       preload: path.join(root, 'electron/preload.js') });
+    await until('!!document.querySelector(".startup__continue button:not(:disabled)")');
+    check('同隔离存储重建后在默认首页提供继续恢复入口', await run(`!!document.querySelector('.startup') && !document.querySelector('.script-flow')`));
+    await clickStartupButton('.startup__continue button');
     await until('document.querySelectorAll(".writing-material-card--image").length === 5');
     await run(`document.querySelector('.editor__scroll').style.minHeight='2400px'; document.querySelector('.editor').scrollTop=700;`);
     await pause(200);
