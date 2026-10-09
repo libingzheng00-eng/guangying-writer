@@ -83,7 +83,73 @@ module.exports = function startupNativeQa({ win, run, key, pause, until, snapsho
     await until(`(() => {const e=document.querySelector(${q(selector)}),s=getSelection();if(!e||document.activeElement!==e||!s?.rangeCount||!e.contains(s.focusNode))return false;
       const r=document.createRange();r.selectNodeContents(e);r.setEnd(s.focusNode,s.focusOffset);return r.toString().length===${offset};})()`, 'restored real DOM caret ' + offset);
   }
-  async function view(label, selector) { await click(button('.toolbar__views', label)); await until(`!!document.querySelector(${q(selector)})`, label + ' view'); }
+  async function view(label, selector) {
+    const navigation = await run(`(() => {
+      const inspect=e=>{if(!e)return {visible:false,hit:false};const r=e.getBoundingClientRect(),s=getComputedStyle(e),x=r.left+r.width/2,y=r.top+r.height/2,h=document.elementFromPoint(x,y);
+        return {visible:!e.disabled&&s.display!=='none'&&s.visibility==='visible'&&Number(s.opacity)>0&&r.width>0&&r.height>0&&x>=0&&y>=0&&x<innerWidth&&y<innerHeight,hit:!!h&&(h===e||e.contains(h))};};
+      const select=document.querySelector('.toolbar__view-select');
+      return {button:inspect(${button('.toolbar__views', label)}),select:inspect(select),current:select?.value,
+        options:Array.from(select?.options||[]).map((e,index)=>({index,value:e.value,label:e.textContent.trim(),disabled:e.disabled})),
+        viewport:{width:innerWidth,height:innerHeight,devicePixelRatio}};
+    })()`);
+    const matches = navigation.options.filter(option => option.label === label);
+    assert.equal(matches.length, 1, 'View label must identify exactly one actual Toolbar option');
+    const target = matches[0];
+    assert.equal(target.disabled, false, 'Requested Toolbar view must be enabled');
+    const mode = navigation.button.visible ? 'pointer-button' : 'closed-select-typeahead';
+    console.log('Startup view navigation: ' + JSON.stringify({ label, value: target.value, index: target.index, mode, viewport: navigation.viewport }));
+    await recordWindowGeometry('startup view navigation', { label, value: target.value, index: target.index, mode });
+    if (mode === 'pointer-button') {
+      assert.equal(navigation.button.hit, true, 'Visible view button must be topmost');
+      await click(button('.toolbar__views', label));
+    } else {
+      assert.ok(navigation.select.visible && navigation.select.hit,
+        'Compact view select must be visible and topmost: ' + JSON.stringify(navigation));
+      // Derive the shortest unique label prefix from the rendered VIEWS options.
+      // A closed select accepts trusted character input without opening an OS
+      // popup (whose key routing differs by platform). Home/Down alone does not
+      // select options on macOS. Never assign value or synthesize change events.
+      let prefix = '';
+      for (const character of target.label) {
+        prefix += character;
+        if (navigation.options.filter(option => option.label.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase())).length === 1) break;
+      }
+      assert.ok(prefix && navigation.options.filter(option => option.label.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase())).length === 1,
+        'Requested Toolbar option needs a unique type-ahead prefix');
+      win.show(); win.focus();
+      await run(`(() => {const e=document.querySelector('.toolbar__view-select');e.focus({preventScroll:true});
+        const events=[],listen=event=>events.push({type:event.type,charCode:event.charCode,trusted:event.isTrusted,value:e.value,index:e.selectedIndex});
+        for(const type of ['keypress','input','change'])e.addEventListener(type,listen);
+        window.__startupViewInput={events,remove:()=>{for(const type of ['keypress','input','change'])e.removeEventListener(type,listen);}};})()`);
+      try {
+        assert.equal(await run(`document.activeElement===document.querySelector('.toolbar__view-select')`), true, 'Closed select owns keyboard focus');
+        // Chromium retains a short type-ahead buffer between changes; this is
+        // local to the select route and makes consecutive view changes distinct.
+        await pause(1100);
+        let count = 0;
+        for (const character of prefix) {
+          win.webContents.sendInputEvent({ type: 'char', keyCode: character });
+          count += 1;
+          await until(`window.__startupViewInput.events.filter(e=>e.type==='keypress').length===${count}`, 'trusted view type-ahead character');
+          const event = await run(`window.__startupViewInput.events.filter(e=>e.type==='keypress')[${count - 1}]`);
+          assert.equal(event.trusted, true, 'Each view type-ahead character must be trusted Chromium input');
+          assert.equal(event.charCode, character.charCodeAt(0), 'Chromium must receive the requested view character');
+        }
+        await until(`document.querySelector('.toolbar__view-select')?.value===${q(target.value)}&&document.querySelector('.toolbar__view-select')?.selectedIndex===${target.index}`, 'native select reaches requested view value and index');
+        const events = await run('window.__startupViewInput.events');
+        assert.ok(events.every(event => event.trusted), 'View type-ahead must not dispatch untrusted events');
+        if (navigation.current !== target.value) {
+          for (const type of ['input', 'change']) assert.ok(events.some(event => event.type === type && event.value === target.value && event.index === target.index),
+            'Native select must emit trusted ' + type + ' for the requested view');
+        }
+        console.log('Startup view type-ahead: ' + JSON.stringify({ prefix, events }));
+      } finally {
+        await run('window.__startupViewInput?.remove();delete window.__startupViewInput;');
+      }
+    }
+    await until(`(() => {const e=document.querySelector(${q(selector)}),s=document.querySelector('.toolbar__view-select');
+      return !!e&&e.getClientRects().length>0&&s?.value===${q(target.value)}&&s.selectedIndex===${target.index};})()`, label + ' view and navigation selection');
+  }
   async function firstLaunch() {
     await readyHome();
     assert.equal(await run(`document.activeElement===document.querySelector('.startup h1')`), true);
