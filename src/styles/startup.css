@@ -1,6 +1,10 @@
 /* 启动页仅使用工作台主题变量；不影响正文、画布或打印布局。 */
 @media screen {
   .startup {
+    /* Like app-body, the landing page must paint above the fixed write-bg.
+       Pointer hit-testing alone misses this because write-bg ignores input. */
+    position: relative;
+    z-index: 1;
     flex: 1;
     min-width: 0;
     min-height: 0;

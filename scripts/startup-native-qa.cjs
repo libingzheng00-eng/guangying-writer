@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-module.exports = function startupNativeQa({ win, run, key, pause, until, snapshot, screenshot, pass,
+module.exports = function startupNativeQa({ win, run, key, pause, until, snapshot, screenshot: capture, pass,
   menu, command, openChoices, syntheticDir, recordWindowGeometry }) {
   const q = JSON.stringify;
   const button = (scope, label) => `Array.from(document.querySelectorAll(${q(scope + ' button')})).find(e=>e.textContent.trim()===${q(label)})`;
@@ -18,6 +18,22 @@ module.exports = function startupNativeQa({ win, run, key, pause, until, snapsho
   const readRecent = () => run('window.api.getRecent()');
   const rawRecovery = () => run(`localStorage.getItem('guangying:autosave')`);
   const readyHome = () => until(`!!document.querySelector('.startup') && document.querySelector('.startup__recent-content')?.getAttribute('aria-busy')==='false' && !document.querySelector('.startup__action:disabled')`, 'startup page and recent list ready');
+  async function screenshot(name) {
+    win.show(); win.focus();
+    await run(`document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))`);
+    await pause(160);
+    if (/^(first-launch-home|recovery-home|startup-)/.test(name)) {
+      const layers = await run(`(() => {const page=document.querySelector('.startup'),background=document.querySelector('.write-bg');
+        if(!page||!background)return null;const p=getComputedStyle(page),b=getComputedStyle(background);
+        return {pagePosition:p.position,pageZ:Number(p.zIndex),backgroundZ:Number(b.zIndex),
+          modal:!!document.querySelector('.modal'),theme:document.querySelector('.app-shell')?.dataset.theme};})()`);
+      assert.ok(layers && layers.pagePosition !== 'static' && layers.pageZ > layers.backgroundZ && !layers.modal,
+        'Startup screenshot needs a visible foreground stacking layer above write-bg, not only successful pointer hit-testing');
+      const theme = name.match(/-(day|night)\.png$/)?.[1];
+      if (theme) assert.equal(layers.theme, theme, 'Screenshot filename must match the displayed startup theme');
+    }
+    await capture(name);
+  }
   async function click(expression) {
     const point = await run(`(() => {
       const e=${expression};if(!e||e.disabled)throw Error('Missing or disabled startup QA control');
@@ -53,11 +69,15 @@ module.exports = function startupNativeQa({ win, run, key, pause, until, snapsho
     return entries.slice().reverse().find(e=>e.filePath===${q(file)}&&e.context.projectId===${q(projectId)})?.context||null;
   })()`);
   async function setCaret(selector, offset) {
+    win.show(); win.focus();
     await run(`(() => {const e=document.querySelector(${q(selector)});e.scrollIntoView({block:'center'});e.focus();
       const node=e.firstChild;if(!node||node.nodeType!==Node.TEXT_NODE)throw Error('QA caret requires its known plain-text paragraph');
       const r=document.createRange();r.setStart(node,${offset});r.collapse(true);const s=getSelection();s.removeAllRanges();s.addRange(r);})()`);
-    // Trusted key input creates the selectionchange/keyup context capture.
-    await key('ArrowRight');
+    await caretIs(selector, offset);
+    // Electron's native keyCode is Right; ArrowRight is only the DOM key name.
+    // Assert real selection movement before checking the persistence layer.
+    await key('Right');
+    await caretIs(selector, offset + 1);
   }
   async function caretIs(selector, offset) {
     await until(`(() => {const e=document.querySelector(${q(selector)}),s=getSelection();if(!e||document.activeElement!==e||!s?.rangeCount||!e.contains(s.focusNode))return false;
