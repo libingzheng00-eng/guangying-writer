@@ -59,6 +59,9 @@ jobs:
       - name: 旧关系线打开保存与独立重启兼容
         timeout-minutes: 4
         run: node scripts/legacy-links-native.cjs --output "$PWD/release/macos-security/legacy-links"
+      - name: 改稿工作台原生操作、恢复与实际 PDF
+        timeout-minutes: 4
+        run: node scripts/review-native.cjs --output "$PWD/release/macos-security/review-evidence"
       - name: 上传通过验收的候选包（不发布 Release）
         uses: actions/upload-artifact@v4
         with:
@@ -80,6 +83,7 @@ jobs:
             release/macos-security/evidence/
             release/macos-security/launch-evidence/
             release/macos-security/legacy-links/
+            release/macos-security/review-evidence/
             release/macos-security/build-manifest.json
             release/macos-security/dependency-audit.json
           if-no-files-found: warn

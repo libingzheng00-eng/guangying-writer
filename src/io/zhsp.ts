@@ -4,6 +4,9 @@ import { DEFAULT_INDENT, DEFAULT_REVISIONS, ELEMENT_ORDER } from '../model/eleme
 import { normalizeTargetPages } from '../model/progress';
 import { validateProjectSettings } from '../model/projectSettingsValidation';
 import { sanitizeProjectHtml } from '../utils/projectHtml';
+import { parseRevisionWorkspace } from '../model/revisionWorkspace';
+import { validateAnnotations, reconcileAnnotations } from '../model/annotations';
+import { normalizeDeliveryIgnored } from '../model/deliveryChecks';
 
 export interface ZhspFile {
   app: 'guangying-writer';
@@ -68,6 +71,10 @@ function metadataList(value: unknown, kind: 'sceneMeta' | 'acts' | 'revisions') 
     if (kind === 'sceneMeta') {
       identifier(item.elementId);
       fields(item, ['title', 'synopsis', 'color'], 'string');
+      fields(item, ['location', 'storyTime', 'revisionStatus'], 'string');
+      if (item.location !== undefined && (item.location as string).length > 500) throw invalidStructure();
+      if (item.storyTime !== undefined && (item.storyTime as string).length > 500) throw invalidStructure();
+      if (item.revisionStatus !== undefined && !['todo', 'revising', 'done'].includes(item.revisionStatus as string)) throw invalidStructure();
       fields(item, ['omit'], 'boolean');
       fields(item, ['order', 'x', 'y', 'w', 'h'], 'number');
       optionalIdentifiers(item, ['actId']);
@@ -239,6 +246,10 @@ export function parseProjectValue(value: unknown): ScriptProject {
   const boardLinks = normalizeBoardLinks(source.boardLinks, elements, beats);
   const acts = metadataList(source.acts, 'acts') as unknown as ScriptProject['acts'];
   const revisions = metadataList(source.revisions, 'revisions') as unknown as ScriptProject['revisions'];
+  // Preserve the previously declared legacy field without enabling automatic
+  // collection or folding it into the explicit new stash.
+  const trash = source.trash === undefined ? undefined : list(source.trash).map(normalizeElement);
+  const revisionWorkspace = parseRevisionWorkspace(source.revisionWorkspace);
   return {
     id: p.id || 'p',
     name: p.name || '未命名剧本',
@@ -256,5 +267,9 @@ export function parseProjectValue(value: unknown): ScriptProject {
     acts: source.acts !== undefined ? acts : [{ id: 'act-1', title: '第一幕', color: '#cfe4ff' }],
     revisions: revisions.length ? revisions : DEFAULT_REVISIONS,
     settings,
+    ...(trash === undefined ? {} : { trash }),
+    ...(revisionWorkspace === undefined ? {} : { revisionWorkspace }),
+    ...(source.annotations === undefined ? {} : { annotations: reconcileAnnotations(elements, elements, validateAnnotations(source.annotations)) }),
+    ...(source.deliveryIgnored === undefined ? {} : { deliveryIgnored: normalizeDeliveryIgnored(source.deliveryIgnored) }),
   };
 }

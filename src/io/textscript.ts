@@ -206,6 +206,11 @@ export function toHtml(p: ScriptProject): string {
 body{font-family:${fontStackOf(st.fontKey)};font-size:${positive(st.fontSize, 12)}pt;line-height:${positive(st.lineHeight, 1.6)};margin:4em auto;max-width:48em;padding:0 1em;}
 p{margin:0 0 0.8em;}
 .el-character{margin-top:1em;}
+@media print{
+  p{orphans:2;widows:2;}
+  .el-scene_heading,.el-act,.el-character,.el-parenthetical,.el-shot{break-after:avoid;page-break-after:avoid;}
+  .el-scene_heading,.el-act,.el-character,.el-parenthetical{break-inside:avoid;page-break-inside:avoid;}
+}
 </style></head><body>
 ${p.titlePage.show ? `<h1>${escapeHtml(p.titlePage.title)}</h1>` : ''}
 ${body}

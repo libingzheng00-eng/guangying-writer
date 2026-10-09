@@ -5,6 +5,7 @@ import { CARD_COLORS } from '../model/elements';
 import { storyboardPageCounts, type StoryboardPlacement } from '../model/storyboard';
 import { usePagination } from '../hooks/PaginationProvider';
 import { safeDisplayColor } from '../utils/displayValues';
+import { SceneReviewFields, SceneReviewText } from './SceneReviewFields';
 
 type DragState = { elementId: string; ids: string[] } | null;
 
@@ -35,6 +36,7 @@ export function CardsView() {
   const anchor = useRef<string | null>(null);
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [displayOrder, setDisplayOrder] = useState<'acts' | 'script'>('acts');
   useEffect(() => {
     setSelected([]); setCollapsed([]); setDeleting(null); setEditing(null);
     anchor.current = null; dragRef.current = null; setDrag(null); setOver(null); setDropTarget(null);
@@ -54,7 +56,7 @@ export function CardsView() {
   const pageCounts = useMemo(() => storyboardPageCounts(project, pagination.pages), [project, pagination.pages]);
   const pagesReady = pagination.readyKey === `${version}:${project.settings.paper}`;
   const selectedIds = selected.filter(id => scenes.some(scene => scene.elementId === id));
-  const visibleOrder = [...(collapsed.includes('') ? [] : grouped.other), ...project.acts.flatMap(act => collapsed.includes(act.id) ? [] : grouped.map.get(act.id) || [])]
+  const visibleOrder = (displayOrder === 'script' ? scenes : [...(collapsed.includes('') ? [] : grouped.other), ...project.acts.flatMap(act => collapsed.includes(act.id) ? [] : grouped.map.get(act.id) || [])])
     .map(scene => scene.elementId);
   const select = (id: string, range: boolean) => {
     useStore.getState().updateWritingContext({ sceneId: id }, documentEpoch);
@@ -181,7 +183,12 @@ export function CardsView() {
     <div className="cards">
       <div className="cards__bar">
         <span className="cards__label">故事板 · {scenes.length} 场</span>
-        <span className="hint">拖动场号归幕 · Shift 连选 · ⌘/Ctrl 多选</span>
+        <label className="scene-review__order">排列
+          <select aria-label="故事板排列" value={displayOrder} onChange={event => { clearDrag(); setSelected([]); anchor.current = null; setDisplayOrder(event.target.value as 'acts' | 'script'); }}>
+            <option value="acts">按幕分组</option><option value="script">正文顺序</option>
+          </select>
+        </label>
+        <span className="hint">{displayOrder === 'acts' ? '拖动场号归幕 · Shift 连选 · ⌘/Ctrl 多选' : '上下移动整场 · Shift 连选'}</span>
         <label className="cards__bulk-move">已选 {selectedIds.length} 场
           <select aria-label="移动选中的场景" disabled={!selectedIds.length} value="" onChange={e => {
             if (e.target.value) move(selectedIds, e.target.value === '__ungrouped__' ? null : e.target.value);
@@ -212,7 +219,20 @@ export function CardsView() {
         const id = (event.target as HTMLElement).closest<HTMLElement>('[data-scene-id]')?.dataset.sceneId;
         if (id) useStore.getState().updateWritingContext({ sceneId: id }, documentEpoch);
       }}>
-        {renderSection(null, '未归幕', grouped.other)}
+        {displayOrder === 'script' ? <div className="scene-review__list" aria-label="按正文顺序排列的场景">
+          <p className="scene-review__hint">与正文顺序一致 · 摘要可自由填写 · 上下移动会移动整场正文</p>
+          {scenes.map((scene, index) => <article className="scene-review__row" data-scene-id={scene.elementId} key={`${documentEpoch}:${scene.elementId}`}>
+            <div className="scene-review__row-head">
+              <input type="checkbox" aria-label={`选择第 ${scene.number} 场`} checked={selectedIds.includes(scene.elementId)} onChange={() => {}} onClick={event => select(scene.elementId, event.shiftKey)} />
+              <button className="scene-review__jump" onClick={() => jump(scene.elementId)}>{scene.number} · {scene.title || scene.heading || '未命名场景'}</button>
+              <button className="scene-review__move" aria-label={`上移第 ${scene.number} 场`} disabled={index === 0} onClick={() => useStore.getState().moveReviewScene(scene.elementId, scenes[index - 1].elementId, 'before', documentEpoch)}>↑</button>
+              <button className="scene-review__move" aria-label={`下移第 ${scene.number} 场`} disabled={index === scenes.length - 1} onClick={() => useStore.getState().moveReviewScene(scene.elementId, scenes[index + 1].elementId, 'after', documentEpoch)}>↓</button>
+            </div>
+            <label className="scene-review__field"><span>摘要</span><SceneReviewText value={scene.synopsis} label={`第 ${scene.number} 场一行摘要`} placeholder="这一场发生了什么？" multiline onCommit={synopsis => useStore.getState().commitReviewSceneMeta(scene.elementId, { synopsis }, documentEpoch)} /></label>
+            <SceneReviewFields scene={scene} expanded />
+          </article>)}
+          {!scenes.length && <p className="scene-review__hint">还没有场景，可先新增场景。</p>}
+        </div> : <>{renderSection(null, '未归幕', grouped.other)}
         {[...grouped.map.entries()].map(([actId, list]) => {
           const act = project.acts.find((a) => a.id === actId);
           if (!act) return null;
@@ -222,7 +242,7 @@ export function CardsView() {
             list,
             act.color,
           );
-        })}
+        })}</>}
       </div>
     </div>
   );
@@ -263,7 +283,7 @@ function Card(p: CardProps) {
       style={{ backgroundColor: safeDisplayColor(scene.color) }}
       draggable
       onDragStart={(e) => {
-        if ((e.target as HTMLElement).closest('button, select')) { e.preventDefault(); return; }
+        if ((e.target as HTMLElement).closest('button, select, .scene-review')) { e.preventDefault(); return; }
         dragging.current = true;
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', scene.elementId);
@@ -333,6 +353,7 @@ function Card(p: CardProps) {
         <select aria-label={`移动第 ${scene.number} 场`} value="" onChange={e => { if (e.target.value) p.onMove(e.target.value); }}>{p.moveOptions}</select>
         <button className="btn btn--ghost" title="跳转到该场正文" onClick={p.onJump}>正文 ↗</button>
       </div>
+      <SceneReviewFields scene={scene} />
     </div>
   );
 }

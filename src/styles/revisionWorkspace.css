@@ -1,0 +1,48 @@
+@media screen {
+  .modal.revision-workspace { width: min(1060px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); color: var(--text); }
+  .revision-workspace .modal__body { padding: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .revision-workspace__tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px 20px 0; border-bottom: 1px solid var(--border); }
+  .revision-workspace__tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: inherit; padding: 10px 14px; cursor: pointer; }
+  .revision-workspace__tabs button[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--accent); font-weight: 700; }
+  .revision-workspace__panel { padding: 18px 20px; }
+  .revision-workspace__panel h4 { margin: 0 0 12px; font-size: 14px; }
+  .revision-workspace__panel p { margin: 8px 0; }
+  .revision-workspace__row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .revision-workspace__row > input:not([type="checkbox"]) { flex: 1; min-width: 160px; }
+  .revision-workspace__split { display: grid; grid-template-columns: minmax(210px, 0.8fr) minmax(0, 2fr); gap: 18px; margin-top: 18px; }
+  .revision-workspace__list { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .revision-workspace__entry { display: block; width: 100%; padding: 11px; text-align: left; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: inherit; cursor: pointer; overflow-wrap: anywhere; }
+  .revision-workspace__entry[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .revision-workspace__entry strong, .revision-workspace__entry small { display: block; }
+  .revision-workspace__entry small { margin-top: 4px; color: var(--muted); }
+  .revision-workspace__detail { min-width: 0; }
+  .revision-workspace__detail > :first-child { margin-top: 0; }
+  .revision-workspace__muted { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .revision-workspace__empty { padding: 22px 0; color: var(--muted); line-height: 1.7; }
+  .revision-workspace__card { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
+  .revision-workspace__card h5 { margin: 0; font-size: 13px; }
+  .revision-workspace__tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  .revision-workspace__tag { border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-size: 11px; }
+  .revision-workspace__text { margin: 8px 0; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.7; max-height: 260px; overflow: auto; background: color-mix(in srgb, currentColor 4%, transparent); border-radius: 4px; }
+  .revision-workspace__paragraph { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; }
+  .revision-workspace__paragraph input { margin-top: 4px; flex: 0 0 auto; }
+  .revision-workspace__paragraph span { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+  .revision-workspace__field { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; font-size: 12px; }
+  .revision-workspace__field input, .revision-workspace__field textarea, .revision-workspace__field select,
+  .revision-workspace__row input:not([type="checkbox"]), .revision-workspace__row select, .revision-workspace__list > input { max-width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 4px; background: var(--control-bg); color: inherit; font: inherit; }
+  .revision-workspace__field textarea { resize: vertical; min-height: 76px; }
+  .revision-workspace__foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--border); }
+  .revision-workspace__confirm { padding: 14px 20px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+  .revision-workspace__confirm p { margin: 0 0 10px; line-height: 1.6; }
+  .revision-workspace__warning { margin: 12px 20px 0; padding: 10px; border: 1px solid var(--border); border-radius: 4px; }
+  .revision-workspace button:focus-visible, .revision-workspace input:focus-visible,
+  .revision-workspace select:focus-visible, .revision-workspace textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 680px) {
+    .modal.revision-workspace { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+    .revision-workspace__split { grid-template-columns: minmax(0, 1fr); }
+    .revision-workspace__list { max-height: 190px; overflow: auto; }
+    .revision-workspace__panel { padding: 14px 12px; }
+    .revision-workspace__tabs { padding-inline: 8px; }
+    .revision-workspace__tabs button { padding-inline: 10px; }
+  }
+}

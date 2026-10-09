@@ -23,6 +23,14 @@ import { DEFAULT_FONT_COLOR, normalizeFontColor } from '../model/appearance';
 import { clampTargetPages } from '../model/progress';
 import { clampSize } from '../model/board';
 import { boardBeatPosition, type BoardCardPosition } from '../model/boardWorkspace';
+import { reorderOutlineScene } from '../model/outline';
+import {
+  captureWritingFragment, createNamedVersion, renameNamedVersion, deleteNamedVersion,
+  createStashEntry, deleteStashEntry, buildInsertPlan,
+} from '../model/revisionWorkspace';
+import { captureTextAnchor, captureSceneAnchor, reconcileAnnotations, validateAnnotations, reanchorAnnotation,
+  type Annotation, type AnnotationAnchor } from '../model/annotations';
+import { buildDeliveryChecks, normalizeDeliveryIgnored } from '../model/deliveryChecks';
 import {
   toggleSel,
   selRange,
@@ -202,7 +210,25 @@ interface StoreState {
   updateTitlePage: (patch: Partial<TitlePage>) => void;
   updateRevisions: (list: Revision[]) => void;
   renameProject: (name: string) => void;
+
+  createNamedVersion: (name: string, expectedEpoch?: number) => boolean;
+  renameNamedVersion: (id: string, name: string, expectedEpoch?: number) => boolean;
+  deleteNamedVersion: (id: string, expectedEpoch?: number) => boolean;
+  stashWritingElements: (ids: string[], name: string, note: string, remove: boolean, expectedEpoch?: number) => boolean;
+  deleteStashEntry: (id: string, expectedEpoch?: number) => boolean;
+  restoreWorkspaceContent: (source: WorkspaceSource, afterId: string | null, expectedEpoch?: number) => boolean;
+  addAnnotation: (anchor: AnnotationAnchor, body: string, expectedEpoch?: number) => boolean;
+  updateAnnotation: (id: string, patch: Partial<Pick<Annotation, 'body' | 'status' | 'reason' | 'decision'>>, expectedEpoch?: number) => boolean;
+  deleteAnnotation: (id: string, expectedEpoch?: number) => boolean;
+  reanchorAnnotation: (id: string, anchor: AnnotationAnchor, expectedEpoch?: number) => boolean;
+  setDeliveryIgnored: (signature: string, ignored: boolean, expectedEpoch?: number) => boolean;
+  clearDeliveryIgnored: (expectedEpoch?: number) => boolean;
+  commitReviewSceneMeta: (elementId: string, patch: ReviewScenePatch, expectedEpoch?: number) => boolean;
+  moveReviewScene: (sourceId: string, targetId: string, edge: 'before' | 'after', expectedEpoch?: number) => boolean;
 }
+
+export type WorkspaceSource = { kind: 'version'; id: string; elementIds: string[] } | { kind: 'stash'; id: string };
+export type ReviewScenePatch = Pick<Partial<SceneMeta>, 'synopsis' | 'location' | 'storyTime' | 'revisionStatus'>;
 
 const HISTORY_LIMIT = 120;
 
@@ -264,6 +290,11 @@ function historySelection(state: StoreState, project: ScriptProject) {
  * `next` must be a new project owned by the caller; never mutate a saved snapshot.
  */
 function projectChange(state: StoreState, next: ScriptProject, opts?: MutateOptions) {
+  // Anchors and writing are one undo transaction. Unproven text edits retain the
+  // original quote and mark it for review instead of searching for similar text.
+  if (next.annotations?.length && next.elements !== state.project.elements) {
+    next.annotations = reconcileAnnotations(state.project.elements, next.elements, next.annotations);
+  }
   const history = opts?.history !== false;
   const now = Date.now();
   next.updatedAt = now;
@@ -420,11 +451,17 @@ export const useStore = create<StoreState>((set, get) => ({
 
   mutate: (fn, opts) => {
     const { project } = get();
-    const next = cloneProject(project);
+    // Review libraries are immutable branches. Ordinary typing/structure edits
+    // must not duplicate every saved version into every undo snapshot.
+    const { revisionWorkspace, annotations, ...body } = project;
+    const next = cloneProject(body as ScriptProject);
+    if (revisionWorkspace) next.revisionWorkspace = revisionWorkspace;
+    if (annotations) next.annotations = annotations;
     fn(next);
     // 组件可能在每次输入事件都调用 mutate；没有实际数据变化时不应制造
     // 撤销点、清空重做栈或把 dirty 标成 true。
-    if (JSON.stringify(next) === JSON.stringify(project)) {
+    const { revisionWorkspace: nextWorkspace, annotations: nextAnnotations, ...nextBody } = next;
+    if (nextWorkspace === revisionWorkspace && nextAnnotations === annotations && JSON.stringify(nextBody) === JSON.stringify(body)) {
       lastCoalesce = null;
       return;
     }
@@ -717,7 +754,12 @@ export const useStore = create<StoreState>((set, get) => ({
 
   moveScene: (index, dir) => get().moveSceneTo(index, index + dir),
 
-  moveSceneTo: (from, to) => get().mutate((p) => moveSceneBlock(p, from, to)),
+  moveSceneTo: (from, to) => {
+    const scenes = deriveScenes(get().project);
+    if (!Number.isInteger(from) || !Number.isInteger(to) || !scenes[from]) return;
+    const target = Math.max(0, Math.min(scenes.length - 1, to));
+    if (target !== from) get().moveReviewScene(scenes[from].elementId, scenes[target].elementId, target > from ? 'after' : 'before');
+  },
 
   /**
    * 故事板拖拽落位：把场景移动到目标位置，同时归入目标幕。
@@ -1040,9 +1082,10 @@ export const useStore = create<StoreState>((set, get) => ({
     get().mutate((p) => {
       p.elements = p.elements.filter((el) => !removed.has(el.id));
       if (!p.elements.length) p.elements = [newElement('action', '')];
+      const associations = new Set([...removed, ...p.sceneMeta.filter(meta => removed.has(meta.elementId)).map(meta => meta.id)]);
       p.sceneMeta = p.sceneMeta.filter((meta) => !removed.has(meta.elementId));
-      p.beats.forEach((beat) => { if (beat.sceneId && removed.has(beat.sceneId)) delete beat.sceneId; });
-      p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], removed);
+      p.beats.forEach((beat) => { if (beat.sceneId && associations.has(beat.sceneId)) delete beat.sceneId; });
+      p.boardLinks = filterBoardLinksToKeep(p.boardLinks || [], associations);
     });
     set({ activeId: nextActiveId || get().project.elements[0]?.id || null, focus: null, writingSelectedIds: [] });
   },
@@ -1176,54 +1219,150 @@ export const useStore = create<StoreState>((set, get) => ({
       { coalesce: 'rename' },
     );
   },
+
+  createNamedVersion: (name, epoch) => reviewChange(epoch, project => ({ ...project, revisionWorkspace: createNamedVersion(project, name) })),
+  renameNamedVersion: (id, name, epoch) => reviewChange(epoch, project => {
+    if (!project.revisionWorkspace) throw new Error('该正文版本已不存在。');
+    const revisionWorkspace = renameNamedVersion(project.revisionWorkspace, id, name);
+    return revisionWorkspace === project.revisionWorkspace ? project : { ...project, revisionWorkspace };
+  }),
+  deleteNamedVersion: (id, epoch) => reviewChange(epoch, project => {
+    if (!project.revisionWorkspace) throw new Error('该正文版本已不存在。');
+    return { ...project, revisionWorkspace: deleteNamedVersion(project.revisionWorkspace, id) };
+  }),
+  stashWritingElements: (ids, name, note, remove, epoch) => reviewChange(epoch, project => {
+    const available = new Set(project.elements.map(element => element.id));
+    if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !available.has(id))) {
+      throw new Error('所选原文已变化，请重新选择后存入暂存。');
+    }
+    const content = captureWritingFragment(project, { kind: 'elements', ids });
+    const firstIndex = project.elements.findIndex(element => element.id === content.elements[0]?.id);
+    const scene = deriveScenes(project).find(item => firstIndex >= item.start && firstIndex < item.end);
+    // Capture and capacity validation happen before any deletion.
+    const revisionWorkspace = createStashEntry(project.revisionWorkspace, content, {
+      name, description: note, kind: remove ? 'deleted' : 'excerpt',
+      source: { projectId: project.id, sceneHeadingId: scene?.elementId, sceneLabel: scene?.heading.slice(0, 2000), elementIds: content.elements.map(element => element.id) },
+    });
+    return { ...(remove ? removeReviewElements(project, new Set(ids)) : project), revisionWorkspace };
+  }),
+  deleteStashEntry: (id, epoch) => reviewChange(epoch, project => {
+    if (!project.revisionWorkspace) throw new Error('该暂存条目已不存在。');
+    return { ...project, revisionWorkspace: deleteStashEntry(project.revisionWorkspace, id) };
+  }),
+  restoreWorkspaceContent: (source, afterId, epoch) => {
+    let warnings: string[] = [];
+    const restored = reviewChange(epoch, project => {
+    if (afterId === null && project.elements.length) throw new Error('请先选择一个正文插入位置。');
+    const index = afterId === null ? -1 : project.elements.findIndex(element => element.id === afterId);
+    if (afterId !== null && index < 0) throw new Error('插入位置已不存在，请关闭工作台并重新选择位置。');
+    const entry = source.kind === 'version'
+      ? project.revisionWorkspace?.versions.find(item => item.id === source.id)
+      : project.revisionWorkspace?.stash.find(item => item.id === source.id);
+    if (!entry) throw new Error('取回来源已不存在。');
+    const content = source.kind === 'version'
+      ? captureWritingFragment({ ...project, elements: entry.content.elements, sceneMeta: entry.content.sceneMeta }, { kind: 'elements', ids: source.elementIds })
+      : entry.content;
+    const plan = buildInsertPlan(content, project);
+    warnings = plan.warnings;
+    if (!plan.elements.length) throw new Error('请选择要取回的段落。');
+    if (project.elements.length + plan.elements.length > 100000 || project.sceneMeta.length + plan.sceneMeta.length > 100000) {
+      throw new Error('取回内容超过工程容量，请减少所选段落。');
+    }
+    return { ...project, elements: [...project.elements.slice(0, index + 1), ...plan.elements, ...project.elements.slice(index + 1)], sceneMeta: [...project.sceneMeta, ...plan.sceneMeta] };
+    });
+    if (restored && warnings.length) get().notify(`已插入副本。${warnings.join('')}`);
+    return restored;
+  },
+  addAnnotation: (anchor, body, epoch) => reviewChange(epoch, project => {
+    assertReviewAnchor(project, anchor);
+    const now = Date.now();
+    const annotation: Annotation = { id: uid('annotation'), createdAt: now, updatedAt: now, body: body.trim(), status: 'pending', anchor, anchorState: 'current' };
+    const annotations = validateAnnotations([...(project.annotations || []), annotation]);
+    return { ...project, annotations };
+  }),
+  updateAnnotation: (id, patch, epoch) => reviewChange(epoch, project => {
+    if (!patch || Object.keys(patch).some(key => !['body', 'status', 'reason', 'decision'].includes(key))) throw new Error('批注修改内容无效。');
+    const current = project.annotations?.find(item => item.id === id);
+    if (!current) throw new Error('该批注已不存在。');
+    const next = { ...current, ...patch };
+    if (JSON.stringify(next) === JSON.stringify(current)) return project;
+    next.updatedAt = Date.now();
+    return { ...project, annotations: validateAnnotations(project.annotations!.map(item => item.id === id ? next : item)) };
+  }),
+  deleteAnnotation: (id, epoch) => reviewChange(epoch, project => {
+    if (!project.annotations?.some(item => item.id === id)) return project;
+    return { ...project, annotations: project.annotations.filter(item => item.id !== id) };
+  }),
+  reanchorAnnotation: (id, anchor, epoch) => reviewChange(epoch, project => {
+    assertReviewAnchor(project, anchor);
+    const current = project.annotations?.find(item => item.id === id);
+    if (!current) throw new Error('该批注已不存在。');
+    const next = reanchorAnnotation(current, anchor, Date.now());
+    return { ...project, annotations: validateAnnotations(project.annotations!.map(item => item.id === id ? next : item)) };
+  }),
+  setDeliveryIgnored: (signature, ignored, epoch) => reviewChange(epoch, project => {
+    const existing = project.deliveryIgnored || [];
+    if (existing.includes(signature) === ignored) return project;
+    if (ignored && !buildDeliveryChecks(project).some(issue => issue.signature === signature)) throw new Error('检查结果已变化，请重新检查。');
+    return { ...project, deliveryIgnored: normalizeDeliveryIgnored(ignored ? [...existing, signature] : existing.filter(item => item !== signature)) };
+  }),
+  clearDeliveryIgnored: epoch => reviewChange(epoch, project => project.deliveryIgnored?.length ? { ...project, deliveryIgnored: [] } : project),
+  commitReviewSceneMeta: (elementId, patch, epoch) => reviewChange(epoch, project => {
+    if (!project.elements.some(element => element.id === elementId && element.type === 'scene_heading')) throw new Error('该场景已不存在。');
+    const keys = Object.keys(patch);
+    if (keys.some(key => !['synopsis', 'location', 'storyTime', 'revisionStatus'].includes(key))) throw new Error('场景信息格式无效。');
+    for (const key of ['synopsis', 'location', 'storyTime'] as const) {
+      if (patch[key] !== undefined && (typeof patch[key] !== 'string' || patch[key]!.length > (key === 'synopsis' ? 20000 : 500))) throw new Error('场景信息过长或格式无效。');
+    }
+    if (patch.revisionStatus !== undefined && !['todo', 'revising', 'done'].includes(patch.revisionStatus)) throw new Error('场景修改状态无效。');
+    const current = project.sceneMeta.find(meta => meta.elementId === elementId);
+    if (!keys.length || (!current && keys.every(key => patch[key as keyof ReviewScenePatch] === undefined || patch[key as keyof ReviewScenePatch] === ''))) return project;
+    if (current && keys.every(key => current[key as keyof SceneMeta] === patch[key as keyof ReviewScenePatch])) return project;
+    const next: SceneMeta = { ...(current || { id: uid('sc'), elementId, title: '', synopsis: '', color: '#cfe4ff' }), ...patch };
+    return { ...project, sceneMeta: current ? project.sceneMeta.map(meta => meta === current ? next : meta) : [...project.sceneMeta, next] };
+  }),
+  moveReviewScene: (sourceId, targetId, edge, epoch) => reviewChange(epoch, project => {
+    if (edge !== 'before' && edge !== 'after') throw new Error('场景移动位置无效。');
+    const elements = reorderOutlineScene(project.elements, sourceId, targetId, edge);
+    return elements ? { ...project, elements } : project;
+  }),
 }));
 
-
-
-/**
- * 把第 from 个场景（连同其后续元素）整体移动到第 to 个场景的位置，直接修改 p.elements。
- * 供既有 moveSceneTo 使用；故事板的插入边界语义在 dropSceneInAct 单独处理。
- */
-function moveSceneBlock(p: ScriptProject, from: number, to: number) {
-  // 找到第 from 个与第 to 个 scene_heading，整体移动该场景的区块
-  const heads: number[] = [];
-  p.elements.forEach((el, i) => {
-    if (el.type === 'scene_heading') heads.push(i);
-  });
-  if (from < 0 || from >= heads.length) return;
-  const target = Math.max(0, Math.min(heads.length - 1, to));
-  if (target === from) return;
-  const start = heads[from];
-  const end = from + 1 < heads.length ? heads[from + 1] : p.elements.length;
-  const block = p.elements.slice(start, end);
-  const rest = p.elements.filter((_, i) => i < start || i >= end);
-  // 在 rest 中定位插入点：第 target 个 scene_heading 之前
-  let count = -1;
-  let insertAt = rest.length;
-  for (let i = 0; i < rest.length; i += 1) {
-    if (rest[i].type === 'scene_heading') {
-      count += 1;
-      if (count === target) {
-        insertAt = i;
-        break;
-      }
-    }
+/** Validate before committing, including the document session captured by a modal. */
+function reviewChange(expectedEpoch: number | undefined, make: (project: ScriptProject) => ScriptProject): boolean {
+  const state = useStore.getState();
+  if (expectedEpoch !== undefined && state.documentEpoch !== expectedEpoch) {
+    state.notify('工程已切换，请重新打开改稿工作台。', 'error');
+    return false;
   }
-  if (target > from) {
-    // 向后移动：插入到目标场景之后
-    let seen = -1;
-    insertAt = rest.length;
-    for (let i = 0; i < rest.length; i += 1) {
-      if (rest[i].type === 'scene_heading') {
-        seen += 1;
-        if (seen === target) {
-          let j = i + 1;
-          while (j < rest.length && rest[j].type !== 'scene_heading') j += 1;
-          insertAt = j;
-          break;
-        }
-      }
-    }
+  try {
+    const next = make(state.project);
+    if (next === state.project) return false;
+    useStore.setState({ ...projectChange(state, next), ...historySelection(state, next) });
+    return true;
+  } catch (error) {
+    state.notify(error instanceof Error ? error.message : '操作未完成，原稿保持不变。', 'error');
+    return false;
   }
-  p.elements = [...rest.slice(0, insertAt), ...block, ...rest.slice(insertAt)];
+}
+
+function assertReviewAnchor(project: ScriptProject, anchor: AnnotationAnchor) {
+  const element = project.elements.find(item => item.id === anchor.elementId);
+  if (!element) throw new Error('批注原文已不存在，请重新选择。');
+  const expected = anchor.kind === 'scene' ? captureSceneAnchor(element) : captureTextAnchor(element, anchor.start, anchor.end);
+  if (!expected || expected.kind !== anchor.kind || expected.elementId !== anchor.elementId ||
+      (expected.kind === 'text' && anchor.kind === 'text' && (expected.start !== anchor.start || expected.end !== anchor.end || expected.quote !== anchor.quote || expected.sourceText !== anchor.sourceText))) {
+    throw new Error('批注原文已变化，请重新选择。');
+  }
+}
+
+function removeReviewElements(project: ScriptProject, removed: Set<string>): ScriptProject {
+  const associations = new Set([...removed, ...project.sceneMeta.filter(meta => removed.has(meta.elementId)).map(meta => meta.id)]);
+  const elements = project.elements.filter(element => !removed.has(element.id));
+  return { ...project, elements: elements.length ? elements : [newElement('action', '')],
+    sceneMeta: project.sceneMeta.filter(meta => !removed.has(meta.elementId)),
+    beats: project.beats.map(beat => {
+      if (!beat.sceneId || !associations.has(beat.sceneId)) return beat;
+      const next = { ...beat }; delete next.sceneId; return next;
+    }), boardLinks: filterBoardLinksToKeep(project.boardLinks || [], associations) };
 }

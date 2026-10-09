@@ -23,10 +23,11 @@ const entries = Object.freeze({
   pdf: 'pdf-layout-electron.cjs',
   search: 'search-electron.cjs',
   image: 'image-drop-electron.cjs',
+  review: 'review-electron.cjs',
 });
 const mode = process.env.GUANGYING_QA_MODE || 'manual';
 if (!Object.prototype.hasOwnProperty.call(entries, mode)) {
-  throw new Error('Unknown native QA mode. Allowed: manual, editing, smarttype, input, pdf, search, image.');
+  throw new Error('Unknown native QA mode. Allowed: manual, editing, smarttype, input, pdf, search, image, review.');
 }
 
 // Do not trust external path overrides; all modes test the candidate built from
@@ -35,6 +36,30 @@ const root = path.resolve(__dirname, '..');
 process.env.GUANGYING_TEST_ROOT = root;
 process.env.GUANGYING_TEST_RENDERER = path.join(root, 'dist-renderer', 'index.html');
 if (app.isReady()) throw new Error('Native QA launcher must run at cold startup before Electron ready.');
+if (process.env.GUANGYING_QA_HIDDEN === '1') {
+  if (mode === 'manual') throw new Error('Hidden QA requires an automated fixed mode.');
+  if (process.platform === 'darwin') { app.setActivationPolicy('prohibited'); app.dock?.hide(); }
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+  const hidden = { mode, windows: 0, showSuppressed: 0, focusSuppressed: 0, actualShowEvents: 0, initiallyVisible: 0 };
+  const journal = () => {
+    const directory = fs.realpathSync(path.dirname(app.getPath('userData')));
+    if (directory.startsWith(fs.realpathSync(os.tmpdir()) + path.sep)) {
+      fs.writeFileSync(path.join(directory, 'hidden-window-proof.json'), JSON.stringify(hidden, null, 2));
+    }
+  };
+  app.on('browser-window-created', (_event, window) => {
+    hidden.windows += 1;
+    if (window.isVisible()) hidden.initiallyVisible += 1;
+    window.on('show', () => { hidden.actualShowEvents += 1; journal(); });
+    window.show = () => { hidden.showSuppressed += 1; journal(); };
+    window.showInactive = () => { hidden.showSuppressed += 1; journal(); };
+    window.focus = () => { hidden.focusSuppressed += 1; journal(); };
+    journal();
+    if (hidden.initiallyVisible) throw new Error('Hidden QA constructed a visible window.');
+  });
+  process.on('exit', journal);
+}
 require(path.join(__dirname, entries[mode]));
 
 // Each fixed mode synchronously creates its own temp root and sets userData,

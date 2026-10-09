@@ -6,6 +6,7 @@ import { CARD_COLORS, ELEMENT_META, ELEMENT_ORDER } from '../model/elements';
 import { usePagination } from '../hooks/PaginationProvider';
 import type { ElementType } from '../model/types';
 import { safeDisplayColor } from '../utils/displayValues';
+import { SceneReviewFields } from './SceneReviewFields';
 
 const TABS: { key: SidebarMode; label: string }[] = [
   { key: 'navigator', label: '导航' },
@@ -62,7 +63,7 @@ function NavigatorPanel() {
   const scenes = useSceneList();
   const requestFocus = useStore((s) => s.requestFocus);
   const setView = useStore((s) => s.setView);
-  const moveScene = useStore((s) => s.moveScene);
+  const moveReviewScene = useStore((s) => s.moveReviewScene);
   const toggleOmit = useStore((s) => s.toggleOmit);
   const { pageOf } = usePagination();
   const [filter, setFilter] = React.useState('');
@@ -93,10 +94,10 @@ function NavigatorPanel() {
               </span>
             </button>
             <div className="nav-item__ops">
-              <button title="上移" onClick={() => moveScene(s.index, -1)}>
+              <button title="上移" disabled={s.index === 0} onClick={() => { const target = scenes[s.index - 1]; if (target) moveReviewScene(s.elementId, target.elementId, 'before'); }}>
                 ↑
               </button>
-              <button title="下移" onClick={() => moveScene(s.index, 1)}>
+              <button title="下移" disabled={s.index === scenes.length - 1} onClick={() => { const target = scenes[s.index + 1]; if (target) moveReviewScene(s.elementId, target.elementId, 'after'); }}>
                 ↓
               </button>
               <button title="省略" onClick={() => toggleOmit(s.elementId)}>
@@ -222,6 +223,7 @@ function OutlinePanel() {
               placeholder="这一场发生了什么？"
               onChange={(e) => updateSceneMeta(s.elementId, { synopsis: e.target.value })}
             />
+            <SceneReviewFields scene={s} />
           </div>
         ))}
         {!scenes.length ? <div className="panel__empty">还没有场次</div> : null}
@@ -336,6 +338,7 @@ function InspectorPanel() {
               onChange={(e) => updateSceneMeta(scene.elementId, { synopsis: e.target.value })}
             />
           </div>
+          <SceneReviewFields scene={scene} expanded />
           <div className="field">
             <label>归属幕</label>
             <select

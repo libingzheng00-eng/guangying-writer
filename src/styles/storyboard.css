@@ -48,3 +48,34 @@
   .cards :is(button, select, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { .cards .cards__act { transition: none; } }
 }
+
+/* Scene review controls only; saved card dimensions and writing geometry stay independent. */
+@media screen {
+  .scene-review { min-width: 0; width: 100%; }
+  .card .scene-review { --text: #263328; --muted: #44584b; --panel: rgba(255, 255, 255, .85); --border: rgba(38, 51, 40, .25); }
+  .scene-review__summary { display: flex; min-width: 0; gap: 6px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+  .scene-review__summary > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
+  .scene-review__summary > span:last-child { flex-shrink: 0; }
+  .scene-review__toggle { display: flex; gap: 6px; align-items: center; cursor: pointer; padding: 4px 0; }
+  .scene-review__toggle > .scene-review__summary { flex: 1; }
+  .scene-review__fields { display: grid; gap: 7px; padding: 6px 0; }
+  .scene-review__field { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; color: var(--text); }
+  .scene-review__field > span { width: 54px; flex: 0 0 54px; }
+  .scene-review__input, .scene-review__summary-input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text); padding: 5px 7px; font: inherit; }
+  .scene-review__summary-input { display: block; min-height: 30px; height: 30px; resize: vertical; line-height: 1.5; }
+  .scene-review__input:focus-visible, .scene-review__summary-input:focus-visible, .scene-review__toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .scene-review__order { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .scene-review__order select { padding: 5px; }
+  .scene-review__list { display: grid; gap: 12px; max-width: 1000px; margin: 0 auto; }
+  .scene-review__hint { margin: 0; color: var(--muted); font-size: 12px; }
+  .scene-review__row { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 12px; }
+  .scene-review__row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+  .scene-review__jump { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; border: 0; background: transparent; color: var(--text); font-weight: 600; cursor: pointer; }
+  .scene-review__move { flex: 0 0 auto; border: 1px solid var(--border); border-radius: 5px; background: var(--panel); color: var(--text); padding: 4px 10px; cursor: pointer; }
+  .scene-review__move:disabled { opacity: .4; cursor: default; }
+  .scene-review__row .scene-review__fields { grid-template-columns: 1fr 1fr 170px; }
+  .scene-review__board-tools { flex-wrap: wrap; overflow: auto; }
+  .scene-review__board-tools > .scene-review { flex: 1 0 100%; }
+  .scene-review__board-tools .scene-review__fields { padding-bottom: 0; }
+  @media (max-width: 1000px) { .scene-review__row .scene-review__fields { grid-template-columns: 1fr; } }
+}

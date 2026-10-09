@@ -64,7 +64,8 @@ async function createFixtureWindow({
     fs.writeFileSync(entry, html, { encoding: 'utf8', flag: 'wx' });
     info = { out: output, renderer, entry, unseededHTML, partition: `guangying-fixture-${token}` };
   }
-  const win = new BrowserWindow({ width, height, show, webPreferences: {
+  // Explicit isolated QA mode: hidden from the instant of construction.
+  const win = new BrowserWindow({ width, height, show: process.env.GUANGYING_QA_HIDDEN === '1' ? false : show, webPreferences: {
     preload, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false,
     partition: info.partition,
   } });
