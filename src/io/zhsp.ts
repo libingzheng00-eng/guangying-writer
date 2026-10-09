@@ -1,4 +1,4 @@
-import type { Beat, ScriptElement, ScriptProject, ScriptSettings } from '../model/types';
+import type { Beat, BoardLink, ScriptElement, ScriptProject, ScriptSettings } from '../model/types';
 import { FILE_VERSION, defaultSettings, emptyTitlePage } from '../model/project';
 import { DEFAULT_INDENT, DEFAULT_REVISIONS, ELEMENT_ORDER } from '../model/elements';
 import { normalizeTargetPages } from '../model/progress';
@@ -61,7 +61,7 @@ function optionalIdentifiers(value: RecordValue, names: readonly string[]) {
   for (const name of names) if (value[name] !== undefined) identifier(value[name]);
 }
 
-function metadataList(value: unknown, kind: 'sceneMeta' | 'boardLinks' | 'acts' | 'revisions') {
+function metadataList(value: unknown, kind: 'sceneMeta' | 'acts' | 'revisions') {
   return list(value).map(raw => {
     const item = record(raw);
     identifier(item.id);
@@ -71,13 +71,42 @@ function metadataList(value: unknown, kind: 'sceneMeta' | 'boardLinks' | 'acts' 
       fields(item, ['omit'], 'boolean');
       fields(item, ['order', 'x', 'y', 'w', 'h'], 'number');
       optionalIdentifiers(item, ['actId']);
-    } else if (kind === 'boardLinks') {
-      identifier(item.from); identifier(item.to);
-      fields(item, ['note'], 'string');
     } else {
       fields(item, kind === 'acts' ? ['title', 'color'] : ['label', 'color'], 'string');
     }
     return item;
+  });
+}
+
+function normalizeBoardLinks(value: unknown, elements: ScriptElement[], beats: Beat[]): BoardLink[] {
+  // Older readers preserved relation records without interpreting their fields.
+  // Some persisted files therefore still contain the fromId/toId pair. Migrate
+  // that complete legacy shape in memory, retaining its aliases and metadata.
+  const sceneIds = new Set(elements.filter(element => element.type === 'scene_heading').map(element => element.id));
+  const beatIds = new Set(beats.map(beat => beat.id));
+  const endpoint = (id: string) => sceneIds.has(id) ? `scene:${id}` : beatIds.has(id) ? `beat:${id}` : id;
+  const validateEndpoint = (id: unknown) => {
+    // The address prefix is separate from the existing 512-character card ID.
+    // This also keeps the longest accepted legacy ID saveable after migration.
+    if (typeof id === 'string' && id.startsWith('scene:')) identifier(id.slice(6));
+    else if (typeof id === 'string' && id.startsWith('beat:')) identifier(id.slice(5));
+    else identifier(id);
+  };
+  return list(value).map(raw => {
+    const item = record(raw);
+    identifier(item.id);
+    fields(item, ['note'], 'string');
+    if (item.from === undefined && item.to === undefined) {
+      identifier(item.fromId); identifier(item.toId);
+      // Missing/deleted targets stay intact; never guess a card's type or drop
+      // a relation (and its note) merely because a target no longer exists.
+      const from = endpoint(item.fromId as string), to = endpoint(item.toId as string);
+      validateEndpoint(from); validateEndpoint(to);
+      return { ...item, from, to } as unknown as BoardLink;
+    }
+    // A partial or invalid modern pair cannot fall back to legacy aliases.
+    validateEndpoint(item.from); validateEndpoint(item.to);
+    return item as unknown as BoardLink;
   });
 }
 
@@ -207,7 +236,7 @@ export function parseProjectValue(value: unknown): ScriptProject {
   if (elements.some(item => cardIds.has(`scene:${item.id}`)) ||
       beats.some(item => cardIds.has(`beat:${item.id}`))) throw invalidStructure();
   const sceneMeta = metadataList(source.sceneMeta, 'sceneMeta') as unknown as ScriptProject['sceneMeta'];
-  const boardLinks = metadataList(source.boardLinks, 'boardLinks') as unknown as NonNullable<ScriptProject['boardLinks']>;
+  const boardLinks = normalizeBoardLinks(source.boardLinks, elements, beats);
   const acts = metadataList(source.acts, 'acts') as unknown as ScriptProject['acts'];
   const revisions = metadataList(source.revisions, 'revisions') as unknown as ScriptProject['revisions'];
   return {
