@@ -315,6 +315,55 @@ let h;
   check('连续两次释放各自保留独立历史', [state().project.beats[0].boardX, state().project.beats[0].boardY, state().past.length], [600, 67, 2]);
   await act(async () => state().undo());
   check('撤销第二次拖动保留第一次的磁吸结果', [state().project.beats[0].boardX, state().project.beats[0].boardY, state().past.length], [560, 47, 1]);
+  // React delegates wheel as passive. Canvas cancellation must actually take
+  // effect through a non-passive listener, while text controls keep native
+  // scrolling. A handler merely calling preventDefault is not sufficient.
+  await mount();
+  const wheelProject = state().project, wheelHistory = history();
+  const sendWheel = async (target, deltaY = 120, clientX = 300, clientY = 200) => {
+    const event = new h.w.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY, clientX, clientY });
+    const cancelledAt = [];
+    const preventDefault = event.preventDefault;
+    event.preventDefault = function () { cancelledAt.push(this.currentTarget); return preventDefault.call(this); };
+    await h.dispatch(target, event);
+    return { event, cancelledAt };
+  };
+  const firstWheel = await sendWheel(canvas());
+  check('画布wheel确实取消原生滚动默认行为', firstWheel.event.defaultPrevented, true);
+  check('画布wheel只在自己的原生监听器取消默认，绝不在React passive根监听器取消', firstWheel.cancelledAt, [canvas()]);
+  const firstBoard = state().writingContext.board;
+  check('wheel缩放保持既有0.9倍率及鼠标世界坐标锚点', [firstBoard.zoom,
+    (300 - firstBoard.panX) / firstBoard.zoom, (200 - firstBoard.panY) / firstBoard.zoom], [.9, 300, 200]);
+  check('wheel后画布不以原生scroll偏移且不修改工程历史',
+    [canvas().scrollLeft, canvas().scrollTop, state().project, history()], [0, 0, wheelProject, wheelHistory]);
+  await sendWheel(canvas(), -120, 300, 200);
+  check('连续wheel使用当前缩放，保留原世界坐标锚点',
+    Math.abs(state().writingContext.board.zoom - .99) < 1e-12 &&
+    Math.abs((300 - state().writingContext.board.panX) / state().writingContext.board.zoom - 300) < 1e-10 &&
+    Math.abs((200 - state().writingContext.board.panY) / state().writingContext.board.zoom - 200) < 1e-10);
+
+  await pressCard('b1');
+  await mouse(title('b2'), 'dblclick');
+  const nestedEditor = document.createElement('div');
+  nestedEditor.setAttribute('contenteditable', 'true');
+  nestedEditor.innerHTML = '<span><em>合成嵌套编辑文字</em></span>';
+  canvas().appendChild(nestedEditor);
+  const nativeWheelTargets = [card('s1').querySelector('textarea'), titleInput('b2'),
+    q('.board__context select'), nestedEditor.querySelector('em'), q('.board__dock button')];
+  for (const target of nativeWheelTargets) {
+    const beforeWheel = state().writingContext, beforeTransform = q('.board__world').style.transform;
+    const result = await sendWheel(target);
+    check(`${target.tagName}的wheel保留原生滚动且不调用被动取消`, [result.event.defaultPrevented, result.cancelledAt.length], [false, 0]);
+    check(`${target.tagName}及嵌套编辑区域wheel不缩放画布`,
+      [state().writingContext, q('.board__world').style.transform], [beforeWheel, beforeTransform]);
+  }
+  nestedEditor.remove();
+  await key(titleInput('b2'), 'Escape');
+  const oldCanvas = canvas();
+  await mount();
+  const detachedWheel = await sendWheel(oldCanvas);
+  check('卸载时移除原生wheel监听器，旧画布不再取消事件或修改新工程',
+    [detachedWheel.event.defaultPrevented, detachedWheel.cancelledAt.length, state().writingContext.board], [false, 0, undefined]);
   check('无React/window运行错误', h.errors, []);
   console.log(`\n自由板工作区交互专项：${count} 条通过。jsdom事件/state覆盖；真实鼠标、视觉、原生输入法仍需单独验收。`);
 })().catch((error) => { console.error(error?.stack || error); process.exitCode = 1; }).finally(async () => { if (h) await h.close(); });

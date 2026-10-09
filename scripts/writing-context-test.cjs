@@ -446,6 +446,45 @@ function timerClock() {
   check('new document restores only its own position', [host().scrollTop, api.caretOffset(node())], [321, 2]);
   groups++; console.log('PASS same-ID document replacement invalidates a pending restore frame');
 
+  // jsdom has no scrolling layout. Give scrollIntoView the browser's nearest
+  // viewport side effect so an offscreen old caret cannot silently override a
+  // saved reading position. This is deliberately geometry simulation, not a
+  // claim of native rendering acceptance.
+  const previousScrollIntoView = dom.window.HTMLElement.prototype.scrollIntoView;
+  const scrollEffects = [];
+  const simulatedTop = { 'context-s1': 40, 'context-a1': 80, 'context-s2': 1760, 'context-a2': 1800 };
+  dom.window.HTMLElement.prototype.scrollIntoView = function (options) {
+    const viewport = this.closest('.editor');
+    const top = simulatedTop[this.dataset.id];
+    if (!viewport || top === undefined) return;
+    const before = viewport.scrollTop, height = 24, viewportHeight = 600;
+    if (top < before) viewport.scrollTop = top;
+    else if (top + height > before + viewportHeight) viewport.scrollTop = top + height - viewportHeight;
+    scrollEffects.push({ id: this.dataset.id, block: options?.block, before, after: viewport.scrollTop });
+  };
+  try {
+    await mount({ writeScrollTop: undefined }); await readyAndDrain();
+    check('without saved scroll the paragraph remains a working viewport anchor',
+      [host().scrollTop, scrollEffects.at(-1)?.id, scrollEffects.at(-1)?.block], [1224, 'context-a2', 'nearest']);
+    await mount({ activeId: 'deleted', writeScrollTop: 1200 }); await readyAndDrain();
+    check('deleted paragraph still anchors the surviving scene instead of using stale scroll',
+      [host().scrollTop, scrollEffects.at(-1)?.id, state().writingContext.caret], [1184, 'context-s2', undefined]);
+    await mount({ activeId: 'context-a1', sceneId: 'context-s1', caret: 3, writeScrollTop: 1200 });
+    const beforeReadingRestore = snapshot();
+    scrollEffects.length = 0;
+    await readyAndDrain();
+    check('saved reading viewport can restore a valid offscreen caret without discarding it',
+      [document.activeElement?.dataset.id, api.caretOffset(node('context-a1'))], ['context-a1', 3]);
+    check('saved reading scroll wins over an old caret outside the viewport', host().scrollTop, 1200);
+    await emit(document, 'selectionchange');
+    check('post-restore selection capture retains the saved reading position',
+      [state().writingContext.writeScrollTop, state().writingContext.caret], [1200, 3]);
+    unchanged('restoring offscreen caret and saved reading scroll never edits document', beforeReadingRestore);
+    groups++; console.log('PASS saved reading viewport takes priority over an offscreen old caret; anchor fallbacks remain intact');
+  } finally {
+    dom.window.HTMLElement.prototype.scrollIntoView = previousScrollIntoView;
+  }
+
   console.log(`writing context: ${checks} checks / ${groups} groups passed (synthetic memory/jsdom only)`);
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; }).finally(async () => {
   for (const stop of cleanup) stop();

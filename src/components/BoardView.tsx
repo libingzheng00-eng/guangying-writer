@@ -28,6 +28,8 @@ const isTextTarget = (target: EventTarget | null) => target instanceof Element &
   (!!target.closest('input,textarea,select') || (target instanceof HTMLElement && target.isContentEditable));
 const stopMouse = (event: React.MouseEvent) => event.stopPropagation();
 const stopWheel = (event: React.WheelEvent) => event.stopPropagation();
+const keepsNativeWheel = (target: EventTarget | null) => isTextTarget(target) ||
+  (target instanceof Element && !!target.closest('.board__context, .board__dock, .board__context-menu'));
 
 export function BoardView() {
   const project = useStore((s) => s.project);
@@ -84,6 +86,19 @@ export function BoardView() {
     observer?.observe(canvas);
     window.addEventListener('resize', measure);
     return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    // React's delegated wheel listener is passive. Cancel the browser's canvas
+    // scroll here, before React performs zoom; text/control areas retain their
+    // native wheel behavior and their existing propagation boundaries.
+    const preventCanvasScroll = (event: WheelEvent) => {
+      if (!keepsNativeWheel(event.target)) event.preventDefault();
+    };
+    canvas.addEventListener('wheel', preventCanvasScroll, { passive: false });
+    return () => canvas.removeEventListener('wheel', preventCanvasScroll);
   }, []);
 
   const layouts = useMemo<Layout[]>(() => [
@@ -280,8 +295,7 @@ export function BoardView() {
     selectCard(id); focusCanvas(); beginGesture(event, { mode: 'resize', members: [], anchor });
   };
   const onWheel = (event: React.WheelEvent) => {
-    event.preventDefault();
-    if (gesture.current || !canvasRef.current) return;
+    if (keepsNativeWheel(event.target) || gesture.current || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const next = Math.max(.4, Math.min(2, zoom * (event.deltaY > 0 ? .9 : 1.1)));
     const x = event.clientX - rect.left, y = event.clientY - rect.top;

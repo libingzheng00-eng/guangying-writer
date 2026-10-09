@@ -161,7 +161,9 @@ export function Editor() {
           node.focus({ preventScroll: true });
           setCaret(node, Math.min(context.caret, domLength(node)));
         }
-        node.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        // Reading may have continued away from the old caret. Keep an explicit
+        // saved viewport; use the caret as an anchor only without that position.
+        if (context.writeScrollTop === undefined) node.scrollIntoView({ block: 'nearest', behavior: 'auto' });
       } else if (node && context.writeScrollTop === undefined) {
         node.scrollIntoView({ block: 'nearest', behavior: 'auto' });
       }
