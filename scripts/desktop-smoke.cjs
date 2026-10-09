@@ -7,7 +7,8 @@
  * identity and ad-hoc signature. Production main/preload/renderer bytes are
  * verified before and after. The copied packaged executable runs those exact
  * production resources with an empty, test-owned userData, then restarts with the
- * same userData. Native dialog choices are stubbed, not the file IPC or close
+ * same userData for home recovery and automatic-resume phases. Native dialog
+ * choices are stubbed, not the file IPC or close
  * guard. This is an instrumented packaged-payload test, not a claim of real IME,
  * native file-picker operation, installer, signing or cross-machine acceptance.
  */
@@ -19,8 +20,8 @@ const { createHash } = require('node:crypto');
 const { spawn, spawnSync, execFileSync } = require('node:child_process');
 const { cleanEnvironment: cleanRuntimeEnvironment, inventory } = require('./desktop-launch.cjs');
 
-const qaEntries = ['windows-smoke-shell.cjs', 'windows-ui-layers.cjs', 'desktop-security-qa.cjs'];
-const phaseTimeoutMs = { 'first-launch': 360000, recovery: 90000 };
+const qaEntries = ['windows-smoke-shell.cjs', 'windows-ui-layers.cjs', 'desktop-security-qa.cjs', 'startup-native-qa.cjs'];
+const phaseTimeoutMs = { 'first-launch': 360000, recovery: 90000, 'auto-resume': 90000 };
 function copyQaEntries(destination) {
   const hashes = {};
   for (const name of qaEntries) {
@@ -147,7 +148,7 @@ async function main(platform) {
   function writeReport() { fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(report, null, 2)); }
   writeReport();
   try {
-    for (const phase of ['first-launch', 'recovery']) {
+    for (const phase of ['first-launch', 'recovery', 'auto-resume']) {
       await new Promise((resolve, reject) => {
         const log = fs.createWriteStream(path.join(output, `${phase}.log`), { flags: 'wx' });
         const env = cleanEnvironment(configPath, phase);

@@ -97,6 +97,80 @@ export function Editor() {
   const [isImageDropTarget, setIsImageDropTarget] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  // One restoration per mount/document. Paging updates from later typing must
+  // never reapply an old bookmark or move focus away from the user's controls.
+  const restoreRef = useRef({ epoch: documentEpoch, context: useStore.getState().writingContext, done: false, cancelled: false });
+  if (restoreRef.current.epoch !== documentEpoch) {
+    restoreRef.current = { epoch: documentEpoch, context: useStore.getState().writingContext, done: false, cancelled: false };
+  }
+  const capturedSceneRef = useRef<{ id: string; sceneId?: string; epoch: number } | null>(null);
+  useEffect(() => {
+    const capture = () => {
+      const state = useStore.getState();
+      const host = scrollRef.current;
+      if (!host || state.documentEpoch !== documentEpoch || state.pdfExportMode || state.view !== 'write' || host.closest('[inert], [hidden]')) return;
+      const node = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const selection = window.getSelection();
+      if (node?.dataset.id && refs.current.get(node.dataset.id) === node && selection?.rangeCount && node.contains(selection.focusNode)) {
+        const caret = caretOffset(node);
+        if (caret >= 0) {
+          // Reuse the editor's existing ID index, and find the parent scene only
+          // when the active paragraph changes, never on each input/selection.
+          let captured = capturedSceneRef.current;
+          if (!captured || captured.id !== node.dataset.id || captured.epoch !== documentEpoch) {
+            let sceneId: string | undefined;
+            for (let index = elementIndexRef.current.get(node.dataset.id) ?? -1; index >= 0; index--) {
+              const element = state.project.elements[index];
+              if (element?.type === 'scene_heading') { sceneId = element.id; break; }
+            }
+            captured = { id: node.dataset.id, sceneId, epoch: documentEpoch };
+            capturedSceneRef.current = captured;
+          }
+          state.updateWritingContext({ activeId: node.dataset.id, sceneId: captured.sceneId, caret, writeScrollTop: host.scrollTop }, documentEpoch);
+        }
+      }
+    };
+    const cancelRestore = () => { restoreRef.current.cancelled = true; };
+    // Input, pointer and find commands cancel even while fonts/layout are pending.
+    for (const type of ['pointerdown', 'mousedown', 'keydown', 'beforeinput', 'wheel']) document.addEventListener(type, cancelRestore, true);
+    for (const type of ['selectionchange', 'keyup', 'input', 'pointerup', 'mouseup']) document.addEventListener(type, capture);
+    window.addEventListener('guangying:find', cancelRestore);
+    return () => {
+      for (const type of ['pointerdown', 'mousedown', 'keydown', 'beforeinput', 'wheel']) document.removeEventListener(type, cancelRestore, true);
+      for (const type of ['selectionchange', 'keyup', 'input', 'pointerup', 'mouseup']) document.removeEventListener(type, capture);
+      window.removeEventListener('guangying:find', cancelRestore);
+    };
+  }, [documentEpoch]);
+  useEffect(() => {
+    const pending = restoreRef.current;
+    if (pending.done || pending.cancelled || pdfExportMode || readyKey !== `${version}:${project.settings.paper}`) return;
+    const frame = requestAnimationFrame(() => {
+      const state = useStore.getState();
+      const host = scrollRef.current;
+      if (pending !== restoreRef.current || pending.cancelled || state.documentEpoch !== pending.epoch || state.pdfExportMode || state.view !== 'write' || !host) return;
+      pending.done = true;
+      if (state.focus || host.closest('[inert], [hidden]') || document.querySelector('[aria-modal="true"], .find-panel')) return;
+      const context = pending.context;
+      if (!context) return;
+      const node = context.activeId ? refs.current.get(context.activeId) : undefined;
+      if (context.writeScrollTop !== undefined) host.scrollTop = context.writeScrollTop;
+      if (node && typeof context.caret === 'number') {
+        // Keep toolbar/modal/find focus. A home card that opened this document
+        // has already unmounted, so a normal reopen has body focus here.
+        if (document.activeElement === document.body || document.activeElement === node) {
+          node.focus({ preventScroll: true });
+          setCaret(node, Math.min(context.caret, domLength(node)));
+        }
+        // Reading may have continued away from the old caret. Keep an explicit
+        // saved viewport; use the caret as an anchor only without that position.
+        if (context.writeScrollTop === undefined) node.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+      } else if (node && context.writeScrollTop === undefined) {
+        node.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [documentEpoch, readyKey, version, project.settings.paper, pdfExportMode]);
+
   const selectMode = useStore((s) => s.writingSelectionMode);
   const writingIds = useStore((s) => s.writingSelectedIds);
   const setWritingSelectionMode = useStore((s) => s.setWritingSelectionMode);
@@ -147,6 +221,8 @@ export function Editor() {
     () => new Map(project.elements.map((element, index) => [element.id, index])),
     [project.elements],
   );
+  const elementIndexRef = useRef(elementIndex);
+  elementIndexRef.current = elementIndex;
 
   /**
    * 写作多选：Shift 必须按正文顺序选取连续段落，而不是只对小复选框生效。
@@ -749,7 +825,11 @@ export function Editor() {
   };
 
   return (
-    <div className="editor" ref={scrollRef} onCopy={(e) => handleClipboard(e, false)} onCut={(e) => handleClipboard(e, true)} onKeyDownCapture={(e) => {
+    <div className="editor" ref={scrollRef} onScroll={(event) => {
+      const state = useStore.getState();
+      const pending = restoreRef.current;
+      if (state.view === 'write' && (pending.done || pending.cancelled)) state.updateWritingContext({ writeScrollTop: event.currentTarget.scrollTop }, documentEpoch);
+    }} onCopy={(e) => handleClipboard(e, false)} onCut={(e) => handleClipboard(e, true)} onKeyDownCapture={(e) => {
       if (!selectMode || (e.target as HTMLElement).closest('input:not([type="checkbox"]), textarea')) return;
       if (e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault(); e.stopPropagation(); deleteWritingSelection();

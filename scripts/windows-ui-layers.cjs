@@ -21,7 +21,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, command, men
   const modal = '.modal[role="dialog"][aria-modal="true"]';
   const trigger = '.toolbar [aria-haspopup="menu"]';
   const popup = '[role="menu"][aria-label="文件"]';
-  const fileLabels = ['新建剧本', '打开…', '另存为…', '导入文本 / FDX…', '导出创作版 PDF（原位卡片）…', '导出 A4 纯文本 PDF…',
+  const fileLabels = ['新建剧本', '打开…', '启动页 / 最近项目', '另存为…', '导入文本 / FDX…', '导出创作版 PDF（原位卡片）…', '导出 A4 纯文本 PDF…',
     '导出 Final Draft (FDX)…', '导出纯文本…', '导出 Markdown…', '导出网页 HTML…', '标题页…'];
   const settingsButton = `Array.from(document.querySelectorAll('.toolbar__file-actions > button')).find(e=>e.textContent.trim()==='设置')`;
   const q = value => JSON.stringify(value);
@@ -293,7 +293,7 @@ module.exports = async function runWindowsUiLayers({ win, run, key, command, men
       await click(trigger); await until(`!!document.querySelector(${q(popup)})`, 'file popup');
       assert.equal(await run(`document.querySelector(${q(trigger)}).getAttribute('aria-expanded')`), 'true');
       const items = await run(`Array.from(document.querySelectorAll(${q(popup + ' [role="menuitem"]')})).map(e=>({text:e.textContent.trim(),r:e.getBoundingClientRect().toJSON(),topmost:e.contains(document.elementFromPoint(e.getBoundingClientRect().x+e.getBoundingClientRect().width/2,e.getBoundingClientRect().y+e.getBoundingClientRect().height/2))}))`);
-      assert.deepEqual(items.map(item => item.text), fileLabels, 'All 11 file command labels/order remain present');
+      assert.deepEqual(items.map(item => item.text), fileLabels, 'All 11 file commands remain present with the new startup-page entry');
       assert.equal(await run(`document.querySelector(${q(trigger)}).getAttribute('aria-controls')===document.querySelector(${q(popup)}).id`), true, 'File trigger is linked to its live popup');
       const viewport = await run('({width:innerWidth,height:innerHeight})');
       for (const item of items) assert.ok(item.r.x >= -1 && item.r.y >= -1 && item.r.right <= viewport.width + 1 && item.r.bottom <= viewport.height + 1 && item.topmost, `File item must be within viewport and topmost: ${JSON.stringify(item)}`);

@@ -1,12 +1,14 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { renderPdf } = require('./pdf');
 const { saveProjectFile } = require('./projectSave');
 const { dialogFileName } = require('./platform');
 const { senderGuard, secureWindow, savePayload, pdfPayload, rejectRequest } = require('./security');
 const { createFileAccess } = require('./fileAccess');
+const { createRecentProjects, validId } = require('./recentProjects');
 
 /* ---------------------------- 主进程崩溃兜底 ---------------------------- */
 /* 任何未捕获的同步异常 / 未处理的 Promise 拒绝，默认会让 Electron 直接退出且无提示。
@@ -28,7 +30,6 @@ process.on('unhandledRejection', (reason) => logFatal('unhandledRejection', reas
 const DEV = process.env.ZS_DEV === '1' && !app.isPackaged;
 const RENDERER_FILE = path.join(__dirname, '..', 'dist-renderer', 'index.html');
 const RENDERER_URL = DEV ? 'http://localhost:5178/' : pathToFileURL(RENDERER_FILE).href;
-const RECENT_FILE = () => path.join(app.getPath('userData'), 'recent.json');
 
 let win = null;
 const fileAccess = createFileAccess({
@@ -37,30 +38,12 @@ const fileAccess = createFileAccess({
   warn: message => { try { console.warn('[光影写手]', message); } catch { /* diagnostics only */ } },
 });
 
-function readRecent() {
-  try {
-    const raw = fs.readFileSync(RECENT_FILE(), 'utf8');
-    const list = JSON.parse(raw);
-    return Array.isArray(list) ? list.filter(entry => entry && typeof entry.path === 'string' &&
-      typeof entry.name === 'string' && Number.isFinite(entry.updatedAt)).slice(0, 12) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeRecent(list) {
-  try {
-    fs.writeFileSync(RECENT_FILE(), JSON.stringify(list.slice(0, 12), null, 2), 'utf8');
-  } catch {
-    /* ignore */
-  }
-}
-
-function pushRecent(entry) {
-  const list = readRecent().filter((r) => r.path !== entry.path);
-  list.unshift(entry);
-  writeRecent(list);
-}
+const recentProjects = createRecentProjects({ fileSystem: fs, pathApi: path,
+  userData: () => app.getPath('userData'), fileAccess });
+// One uncommitted open per renderer. A new request, reload, or close invalidates
+// it; the payload contains no renderer-selected path and expires after 10 min.
+const pendingOpens = new Map();
+let opening = false;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -88,6 +71,7 @@ function createWindow() {
     },
   });
   secureWindow(win);
+  win.webContents.on('did-navigate', () => pendingOpens.clear());
 
   win.once('ready-to-show', () => win.show());
   // beforeunload first flushes the latest recovery point in the renderer.
@@ -103,6 +87,7 @@ function createWindow() {
   });
   // 窗口关闭后把引用置空，避免后续 send() 打到已销毁的窗口而抛错
   win.on('closed', () => {
+    pendingOpens.clear();
     win = null;
   });
 
@@ -122,6 +107,7 @@ function buildMenu() {
     {
       label: '文件',
       submenu: [
+        { label: '启动页 / 最近项目', click: () => send('file:home') },
         { label: '新建剧本', accelerator: 'CmdOrCtrl+N', click: () => send('file:new') },
         { label: '打开…', accelerator: 'CmdOrCtrl+O', click: () => send('file:open') },
         { type: 'separator' },
@@ -226,7 +212,9 @@ function handle(channel, action) {
   ipcMain.handle(channel, async (event, payload) => {
     try {
       const checkSender = senderGuard(event, () => win, RENDERER_URL);
-      return await action(payload, checkSender);
+      const result = await action(payload, checkSender);
+      checkSender();
+      return result;
     } catch {
       // Do not forward filesystem paths, project text or arbitrary native errors
       // through rejected IPC promises. Rejections stay distinct from cancellation.
@@ -243,10 +231,48 @@ function rememberSaved(selection) {
   }
 }
 
-handle('dialog:open', async (_payload, checkSender) => {
+function rememberSavedRecent(file) {
+  try { recentProjects.commit({ path: file, opened: false }); }
+  catch {
+    // Disk save already succeeded. Report this independent metadata failure
+    // without returning null or changing the renderer's saved/dirty state.
+    try { dialog.showErrorBox('最近项目更新失败', '工程已保存，但最近项目列表未能更新。请稍后重试。'); }
+    catch { /* A reporting failure cannot undo an already successful save. */ }
+  }
+}
+
+function recentPayload(payload, extra = []) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !validId(payload.id) ||
+      Object.keys(payload).some(key => key !== 'id' && !extra.includes(key))) rejectRequest();
+  return payload.id;
+}
+
+async function singleOpen(checkSender, action) {
+  checkSender();
+  if (opening) return null;
+  opening = true;
+  pendingOpens.clear();
+  try { return await action(); }
+  finally { opening = false; }
+}
+
+function openedResult(read, checkSender, replaceId, previousPath) {
+  checkSender();
+  const result = { path: read.selection.requested, content: read.content };
+  if (path.extname(result.path).toLowerCase() === '.zhsp') {
+    const openToken = randomUUID();
+    pendingOpens.set(openToken, { path: result.path, replaceId, checkSender, expires: Date.now() + 10 * 60 * 1000 });
+    result.openToken = openToken;
+    if (previousPath && previousPath !== result.path) result.previousPath = previousPath;
+  }
+  return result;
+}
+
+async function selectOpen(checkSender, entry) {
   const res = await dialog.showOpenDialog(win, {
     properties: ['openFile'],
-    filters: [
+    ...(entry ? { title: '重新选择工程文件', defaultPath: entry.path, buttonLabel: '选择并打开' } : {}),
+    filters: entry ? [{ name: '光影写手工程', extensions: ['zhsp'] }] : [
       { name: '剧本文件', extensions: ['zhsp', 'fdx', 'txt', 'md'] },
       { name: '光影写手工程', extensions: ['zhsp'] },
       { name: 'Final Draft', extensions: ['fdx'] },
@@ -258,13 +284,57 @@ handle('dialog:open', async (_payload, checkSender) => {
   if (res.canceled || !res.filePaths.length) return null;
   const file = res.filePaths[0];
   try {
-    const { content } = fileAccess.readSelected(file);
-    pushRecent({ path: file, name: path.basename(file), updatedAt: Date.now() });
-    return { path: file, content };
+    if (entry && path.extname(file).toLowerCase() !== '.zhsp') rejectRequest();
+    return openedResult(fileAccess.readSelected(file), checkSender, entry?.id, entry?.path);
   } catch (err) {
+    if (err?.code === 'ESECURITY') throw err;
     dialog.showErrorBox('打开失败', '无法安全读取所选文件。请检查文件是否可用，或重新选择。');
     return null;
   }
+}
+
+handle('dialog:open', async (_payload, checkSender) => singleOpen(checkSender, () => selectOpen(checkSender)));
+
+handle('recent:open', async (payload, checkSender) => {
+  const id = recentPayload(payload, ['allowPrompt']);
+  if (payload.allowPrompt !== undefined && typeof payload.allowPrompt !== 'boolean') rejectRequest();
+  return singleOpen(checkSender, async () => {
+    const entry = recentProjects.find(id);
+    if (fileAccess.projectStatus(entry.path).needsAuthorization) {
+      return payload.allowPrompt === false ? null : selectOpen(checkSender, entry);
+    }
+    return openedResult(fileAccess.readAuthorizedProject(entry.path), checkSender, id);
+  });
+});
+
+handle('recent:relocate', async (payload, checkSender) => {
+  const id = recentPayload(payload);
+  return singleOpen(checkSender, () => selectOpen(checkSender, recentProjects.find(id)));
+});
+
+handle('recent:commitOpen', (payload, checkSender) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !validId(payload.token) ||
+      Object.keys(payload).some(key => key !== 'token' && key !== 'name') ||
+      (payload.name !== undefined && (typeof payload.name !== 'string' || payload.name.length > 4096 || /[\x00-\x1f\x7f]/.test(payload.name)))) rejectRequest();
+  const pending = pendingOpens.get(payload.token);
+  pendingOpens.delete(payload.token); // Success, rejection, and persistence failure all consume it.
+  if (!pending || pending.expires < Date.now()) rejectRequest();
+  pending.checkSender(); checkSender();
+  recentProjects.commit({ path: pending.path, replaceId: pending.replaceId, name: payload.name });
+  return true;
+});
+
+handle('recent:pin', payload => {
+  const id = recentPayload(payload, ['pinned']);
+  if (typeof payload.pinned !== 'boolean') rejectRequest();
+  return recentProjects.pin(id, payload.pinned);
+});
+
+handle('recent:remove', payload => {
+  const id = recentPayload(payload);
+  const result = recentProjects.remove(id);
+  for (const [token, pending] of pendingOpens) if (pending.replaceId === id) pendingOpens.delete(token);
+  return result;
 });
 
 handle('dialog:save', async (payload, checkSender) => {
@@ -292,7 +362,7 @@ handle('dialog:save', async (payload, checkSender) => {
     dialog.showErrorBox('保存失败', '工程保存未完成。请检查保存位置、文件权限和可用空间后重试。');
     return null;
   }
-  pushRecent({ path: file, name: path.basename(file), updatedAt: Date.now() });
+  rememberSavedRecent(file);
   return file;
 });
 
@@ -311,6 +381,7 @@ handle('dialog:saveAs', async (payload, checkSender) => {
       warnProjectSaveDurability(await saveProjectFile(current.canonical, content, { path: path.dirname(current.canonical), ...current.parent }));
       checkSender();
       rememberSaved(selection);
+      rememberSavedRecent(res.filePath);
     } else fileAccess.writeExport(selection, content, 'utf8');
   } catch (err) {
     if (err?.code === 'ESECURITY') throw err;
@@ -345,7 +416,7 @@ handle('file:show', async (p) => {
   shell.showItemInFolder(fileAccess.shownPath(p));
 });
 
-handle('app:recent', () => readRecent());
+handle('app:recent', () => recentProjects.list());
 handle('app:info', () => ({ version: app.getVersion(), platform: process.platform }));
 
 /* ---------------------------- 生命周期 ---------------------------- */

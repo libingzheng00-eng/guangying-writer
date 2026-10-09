@@ -52,6 +52,7 @@ const repo = path.resolve(__dirname, '..');
     { id: 'find-entity', type: 'general', text: '&#x1F3AC;&#27979;&#35797;' },
   ];
   localStorage.setItem('guangying:autosave', JSON.stringify({ project, filePath: null }));
+  localStorage.setItem('guangying:startup-preference', 'resume');
   root = createRoot(document.getElementById('root'));
   await act(async () => { root.render(React.createElement(App)); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 80)); });

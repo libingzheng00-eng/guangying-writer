@@ -10,6 +10,12 @@ type DragState = { elementId: string; ids: string[] } | null;
 
 export function CardsView() {
   const project = useStore((s) => s.project);
+  const documentEpoch = useStore((s) => s.documentEpoch);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const state = useStore.getState();
+    if (scrollRef.current && state.view === 'cards' && !state.pdfExportMode) scrollRef.current.scrollTop = state.writingContext?.cardsScrollTop || 0;
+  }, [documentEpoch]);
   const setView = useStore((s) => s.setView);
   const requestFocus = useStore((s) => s.requestFocus);
   const updateSceneMeta = useStore((s) => s.updateSceneMeta);
@@ -32,7 +38,7 @@ export function CardsView() {
   useEffect(() => {
     setSelected([]); setCollapsed([]); setDeleting(null); setEditing(null);
     anchor.current = null; dragRef.current = null; setDrag(null); setOver(null); setDropTarget(null);
-  }, [project.id]);
+  }, [documentEpoch]);
 
   const scenes = useMemo(() => deriveScenes(project), [project]);
   const grouped = useMemo(() => {
@@ -51,6 +57,7 @@ export function CardsView() {
   const visibleOrder = [...(collapsed.includes('') ? [] : grouped.other), ...project.acts.flatMap(act => collapsed.includes(act.id) ? [] : grouped.map.get(act.id) || [])]
     .map(scene => scene.elementId);
   const select = (id: string, range: boolean) => {
+    useStore.getState().updateWritingContext({ sceneId: id }, documentEpoch);
     if (range && anchor.current && visibleOrder.includes(anchor.current)) {
       const from = visibleOrder.indexOf(anchor.current), to = visibleOrder.indexOf(id);
       setSelected(visibleOrder.slice(Math.min(from, to), Math.max(from, to) + 1));
@@ -199,7 +206,12 @@ export function CardsView() {
           + 新增场景
         </button>
       </div>
-      <div className="cards__scroll">
+      <div className="cards__scroll" ref={scrollRef} onScroll={(event) => {
+        if (useStore.getState().view === 'cards') useStore.getState().updateWritingContext({ cardsScrollTop: event.currentTarget.scrollTop }, documentEpoch);
+      }} onFocusCapture={(event) => {
+        const id = (event.target as HTMLElement).closest<HTMLElement>('[data-scene-id]')?.dataset.sceneId;
+        if (id) useStore.getState().updateWritingContext({ sceneId: id }, documentEpoch);
+      }}>
         {renderSection(null, '未归幕', grouped.other)}
         {[...grouped.map.entries()].map(([actId, list]) => {
           const act = project.acts.find((a) => a.id === actId);

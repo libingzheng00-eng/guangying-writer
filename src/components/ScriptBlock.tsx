@@ -175,7 +175,8 @@ export function EditableBlock(props: EditableBlockProps) {
   useEffect(() => {
     if (!focus || focus.id !== el.id) return;
     const node = localRef.current;
-    if (!node) return;
+    if (!node || useStore.getState().pdfExportMode || useStore.getState().view !== 'write' ||
+        node.closest('[inert], [hidden]') || document.querySelector('[aria-modal="true"]')) return;
     node.focus({ preventScroll: true });
     setCaret(node, focus.caret);
     node.scrollIntoView({ block: focus.scroll || 'nearest', behavior: focus.scroll === 'start' ? 'smooth' : 'auto' });

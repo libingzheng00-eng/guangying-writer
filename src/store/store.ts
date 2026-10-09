@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isWritingView, loadStoredWritingContext, resolveWritingContext, validateWritingContext, type WritingContext } from '../app/writingContext';
 import type {
   Act,
   BoardLink,
@@ -12,6 +13,7 @@ import type {
   TitlePage,
 } from '../model/types';
 import { cloneProject, createProject, newElement, deriveScenes } from '../model/project';
+import { sampleProject } from '../model/sample';
 import { dualAfterEnter } from '../model/flow';
 import { moveStoryboardScenes, type StoryboardPlacement } from '../model/storyboard';
 import { searchText } from '../model/search';
@@ -64,6 +66,8 @@ interface StoreState {
   filePath: string | null;
   dirty: boolean;
   view: ViewMode;
+  writingContext: WritingContext | null;
+  updateWritingContext: (patch: Partial<WritingContext>, expectedEpoch?: number) => void;
   sidebar: SidebarMode;
   sidebarOpen: boolean;
   activeId: string | null;
@@ -100,7 +104,7 @@ interface StoreState {
   setFontColor: (c: string) => void;
   setAppTheme: (theme: AppTheme) => void;
 
-  loadProject: (p: ScriptProject, filePath?: string | null) => void;
+  loadProject: (p: ScriptProject, filePath?: string | null, context?: WritingContext | null) => void;
   newProject: () => void;
   markSaved: (path: string, saved?: SaveSnapshot) => boolean;
 
@@ -293,6 +297,7 @@ export const useStore = create<StoreState>((set, get) => ({
   filePath: null,
   dirty: false,
   view: 'write',
+  writingContext: null,
   sidebar: 'navigator',
   sidebarOpen: true,
   activeId: null,
@@ -312,7 +317,22 @@ export const useStore = create<StoreState>((set, get) => ({
   writingSelectionMode: false,
   writingSelectedIds: [],
 
-  setView: (v) => set({ view: v }),
+  setView: (view) => {
+    const state = get();
+    if (!state.pdfExportMode && isWritingView(view)) state.updateWritingContext({ view });
+    set({ view, ...(view !== 'write' ? { focus: null } : {}) });
+  },
+  updateWritingContext: (patch, expectedEpoch) => {
+    const state = get();
+    if (state.pdfExportMode || (expectedEpoch !== undefined && expectedEpoch !== state.documentEpoch)) return;
+    const previous = state.writingContext || { version: 1 as const, projectId: state.project.id, view: 'write' as const };
+    const context = validateWritingContext({ ...previous, ...patch, version: 1, projectId: state.project.id }, state.project.id);
+    if (!context) return;
+    // This is a bounded scalar object, never a project serialization/comparison.
+    if (JSON.stringify(context) === JSON.stringify(previous)) return;
+    context.updatedAt = Math.min(Number.MAX_SAFE_INTEGER, Math.max(Date.now(), (previous.updatedAt || 0) + 1));
+    set({ writingContext: context });
+  },
   setPdfExportMode: (pdfExportMode) => set({ pdfExportMode }),
   setSidebar: (s) => set({ sidebar: s, sidebarOpen: true }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -334,7 +354,13 @@ export const useStore = create<StoreState>((set, get) => ({
     set({ appTheme });
   },
 
-  loadProject: (p, filePath = null) => {
+  loadProject: (p, filePath = null, context) => {
+    const current = get();
+    // Reopening the same file before the metadata timer fires must use the live
+    // bookmark, not replace it with an older persisted position. An unassociated
+    // in-memory load is a new session; draft recovery supplies its own context.
+    const live = filePath !== null && current.project.id === p.id && current.filePath === filePath ? current.writingContext : null;
+    const restored = resolveWritingContext(p, context === undefined ? live || loadStoredWritingContext(p.id, filePath) : context);
     // 启动恢复/打开工程建立独立历史，避免撤销上一文件内容却沿用当前文件路径。
     lastCoalesce = null;
     // 规范化幕标题：把「第2幕」这类阿拉伯数字写法统一为「第二幕」，避免格式不统一
@@ -344,11 +370,13 @@ export const useStore = create<StoreState>((set, get) => ({
     });
     set((s) => ({
       project: p,
+      view: restored.view,
+      writingContext: restored,
       filePath,
       dirty: false,
       past: [],
       future: [],
-      activeId: p.elements[0]?.id ?? null,
+      activeId: restored.activeId ?? null,
       focus: null,
       version: s.version + 1,
       documentEpoch: s.documentEpoch + 1,
@@ -360,11 +388,13 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   newProject: () => {
-    // 新建工程必须切断上一工程的 coalesce 状态。
+    // 新建工程必须切断上一工程的 coalesce 状态，并使用真正空白的模板。
     lastCoalesce = null;
-    const p = createProject();
+    const p = sampleProject();
     set((s) => ({
       project: p,
+      view: 'write',
+      writingContext: resolveWritingContext(p),
       filePath: null,
       dirty: false,
       past: [],
@@ -441,8 +471,15 @@ export const useStore = create<StoreState>((set, get) => ({
     });
   },
 
-  setActive: (id) => set({ activeId: id }),
-  requestFocus: (id, caret = 'end', scroll = 'nearest') => set({ focus: { id, caret, scroll, ts: Date.now() }, activeId: id }),
+  setActive: (id) => {
+    const state = get();
+    if (state.activeId !== id) state.updateWritingContext({ activeId: id || undefined, caret: undefined });
+    set({ activeId: id });
+  },
+  requestFocus: (id, caret = 'end', scroll = 'nearest') => {
+    get().updateWritingContext({ activeId: id, caret: typeof caret === 'number' ? caret : caret === 'start' ? 0 : undefined });
+    set({ focus: { id, caret, scroll, ts: Date.now() }, activeId: id });
+  },
 
   insertAfter: (id, type = 'action', text = '') => {
     const el = newElement(type, text);

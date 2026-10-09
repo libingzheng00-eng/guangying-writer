@@ -4,9 +4,11 @@
 
 采用 [MIT License](LICENSE)。这是源码仓库；普通用户请到 [GitHub Releases 下载已公开的安装附件](https://github.com/libingzheng00-eng/guangying-writer/releases)。下载源码 ZIP 不等于下载桌面应用。目前公开包的系统、架构和签名状态以对应 Release 说明为准。
 
-## alpha.18.13 安全候选
+## alpha.18.15 启动工作区与旧工程兼容
 
-当前分支在 PR #13 上独立升级 Electron 44.7.0，并加固工程 HTML、显示/导出和原生 IPC 文件权限。候选最低要求为 macOS 13+ Apple Silicon / Windows 10+ x64；新版本尚不代表已发布或安装。安全边界、剩余依赖告警和验收分层见 [安全升级说明](SECURITY_UPGRADE.md)。下方 alpha.18.12 的 Release 记录保留为历史交付。
+`alpha.18.15` 汇集启动页、最近项目和写作位置恢复，并修复旧工程关系线字段导致整份工程无法打开的问题。阅读滚动位置优先于旧光标，自由板平移、缩放及关系备注继续保留。使用与数据保护说明见 [启动工作区](STARTUP_WORKSPACE.md)；实际预发布状态、附件、来源与跨平台验收以对应 GitHub Release 为准。
+
+保留此前安全升级的 Electron 44.7.0、工程 HTML 净化、显示/导出与原生 IPC 文件权限。最低要求为 macOS 13+ Apple Silicon / Windows 10+ x64；发布不会自动替换用户安装。安全边界、剩余依赖告警和验收分层见 [安全升级说明](SECURITY_UPGRADE.md)。下方 alpha.18.12 的 Release 记录保留为历史交付。
 
 ## 主要能力
 
@@ -48,7 +50,7 @@ npm run test:core
 npm run dev
 ```
 
-当前44套源码回归的统一入口是 `test:core`，包含恢复、工程落盘、保存IPC、写作派生，模态焦点、文件菜单、设置读写一致性及工程/显示/IPC安全专项。它不启动原生 Electron，不读取用户剧本或系统剪贴板；原生验收须独立进行。
+当前47套源码回归的统一入口是 `test:core`，包含启动页、最近项目、写作位置、恢复、工程落盘、保存IPC、写作派生，模态焦点、文件菜单、设置读写一致性及工程/显示/IPC安全专项。它不启动原生 Electron，不读取用户剧本或系统剪贴板；原生验收须独立进行。
 
 维护前请依次阅读：
 

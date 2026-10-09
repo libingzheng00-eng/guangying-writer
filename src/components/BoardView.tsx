@@ -28,14 +28,29 @@ const isTextTarget = (target: EventTarget | null) => target instanceof Element &
   (!!target.closest('input,textarea,select') || (target instanceof HTMLElement && target.isContentEditable));
 const stopMouse = (event: React.MouseEvent) => event.stopPropagation();
 const stopWheel = (event: React.WheelEvent) => event.stopPropagation();
+const keepsNativeWheel = (target: EventTarget | null) => isTextTarget(target) ||
+  (target instanceof Element && !!target.closest('.board__context, .board__dock, .board__context-menu'));
 
 export function BoardView() {
   const project = useStore((s) => s.project);
   const view = useStore((s) => s.view);
   const selectedIds = useStore((s) => s.selectedIds);
   const scenes = useMemo(() => deriveScenes(project), [project]);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const documentEpoch = useStore((s) => s.documentEpoch);
+  const board = useStore((s) => s.writingContext?.board);
+  const zoom = board?.zoom ?? 1;
+  const pan = { x: board?.panX ?? 0, y: board?.panY ?? 0 };
+  const setZoom = (value: number | ((current: number) => number)) => {
+    const state = useStore.getState();
+    if (state.view !== 'board') return;
+    const current = state.writingContext?.board || { panX: 0, panY: 0, zoom: 1 };
+    state.updateWritingContext({ board: { ...current, zoom: typeof value === 'function' ? value(current.zoom) : value } }, documentEpoch);
+  };
+  const setPan = (value: { x: number; y: number }) => {
+    const state = useStore.getState();
+    if (state.view !== 'board') return;
+    state.updateWritingContext({ board: { zoom: state.writingContext?.board?.zoom ?? 1, panX: value.x, panY: value.y } }, documentEpoch);
+  };
   const [filter, setFilter] = useState<Filter>('both');
   const [mode, setMode] = useState<Mode>('select');
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
@@ -55,6 +70,11 @@ export function BoardView() {
   const spaceRef = useRef(false);
   const lastAnchor = useRef<string | null>(null);
   useEffect(() => {
+    gesture.current = null; lastAnchor.current = null; spaceRef.current = false;
+    setPreview({}); setMarquee(null); setSnapping(false); setSpaceHeld(false);
+    setMode('select'); setLinkFrom(null); setSelectedLink(null); setContextMenu(null);
+  }, [documentEpoch]);
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const measure = () => setCanvasSize((previous) => {
@@ -66,6 +86,19 @@ export function BoardView() {
     observer?.observe(canvas);
     window.addEventListener('resize', measure);
     return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    // React's delegated wheel listener is passive. Cancel the browser's canvas
+    // scroll here, before React performs zoom; text/control areas retain their
+    // native wheel behavior and their existing propagation boundaries.
+    const preventCanvasScroll = (event: WheelEvent) => {
+      if (!keepsNativeWheel(event.target)) event.preventDefault();
+    };
+    canvas.addEventListener('wheel', preventCanvasScroll, { passive: false });
+    return () => canvas.removeEventListener('wheel', preventCanvasScroll);
   }, []);
 
   const layouts = useMemo<Layout[]>(() => [
@@ -102,6 +135,7 @@ export function BoardView() {
   }, [cancelGesture, focusCanvas]);
   const selectCard = useCallback((id: string) => {
     setSelectedLink(null); useStore.getState().setSelectedIds([id]); lastAnchor.current = id;
+    if (id.startsWith('scene:')) useStore.getState().updateWritingContext({ sceneId: id.slice(6) });
   }, []);
   const selectLink = useCallback((id: string) => {
     cancelGesture(); useStore.getState().setSelectedIds([]); setSelectedLink(id);
@@ -201,6 +235,7 @@ export function BoardView() {
       const anchor = layoutMap.get(id);
       if (!anchor) return;
       const store = useStore.getState();
+      if (id.startsWith('scene:')) store.updateWritingContext({ sceneId: id.slice(6) }, documentEpoch);
       if (event.metaKey || event.ctrlKey) { store.toggleSelection(id); lastAnchor.current = id; return; }
       if (event.shiftKey) { store.selectRange(visibleIds, lastAnchor.current, id); lastAnchor.current = id; return; }
       const ids = visibleSelected.includes(id) ? visibleSelected : [id];
@@ -251,7 +286,7 @@ export function BoardView() {
     };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-  }, [snap, cancelGesture]);
+  }, [snap, cancelGesture, documentEpoch]);
 
   const startResize = (event: React.MouseEvent, id: string) => {
     event.preventDefault(); event.stopPropagation();
@@ -260,8 +295,7 @@ export function BoardView() {
     selectCard(id); focusCanvas(); beginGesture(event, { mode: 'resize', members: [], anchor });
   };
   const onWheel = (event: React.WheelEvent) => {
-    event.preventDefault();
-    if (gesture.current || !canvasRef.current) return;
+    if (keepsNativeWheel(event.target) || gesture.current || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const next = Math.max(.4, Math.min(2, zoom * (event.deltaY > 0 ? .9 : 1.1)));
     const x = event.clientX - rect.left, y = event.clientY - rect.top;

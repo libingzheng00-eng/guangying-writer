@@ -13,6 +13,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const esbuild = require('esbuild');
+const { isDeepStrictEqual } = require('node:util');
 
 const entry = path.join(__dirname, 'zhsp-compat.entry.ts');
 const bundle = path.join(__dirname, '..', '.tmp-zhsp-compat.cjs');
@@ -260,6 +261,142 @@ function wrap(oldA, extras = {}) {
   ok('NaN/Infinity → 走 fallback（场景卡）', epDirty.x === 100 + FALLBACK_CARD_W / 2 && epDirty.y === 100 + FALLBACK_SCENE_H / 2);
   const cardEpDirty = cardEndpoint({ x: 0, y: 0 }, { w: 'bad', h: null }, { w: 200, h: 100 });
   ok('cardEndpoint 字符串/null → 走 fallback', cardEpDirty.x === 100 && cardEpDirty.y === 50);
+
+  console.log('\n== 场景 11：旧 fromId/toId 关系线与现行关系线混存 ==');
+  // Completely synthetic historical shape. Feed raw JSON into the reader:
+  // serializing a current model first would hide an admission regression.
+  const legacyLinks = [
+    { id: 'old-scene-beat', fromId: 'legacy-scene', toId: 'legacy-beat', note: '合成旧关系说明', extra: { dash: true, weight: 2 } },
+    { id: 'old-beat-scene', fromId: 'legacy-beat', toId: 'legacy-scene' },
+    { id: 'old-unresolved', fromId: 'removed-scene', toId: 'missing-card', note: '合成未解析关系' },
+    { id: 'old-meta-reference', fromId: 'legacy-meta', toId: 'legacy-beat' },
+    { id: 'old-action-reference', fromId: 'legacy-action', toId: 'legacy-beat' },
+    { id: 'old-prefixed', fromId: 'scene:legacy-scene', toId: 'beat:legacy-beat' },
+    { id: 'current-prefixed', from: 'scene:legacy-scene', to: 'beat:legacy-beat', note: '合成现行关系' },
+    // Current endpoints have authority even when legacy aliases disagree.
+    { id: 'current-with-aliases', from: 'beat:legacy-beat', to: 'scene:legacy-scene', fromId: 'removed-scene', toId: 'missing-card', note: '保留当前端点' },
+    { id: 'current-bare', from: 'legacy-scene', to: 'legacy-beat', note: '当前字段原样保留' },
+  ];
+  const legacyLinkProject = {
+    ...baseProject,
+    elements: [
+      { id: 'legacy-scene', type: 'scene_heading', text: '内景 合成空间 日' },
+      { id: 'legacy-action', type: 'action', text: '合成动作。' },
+    ],
+    sceneMeta: [{ id: 'legacy-meta', elementId: 'legacy-scene', title: '合成标题', synopsis: '合成摘要', color: '#cfe4ff' }],
+    beats: [{ id: 'legacy-beat', text: '合成卡片', color: '#fff7d6', x: 20, y: 40, kind: 'image', img: 'data:image/png;base64,c3ludGhldGlj', w: 200, h: 160 }],
+    boardLinks: legacyLinks,
+  };
+  const expectedLegacyLinks = [
+    { ...legacyLinks[0], from: 'scene:legacy-scene', to: 'beat:legacy-beat' },
+    { ...legacyLinks[1], from: 'beat:legacy-beat', to: 'scene:legacy-scene' },
+    { ...legacyLinks[2], from: 'removed-scene', to: 'missing-card' },
+    { ...legacyLinks[3], from: 'legacy-meta', to: 'beat:legacy-beat' },
+    { ...legacyLinks[4], from: 'legacy-action', to: 'beat:legacy-beat' },
+    { ...legacyLinks[5], from: 'scene:legacy-scene', to: 'beat:legacy-beat' },
+    ...legacyLinks.slice(6),
+  ];
+  for (const [shape, raw] of [
+    ['旧品牌封装', wrap(legacyLinkProject)],
+    ['现行品牌封装', JSON.stringify({ app: 'guangying-writer', fileVersion: 1, project: legacyLinkProject })],
+    ['无封装工程', JSON.stringify(legacyLinkProject)],
+  ]) {
+    let loaded;
+    try { loaded = parseProject(raw); } catch (_) { /* The assertion reports failed admission below. */ }
+    ok(`${shape}可打开混存的新旧关系线`, !!loaded);
+    if (!loaded) continue;
+    ok(`${shape}按真实卡片类型迁移且保留全部旧字段、备注和扩展数据`, isDeepStrictEqual(loaded.boardLinks, expectedLegacyLinks));
+    ok(`${shape}不猜测元数据 ID、非场景正文 ID 或已删除端点`, isDeepStrictEqual(loaded.boardLinks.slice(2, 5).map(link => [link.from, link.to]), [
+      ['removed-scene', 'missing-card'], ['legacy-meta', 'beat:legacy-beat'], ['legacy-action', 'beat:legacy-beat'],
+    ]));
+    ok(`${shape}完整现行端点优先且原样保留`, isDeepStrictEqual(loaded.boardLinks.slice(6), legacyLinks.slice(6)));
+    ok(`${shape}旧关系线迁移不改正文、场景元数据和图文卡片`, isDeepStrictEqual(
+      [loaded.elements, loaded.sceneMeta, loaded.beats],
+      [legacyLinkProject.elements, legacyLinkProject.sceneMeta, legacyLinkProject.beats],
+    ));
+    const saved = serializeProject(loaded);
+    const reopened = parseProject(saved);
+    ok(`${shape}保存再打开不丢线、不丢旧字段、不重复迁移`, isDeepStrictEqual(reopened, loaded));
+    ok(`${shape}保存文件包含规范端点及原始旧别名`, isDeepStrictEqual(JSON.parse(saved).project.boardLinks, expectedLegacyLinks));
+  }
+
+  console.log('\n== 场景 12：旧关系线迁移不能绕过现行端点和 ID 校验 ==');
+  const oldPair = { id: 'unsafe-link', fromId: 'legacy-scene', toId: 'legacy-beat' };
+  const rejectsLink = (name, link) => {
+    let rejected = false;
+    try { parseProject(wrap(legacyLinkProject, { boardLinks: [link] })); } catch (_) { rejected = true; }
+    ok(name, rejected);
+  };
+  for (const [name, link] of [
+    ['只有 from 的混合形态', { ...oldPair, from: 'scene:legacy-scene' }],
+    ['只有 to 的混合形态', { ...oldPair, to: 'beat:legacy-beat' }],
+    ['两端现代字段为 null', { ...oldPair, from: null, to: null }],
+    ['现代 from 为 null', { ...oldPair, from: null, to: 'beat:legacy-beat' }],
+    ['现代 to 为 null', { ...oldPair, from: 'scene:legacy-scene', to: null }],
+    ['现代 from 为空串', { ...oldPair, from: '', to: 'beat:legacy-beat' }],
+    ['现代 to 为对象', { ...oldPair, from: 'scene:legacy-scene', to: {} }],
+    ['现代 from 为危险对象键', { ...oldPair, from: '__proto__', to: 'beat:legacy-beat' }],
+    ['现代 to 含选择器引号', { ...oldPair, from: 'scene:legacy-scene', to: 'bad"id' }],
+    ['旧形态缺 fromId', { id: 'missing-from', toId: 'legacy-beat' }],
+    ['旧形态缺 toId', { id: 'missing-to', fromId: 'legacy-scene' }],
+    ['旧形态备注不是字符串', { ...oldPair, note: {} }],
+  ]) rejectsLink(`${name}仍拒绝，不借旧别名兜底`, link);
+  for (const field of ['fromId', 'toId']) {
+    for (const [label, value] of [
+      ['null', null], ['number', 7], ['object', {}], ['array', []], ['empty', ''],
+      ['whitespace', '   '], ['reserved', '__proto__'], ['constructor', 'constructor'],
+      ['quote', 'bad"id'], ['control', 'bad\nid'], ['overlong', 'x'.repeat(513)],
+    ]) rejectsLink(`旧 ${field} 的 ${label} 非法值仍拒绝`, { ...oldPair, [field]: value });
+  }
+
+  console.log('\n== 场景 13：端点前缀不占卡片 ID 长度，后缀仍须安全 ==');
+  const longestSceneId = 's'.repeat(512);
+  const longestBeatId = 'b'.repeat(512);
+  const longIdProject = {
+    ...baseProject,
+    elements: [{ id: longestSceneId, type: 'scene_heading', text: '内景 合成长 ID 场景 日' }],
+    beats: [{ id: longestBeatId, text: '合成长 ID 卡片', color: '#fff7d6', x: 10, y: 20 }],
+  };
+  const longestEndpoints = [
+    [`scene:${longestSceneId}`, `beat:${longestBeatId}`],
+    [`beat:${longestBeatId}`, `scene:${longestSceneId}`],
+  ];
+  for (const [shape, links] of [
+    ['旧裸 ID 迁移', [
+      { id: 'long-old-forward', fromId: longestSceneId, toId: longestBeatId, note: '合成正向' },
+      { id: 'long-old-reverse', fromId: longestBeatId, toId: longestSceneId, note: '合成反向' },
+    ]],
+    ['现行带前缀端点', [
+      { id: 'long-current-forward', from: longestEndpoints[0][0], to: longestEndpoints[0][1] },
+      { id: 'long-current-reverse', from: longestEndpoints[1][0], to: longestEndpoints[1][1] },
+    ]],
+  ]) {
+    let loaded;
+    try { loaded = parseProject(wrap(longIdProject, { boardLinks: links })); } catch (_) { /* Report below. */ }
+    ok(`${shape}接受 scene 和 beat 各 512 字符的真实 ID`, !!loaded);
+    if (!loaded) continue;
+    ok(`${shape}规范端点保留完整的 512 字符 ID`, isDeepStrictEqual(loaded.boardLinks.map(link => [link.from, link.to]), longestEndpoints));
+    ok(`${shape}不截短原始关系字段和备注`, loaded.boardLinks.every((link, index) => Object.entries(links[index]).every(([key, value]) => link[key] === value)));
+    let reopened;
+    try { reopened = parseProject(serializeProject(loaded)); } catch (_) { /* Admission alone is insufficient: the result must remain saveable. */ }
+    ok(`${shape}保存再打开完整往返，不因增加前缀而拒绝`, !!reopened && isDeepStrictEqual(reopened, loaded));
+  }
+  for (const prefix of ['scene:', 'beat:']) {
+    for (const [label, suffix] of [
+      ['513 字符', 'x'.repeat(513)], ['空', ''], ['空白', '   '],
+      ['保留对象键', '__proto__'], ['constructor', 'constructor'], ['prototype', 'prototype'],
+      ['选择器注入', 'bad\"id'], ['控制字符', 'bad\nid'], ['反斜线', 'bad\\id'], ['标签', '<bad>'],
+    ]) {
+      for (const side of ['from', 'to']) {
+        rejectsLink(`现行 ${side} 的 ${prefix}${label} 后缀拒绝`, {
+          id: 'unsafe-prefixed-current', from: 'scene:legacy-scene', to: 'beat:legacy-beat', [side]: prefix + suffix,
+        });
+        rejectsLink(`旧 ${side}Id 的 ${prefix}${label} 后缀首次迁移即拒绝`, {
+          ...oldPair, [`${side}Id`]: prefix + suffix,
+        });
+      }
+    }
+  }
 
   if (failures.length) {
     console.log(`\n=== FAIL: ${failures.length} test(s) failed ===`);

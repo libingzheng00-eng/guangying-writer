@@ -71,6 +71,8 @@ const check = (label, actual, expected = true) => { assert.deepEqual(actual, exp
 
   mounted = createRoot(document.getElementById('root'));
   await act(async () => mounted.render(React.createElement(App)));
+  await act(async () => [...document.querySelectorAll('.startup button')]
+    .find(button => button.textContent.includes('新建剧本')).click());
   const p = createProject('合成本地草稿历史');
   p.titlePage.show = false;
   p.elements = [
@@ -161,6 +163,7 @@ const check = (label, actual, expected = true) => { assert.deepEqual(actual, exp
   const remount = async raw => {
     await act(async () => mounted.unmount()); mounted = null;
     localStorage.removeItem('guangying:autosave'); localStorage.removeItem('mojiang:autosave');
+    localStorage.setItem('guangying:startup-preference', 'resume');
     if (raw !== null) localStorage.setItem('guangying:autosave', raw);
     mounted = createRoot(document.getElementById('root'));
     await act(async () => mounted.render(React.createElement(App)));

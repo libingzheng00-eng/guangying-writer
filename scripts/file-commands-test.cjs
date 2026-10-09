@@ -282,16 +282,64 @@ const deferred = () => {
   check('stale open is rejected before discard confirmation', confirms, 0);
 
   reset(fixture(), '/synthetic/original.zhsp', false);
-  const firstOpen = deferred(), secondOpen = deferred();
+  const firstOpen = deferred();
   openResult = firstOpen.promise; const pendingFirst = commands.open();
-  openResult = secondOpen.promise; const pendingSecond = commands.open();
-  firstOpen.resolve({ path: '/synthetic/obsolete.zhsp', content: serializeProject(nativeProject) });
-  const beforeObsolete = state(); await pendingFirst;
-  check('obsolete concurrent open result cannot replace current document', [state().project, state().filePath, state().documentEpoch], [beforeObsolete.project, beforeObsolete.filePath, beforeObsolete.documentEpoch]);
-  secondOpen.resolve({ path: '/synthetic/latest-open.zhsp', content: serializeProject(nativeProject) });
-  await pendingSecond;
-  check('latest concurrent open loads only its chosen file', [state().project.name, state().filePath, state().past.length, state().future.length], [nativeProject.name, '/synthetic/latest-open.zhsp', 0, 0]);
+  check('duplicate open is ignored while one selection is pending', await commands.open(), false);
+  check('duplicate click creates only one native file chooser', calls.filter(call => call.method === 'openProject').length, 1);
+  firstOpen.resolve({ path: '/synthetic/first-open.zhsp', content: serializeProject(nativeProject) });
+  await pendingFirst;
+  check('single pending open loads its chosen file once with fresh history', [state().project.name, state().filePath, state().past.length, state().future.length], [nativeProject.name, '/synthetic/first-open.zhsp', 0, 0]);
   check('clean replacement does not require discard confirmation', confirms, 0);
+
+  reset();
+  const rejectedState = state();
+  openResult = { path: '/synthetic/invalid.zhsp', content: '{invalid', openToken: 'uncommittable' };
+  const committedTokens = [];
+  window.api.commitOpen = async (token, name) => { committedTokens.push([token, name]); return true; };
+  await commands.open();
+  check('invalid project never asks to discard a dirty document', confirms, 0);
+  check('invalid project preserves document identity and recent commit state',
+    [state().project, state().documentEpoch, state().dirty, committedTokens.length],
+    [rejectedState.project, rejectedState.documentEpoch, true, 0]);
+  openResult = { path: '/synthetic/native.zhsp', content: serializeProject(nativeProject), openToken: 'validated-open' };
+  confirmResult = false;
+  await commands.open();
+  check('cancelled discard never commits a recent record', committedTokens.length, 0);
+  confirmResult = true;
+  await commands.open();
+  check('successfully parsed and loaded project commits its opaque native token and display name', committedTokens, [['validated-open', nativeProject.name]]);
+
+  reset();
+  window.api.openRecent = async id => { calls.push({ method: 'openRecent', id }); return { path: '/synthetic/recent.zhsp', content: serializeProject(nativeProject), openToken: 'recent-open' }; };
+  await commands.openRecent('recent-id');
+  check('recent command submits only an opaque ID and loads validated content', [calls[0], state().filePath], [{ method: 'openRecent', id: 'recent-id' }, '/synthetic/recent.zhsp']);
+  window.api.relocateRecent = async id => { calls.push({ method: 'relocateRecent', id }); return null; };
+  const beforeRelocate = state();
+  await commands.relocateRecent('recent-id');
+  check('cancelled relocation preserves the current document and location', [state().project, state().filePath, state().documentEpoch], [beforeRelocate.project, beforeRelocate.filePath, beforeRelocate.documentEpoch]);
+
+  reset();
+  const waitingImport = deferred(); openResult = waitingImport.promise;
+  const pendingImport = commands.importAny();
+  check('import shares the open lock and refuses duplicate new/open', [commands.newFile(), await commands.open()], [false, false]);
+  const switched = fixture('合成导入期间切换', '不能追加旧导入');
+  state().loadProject(switched, '/synthetic/switched.zhsp');
+  waitingImport.resolve({ path: '/synthetic/import.txt', content: '过期导入文字' });
+  await pendingImport;
+  check('stale import cannot append into a later document or ask for replacement', [state().project, confirms], [switched, 0]);
+  reset();
+  openResult = { path: '/synthetic/import.txt', content: '合成替换内容' };
+  confirmResult = false;
+  const retainedImport = state();
+  await commands.importAny();
+  check('import replacement separately protects dirty document when discard is declined',
+    [confirms, state().project, state().filePath, state().past],
+    [2, retainedImport.project, retainedImport.filePath, retainedImport.past]);
+  reset();
+  openResult = new Error('合成导入对话框失败');
+  check('import bridge rejection is caught and releases shared open lock', await commands.importAny(), false);
+  openResult = { path: '/synthetic/after-import-failure.zhsp', content: serializeProject(nativeProject) };
+  check('open remains usable after an import bridge rejection', await commands.open());
 
   const converters = { fdx: ['toFdx', toFdx], txt: ['toPlainText', toPlainText], md: ['toMarkdown', toMarkdown], html: ['toHtml', toHtml] };
   for (const [kind, [converter, convert]] of Object.entries(converters)) {
