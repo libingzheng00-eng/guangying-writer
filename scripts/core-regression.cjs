@@ -51,6 +51,12 @@ const suites = [
   'board-workspace-ui-test.cjs',
   'writing-controls-test.cjs',
   'progress-bands-test.cjs',
+  'revision-workspace-test.cjs',
+  'annotations-test.cjs',
+  'delivery-checks-test.cjs',
+  'review-store-test.cjs',
+  'scene-review-ui-test.cjs',
+  'revision-workspace-ui-test.cjs',
 ];
 
 for (const [index, suite] of suites.entries()) {

@@ -1,3 +1,6 @@
+import type { RevisionWorkspace } from './revisionWorkspace';
+import type { Annotation } from './annotations';
+
 /**
  * 中文剧本数据模型
  * 参考 Final Draft 的元素化结构，并针对中文影视剧本习惯做了调整
@@ -47,6 +50,9 @@ export interface SceneMeta {
   elementId: string;
   title: string;
   synopsis: string;
+  location?: string;
+  storyTime?: string;
+  revisionStatus?: 'todo' | 'revising' | 'done';
   color: string;
   actId?: string;
   omit?: boolean;
@@ -114,6 +120,9 @@ export interface Scene {
   heading: string;
   title: string;
   synopsis: string;
+  location?: string;
+  storyTime?: string;
+  revisionStatus?: 'todo' | 'revising' | 'done';
   color: string;
   actId?: string;
   omit?: boolean;
@@ -223,6 +232,11 @@ export interface ScriptProject {
   settings: ScriptSettings;
   /** 已删除元素的历史（保留以便恢复） */
   trash?: ScriptElement[];
+  /** Explicit, bounded text versions and stash. Missing in older project files. */
+  revisionWorkspace?: RevisionWorkspace;
+  /** Review records never become screenplay elements or formal export content. */
+  annotations?: Annotation[];
+  deliveryIgnored?: string[];
 }
 
 export interface RecentFile {

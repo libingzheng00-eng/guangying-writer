@@ -7,6 +7,7 @@ import { BOARD_GRID_SIZE, boardBeatPosition, snapBoardPosition, type BoardCardPo
 import { cardCenters, marqueeSel } from '../model/selection';
 import type { Beat, BoardLink, Scene } from '../model/types';
 import { safeDisplayColor, safeEmbeddedImageSource } from '../utils/displayValues';
+import { SceneReviewFields, SceneReviewSummary } from './SceneReviewFields';
 
 type Filter = 'both' | 'scenes' | 'beats';
 type Mode = 'select' | 'link';
@@ -351,11 +352,12 @@ export function BoardView() {
 
   const contextAnchor = layoutMap.get(lastAnchor.current && visibleSelected.includes(lastAnchor.current) ? lastAnchor.current : visibleSelected[0]);
   const selectedBeat = visibleSelected.length === 1 && visibleSelected[0].startsWith('beat:') ? project.beats.find((beat) => `beat:${beat.id}` === visibleSelected[0]) : null;
-  const contextWidth = Math.min(selectedBeat ? 370 : 208, Math.max(180, canvasSize.width - 24));
+  const selectedScene = visibleSelected.length === 1 && visibleSelected[0].startsWith('scene:') ? scenes.find((scene) => `scene:${scene.elementId}` === visibleSelected[0]) : null;
+  const contextWidth = Math.min(selectedBeat ? 370 : selectedScene ? 320 : 208, Math.max(180, canvasSize.width - 24));
   const contextPosition = contextAnchor ? {
     width: contextWidth,
     left: Math.max(12, Math.min(contextAnchor.x * zoom + pan.x, canvasSize.width - contextWidth - 12)),
-    top: Math.max(10, Math.min(contextAnchor.y * zoom + pan.y - 48, canvasSize.height - 100)),
+    top: Math.max(10, Math.min(contextAnchor.y * zoom + pan.y - (selectedScene ? 190 : 48), canvasSize.height - (selectedScene ? 210 : 100))),
   } : null;
   const menuDeleteLabel = contextMenu?.linkId ? '删除连线' : contextMenu?.ids.some((id) => id.startsWith('scene:'))
     ? contextMenu.ids.length === 1 ? '删除整场' : '删除所选（含整场）' : contextMenu?.ids.length === 1 ? '删除卡片' : '删除所选';
@@ -397,12 +399,13 @@ export function BoardView() {
           onSelect={() => selectCard(`beat:${beat.id}`)} onResizeStart={startResize} />)}
       </div>
       {marquee && <div className="board__marquee" style={{ left: Math.min(marquee.sx, marquee.ex) - (canvasRect?.left || 0), top: Math.min(marquee.sy, marquee.ey) - (canvasRect?.top || 0), width: Math.abs(marquee.ex - marquee.sx), height: Math.abs(marquee.ey - marquee.sy) }} />}
-      {!!visibleSelected.length && contextPosition && !gesture.current && mode === 'select' && !contextMenu && <div className="board__context" style={contextPosition} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel}>
+      {!!visibleSelected.length && contextPosition && !gesture.current && mode === 'select' && !contextMenu && <div className={`board__context${selectedScene ? ' scene-review__board-tools' : ''}`} style={{ ...contextPosition, ...(selectedScene ? { maxHeight: Math.max(70, canvasSize.height - 24) } : {}) }} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel}>
         <div className="board__color-bar" aria-label="所选卡片颜色">{CARD_COLORS.map((color, index) => <button key={color} aria-label={`卡片颜色 ${index + 1}`} style={{ background: color }}
           onClick={() => useStore.getState().setBoardCardColors(visibleSelected, color)} />)}</div>
         {selectedBeat && <label className="board__association"><select aria-label="关联到场景" value={selectedBeat.sceneId || ''} onChange={(e) => useStore.getState().linkBeat(selectedBeat.id, e.target.value || undefined)}>
           <option value="">未关联</option>{scenes.map((scene) => <option key={scene.id} value={scene.id}>第 {scene.number} 场 · {scene.title || scene.heading || '场景标题'}</option>)}
         </select></label>}
+        {selectedScene && <SceneReviewFields scene={selectedScene} expanded />}
       </div>}
       {contextMenu && <div className="board__context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseDown={stopMouse} onDoubleClick={stopMouse}>
         {!contextMenu.linkId && <button role="menuitem" onClick={() => { setMode('link'); setLinkFrom(contextMenu.ids[0]); setSelectedLink(null); useStore.getState().setSelectedIds([]); setContextMenu(null); focusCanvas(); }}>连接另一张卡片</button>}
@@ -436,6 +439,7 @@ function SceneCard(props: CardProps & { scene: Scene; onOpen: () => void }) {
     <div className="bcard__head"><span className="bcard__no">{scene.number}</span><span className="bcard__title" title={scene.title || scene.heading}>{scene.title || scene.heading || '场景标题'}</span></div>
     <textarea className="bcard__scene-notes" aria-label={`第 ${scene.number} 场故事信息`} placeholder="这一场发生了什么？" value={scene.synopsis || ''} onFocus={onSelect}
       onChange={(event) => useStore.getState().updateSceneMeta(scene.elementId, { synopsis: event.target.value })} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel} />
+    <SceneReviewSummary scene={scene} />
     <ResizeHandle layout={layout} onStart={props.onResizeStart} />
   </div>;
 }

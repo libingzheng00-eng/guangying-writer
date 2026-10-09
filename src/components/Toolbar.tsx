@@ -14,7 +14,7 @@ const VIEWS: { key: ViewMode; label: string }[] = [
   { key: 'reports', label: '统计' },
 ];
 
-export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, modalOpen = false }: { commands: ReturnType<typeof useCommands>; onOpenSettings: () => void; onOpenTitle: () => void; onOpenHome?: () => void; modalOpen?: boolean }) {
+export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onOpenReview, modalOpen = false }: { commands: ReturnType<typeof useCommands>; onOpenSettings: () => void; onOpenTitle: () => void; onOpenHome?: () => void; onOpenReview?: () => void; modalOpen?: boolean }) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const project = useStore((s) => s.project);
@@ -242,6 +242,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, mod
       <div className="spacer" />
 
       <div className="toolbar__group toolbar__file-actions">
+        {onOpenReview ? <button className="icon-btn toolbar__review" disabled={modalOpen} title="改稿工作台：版本、批注、暂存与交稿检查" onMouseDown={event => event.preventDefault()} onClick={onOpenReview}>改稿</button> : null}
         <button className="icon-btn" title="查找正文 ⌘/Ctrl+F" onClick={commands.openFind}>查找</button>
         <button className="icon-btn" disabled={!canUndo} title="撤销 ⌘/Ctrl+Z" onMouseDown={e => e.preventDefault()} onClick={undo}>
           ↶

@@ -6,6 +6,48 @@
 const MAX_PAGE_PX = 18000;
 const PX_TO_MICRONS = 25400 / 96;
 const HIDE_CONTROLS = 'button, .writing-material-card__drag, .writing-select-box, .script-flow__tail, .titlepage-card__hint';
+const EXPORT_EXCLUDE = '[data-export-exclude]';
+
+export interface CreativeRange { top: number; bottom: number }
+export interface CreativeBlock extends CreativeRange { type: string }
+
+/** Keep a heading/cue with its first complete content unit, never the next cue. */
+export function creativeKeepRanges(blocks: readonly CreativeBlock[]): CreativeRange[] {
+  const follows = new Set(['scene_heading', 'act', 'character', 'parenthetical', 'shot']);
+  const ranges: CreativeRange[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    if (!follows.has(blocks[i].type)) continue;
+    let bottom = blocks[i].bottom;
+    for (let j = i + 1; j < blocks.length; j++) {
+      // An empty scene/cue cannot bind an unrelated following scene or speaker.
+      if (blocks[j].type === 'scene_heading' || blocks[j].type === 'act' ||
+          (blocks[j].type === 'character' && ['character', 'parenthetical'].includes(blocks[i].type))) break;
+      bottom = Math.max(bottom, blocks[j].bottom);
+      if (blocks[j].type === 'note') continue;
+      if (!follows.has(blocks[j].type)) break;
+    }
+    if (bottom > blocks[i].bottom) ranges.push({ top: blocks[i].top, bottom });
+  }
+  return ranges;
+}
+
+/** Only translates cut boundaries; never moves or resizes any source object. */
+export function creativePageCuts(height: number, forbidden: readonly CreativeRange[], maxPage = MAX_PAGE_PX): number[] {
+  const cuts = [0];
+  while (cuts[cuts.length - 1] + maxPage < height) {
+    const start = cuts[cuts.length - 1];
+    let end = start + maxPage;
+    for (;;) {
+      const overlaps = forbidden.filter(range => range.top < end && range.bottom > end);
+      if (!overlaps.length) break;
+      end = Math.floor(Math.min(...overlaps.map(range => range.top)));
+    }
+    if (end <= start) throw new Error('存在超长且无法完整放入一页的图文组合，请缩短该段或调整卡片后导出。');
+    cuts.push(end);
+  }
+  cuts.push(height);
+  return cuts;
+}
 
 function copyStyle(source: Element, target: HTMLElement, pseudo?: string) {
   const style = getComputedStyle(source, pseudo);
@@ -20,6 +62,9 @@ function copyStyle(source: Element, target: HTMLElement, pseudo?: string) {
 function snapshot(source: Node): Node | null {
   if (source.nodeType === Node.TEXT_NODE) return source.cloneNode();
   if (!(source instanceof HTMLElement)) return null;
+  // Workspace comments/history may contain private draft text: omit the entire
+  // subtree before copying styles, form values or descendants, not just its paint.
+  if (source.matches(EXPORT_EXCLUDE)) return null;
   if (source.matches('script, style, iframe, object, embed, link, meta')) return null;
   const formText = source instanceof HTMLInputElement || source instanceof HTMLTextAreaElement;
   const target = document.createElement(formText ? 'div' : source.tagName.toLowerCase());
@@ -68,33 +113,46 @@ function snapshot(source: Node): Node | null {
 
 export function buildCreativePdf(canvas: HTMLElement) {
   const origin = canvas.getBoundingClientRect();
-  const content = Array.from(canvas.querySelectorAll<HTMLElement>('.script-flow, .titlepage-card, .writing-material-card'));
+  const printable = (selector: string) => Array.from(canvas.querySelectorAll<HTMLElement>(selector)).filter(node => !node.closest(EXPORT_EXCLUDE));
+  const content = printable('.script-flow, .titlepage-card, .writing-material-card');
   const width = Math.ceil(Math.max(origin.width, ...content.map(e => e.getBoundingClientRect().right - origin.left + 16)));
   const height = Math.ceil(Math.max(200, ...content.map(e => e.getBoundingClientRect().bottom - origin.top + 24)));
   if (width > MAX_PAGE_PX) throw new Error('画布过宽，请将远离正文的素材卡移近后再导出。');
-  const forbidden = Array.from(canvas.querySelectorAll<HTMLElement>('.sc-el, .writing-material-card, .titlepage-card')).map(e => {
+  const rangeOf = (e: HTMLElement) => {
     const b = e.getBoundingClientRect();
     return { top: b.top - origin.top, bottom: b.bottom - origin.top };
-  });
-  const headings = Array.from(canvas.querySelectorAll<HTMLElement>('.sc-el[data-type="scene_heading"]')).map(e => e.getBoundingClientRect().top - origin.top);
+  };
+  const forbidden = printable('.sc-el, .writing-material-card, .titlepage-card').map(rangeOf);
+  const blocks = printable('.script-flow .sc-el');
+  const dualRows = printable('.script-flow .sc-dual-row');
+  // A heading keeps the opening speaking unit of both columns, not an entire
+  // arbitrarily tall dual row. Each column then has independent cue boundaries.
+  const bodyBlocks = blocks.filter(node => !node.closest('.sc-dual-row'));
+  const columnUnits = new Map<HTMLElement, CreativeBlock[]>();
+  for (const column of printable('.script-flow .sc-dual-col')) {
+    const units = blocks.filter(node => node.closest('.sc-dual-col') === column)
+      .map(node => ({ ...rangeOf(node), type: node.dataset.type || 'action' }));
+    columnUnits.set(column, units);
+    forbidden.push(...creativeKeepRanges(units));
+  }
+  const bodyUnits: CreativeBlock[] = [...bodyBlocks.map(node => ({ ...rangeOf(node), type: node.dataset.type || 'action' })),
+    ...dualRows.map(node => {
+      const range = rangeOf(node);
+      let bottom = range.top;
+      for (const column of Array.from(node.querySelectorAll<HTMLElement>('.sc-dual-col'))) {
+        const units = columnUnits.get(column) || [];
+        if (units.length) bottom = Math.max(bottom, creativeKeepRanges(units).find(unit => unit.top === units[0].top)?.bottom ?? units[0].bottom);
+      }
+      return { top: range.top, bottom: Math.max(range.top, bottom), type: 'dual' };
+    })].sort((a, b) => a.top - b.top);
+  forbidden.push(...creativeKeepRanges(bodyUnits));
+  const headings = printable('.sc-el[data-type="scene_heading"]').map(e => e.getBoundingClientRect().top - origin.top);
   // 优先把完整场景和旁边的卡片放在同一张数字长页上。
   for (let i = 0; i < headings.length; i++) {
     const bottom = headings[i + 1] ?? height - 24;
     if (bottom - headings[i] < MAX_PAGE_PX) forbidden.push({ top: headings[i], bottom });
   }
-  const cuts = [0];
-  while (cuts[cuts.length - 1] + MAX_PAGE_PX < height) {
-    const start = cuts[cuts.length - 1];
-    let end = start + MAX_PAGE_PX;
-    for (;;) {
-      const overlaps = forbidden.filter(b => b.top < end && b.bottom > end);
-      if (!overlaps.length) break;
-      end = Math.floor(Math.min(...overlaps.map(b => b.top)));
-    }
-    if (end <= start) throw new Error('存在超长且无法完整放入一页的图文组合，请缩短该段或调整卡片后导出。');
-    cuts.push(end);
-  }
-  cuts.push(height);
+  const cuts = creativePageCuts(height, forbidden);
   const clone = snapshot(canvas) as HTMLElement;
   Object.assign(clone.style, { position: 'absolute', left: '0px', top: '0px', width: `${width}px`, height: `${height}px`, minHeight: '0', margin: '0', boxSizing: 'border-box', overflow: 'hidden' });
   // 写作画布背景来自外层，需一并冻结，避免深色文字/图片卡在导出中失去原背景。

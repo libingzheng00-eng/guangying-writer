@@ -1,0 +1,36 @@
+/** Run the fixed hidden review suite with the existing runtime; no installation. */
+'use strict';
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const { spawn } = require('node:child_process');
+const { createHash } = require('node:crypto');
+const { cleanEnvironment } = require('./desktop-launch.cjs');
+const { stopOwnedChild } = require('./desktop-smoke.cjs');
+const root = path.resolve(__dirname, '..');
+assert.equal(process.argv.length, 4); assert.equal(process.argv[2], '--output');
+const output = process.argv[3]; assert.ok(path.isAbsolute(output)); fs.mkdirSync(output);
+const runtime = path.join(root, 'node_modules/electron/dist', process.platform === 'darwin' ? 'Electron.app/Contents/MacOS/Electron' : process.platform === 'win32' ? 'electron.exe' : 'electron');
+assert.ok(fs.statSync(runtime).isFile());
+const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'guangying-review-launch-'));
+fs.writeFileSync(path.join(temporary, 'package.json'), JSON.stringify({ name: 'guangying-native-acceptance-qa', version: JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).version, main: path.join(__dirname, 'native-acceptance-launcher.cjs') }), { flag: 'wx' });
+const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const renderer = path.join(root, 'dist-renderer/index.html'); const before = hash(renderer);
+const env = { ...cleanEnvironment(process.env), GUANGYING_QA_HIDDEN: '1', GUANGYING_QA_MODE: 'review' };
+let log = '';
+const child = spawn(runtime, [temporary], { cwd: temporary, env, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+for (const stream of [child.stdout, child.stderr]) stream.on('data', data => { log += data; process.stdout.write(data); });
+let timedOut = false;
+const timer = setTimeout(() => { timedOut = true; stopOwnedChild(child, process.platform); }, 150000);
+child.once('error', error => { clearTimeout(timer); fs.writeFileSync(path.join(output, 'launch-error.txt'), String(error)); process.exitCode = 1; });
+child.once('close', (code, signal) => {
+  clearTimeout(timer); fs.writeFileSync(path.join(output, 'review.log'), log);
+  const resultPath = [...log.matchAll(/^OUTPUT (.+)$/gm)].at(-1)?.[1];
+  let result, hidden;
+  if (resultPath && fs.existsSync(path.join(resultPath, 'result.json'))) result = JSON.parse(fs.readFileSync(path.join(resultPath, 'result.json')));
+  if (resultPath && fs.existsSync(path.join(resultPath, 'hidden-window-proof.json'))) hidden = JSON.parse(fs.readFileSync(path.join(resultPath, 'hidden-window-proof.json')));
+  const passed = code === 0 && !signal && !timedOut && result?.status === 'passed' && hidden?.actualShowEvents === 0 && hidden?.initiallyVisible === 0 && hash(renderer) === before;
+  fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ status: passed ? 'passed' : 'failed', code, signal, timedOut, runtime, runtimeCopied: false, resultPath, hidden, result, rendererHtmlSha256: before }, null, 2));
+  process.exitCode = passed ? 0 : 1;
+});

@@ -26,6 +26,8 @@ import { StartupPage } from './components/StartupPage';
 import { bridge, type RecentProject } from './io/native';
 import { readStartupPreference, writeStartupPreference, type StartupPreference } from './app/startupPreference';
 import { subscribeWritingContextPersistence } from './app/writingContext';
+import { RevisionWorkspaceDialog } from './components/RevisionWorkspaceDialog';
+import { captureReviewContext, type ReviewContext } from './app/reviewContext';
 
 export default function App() {
   const view = useStore((s) => s.view);
@@ -50,10 +52,12 @@ export default function App() {
   const resumePending = useRef(false);
   const contextSubscription = useRef<ReturnType<typeof subscribeWritingContextPersistence> | null>(null);
   const activateProject = useCallback(() => { setActivated(true); setHomeOpen(false); resumePending.current = false; }, []);
-  const [dialog, setDialog] = useState<null | 'settings' | 'title'>(null);
+  const [dialog, setDialog] = useState<null | 'settings' | 'title' | 'review'>(null);
+  const [reviewContext, setReviewContext] = useState<ReviewContext | null>(null);
   const modalSession = useRef<ModalSession | null>(null);
-  const openDialog = useCallback((kind: 'settings' | 'title') => {
+  const openDialog = useCallback((kind: 'settings' | 'title' | 'review') => {
     if (modalSession.current || document.querySelector('[aria-modal="true"]')) return;
+    if (kind === 'review') setReviewContext(captureReviewContext());
     modalSession.current = createModalSession();
     setDialog(kind);
   }, []);
@@ -249,7 +253,11 @@ export default function App() {
   useEffect(() => {
     const run = (action: string) => {
       if (modalSession.current || document.querySelector('[aria-modal="true"]')) {
-        if (action === 'edit:undo' || action === 'edit:redo') modalSession.current?.history(action === 'edit:undo' ? 'undo' : 'redo');
+        if (action === 'edit:undo' || action === 'edit:redo') {
+          if (document.querySelector('.revision-workspace [data-project-draft-pending="true"]') && !ownsNativeHistory(document.activeElement)) {
+            useStore.getState().notify('请先确认或取消工作台里的文字草稿。');
+          } else modalSession.current?.history(action === 'edit:undo' ? 'undo' : 'redo');
+        }
         return;
       }
       const st = useStore.getState();
@@ -382,7 +390,7 @@ export default function App() {
           onRemove={id => { void updateRecent(() => bridge.removeRecent(id)); }}
           continueLabel={activated ? `继续当前写作 · ${projectName}` : hasRecovery ? `继续上次写作 · ${projectName}` : undefined}
           onContinue={activated || hasRecovery ? activateProject : undefined} /> : <>
-        <Toolbar commands={commands} modalOpen={dialog !== null} onOpenHome={showHome} onOpenSettings={() => openDialog('settings')} onOpenTitle={() => openDialog('title')} />
+        <Toolbar commands={commands} modalOpen={dialog !== null} onOpenHome={showHome} onOpenSettings={() => openDialog('settings')} onOpenTitle={() => openDialog('title')} onOpenReview={() => openDialog('review')} />
         <div className="app-body">
           <Sidebar />
           <main className="app-main">
@@ -398,6 +406,7 @@ export default function App() {
         {findRequest > 0 && view === 'write' ? <FindPanel request={findRequest} onClose={() => setFindRequest(0)} /> : null}
         {dialog === 'settings' ? <SettingsDialog onClose={closeDialog} session={modalSession.current!} /> : null}
         {dialog === 'title' ? <TitlePageDialog onClose={closeDialog} session={modalSession.current!} /> : null}
+        {dialog === 'review' && reviewContext ? <RevisionWorkspaceDialog onClose={closeDialog} session={modalSession.current!} context={reviewContext} /> : null}
         {toast ? <Toast text={toast.text} kind={toast.kind} ts={toast.ts} /> : null}
       </div>
     </PaginationProvider>
