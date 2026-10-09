@@ -69,9 +69,14 @@ jobs:
       - name: 真实 Windows Electron 合成数据与 UI 层级验收
         timeout-minutes: 9
         run: node scripts/windows-smoke.cjs --app "$env:WINDOWS_TEST_APP" --output release/windows/evidence --manifest release/windows/build-manifest.json
+      - name: 明确准备锁定的 Electron 原生专项运行时
+        run: node scripts/prepare-electron.cjs
       - name: 旧关系线打开保存与独立重启兼容
         timeout-minutes: 4
         run: node scripts/legacy-links-native.cjs --output (Join-Path $PWD 'release/windows/legacy-links')
+      - name: 改稿工作台原生操作、恢复与实际 PDF
+        timeout-minutes: 4
+        run: node scripts/review-native.cjs --output (Join-Path $PWD 'release/windows/review-evidence')
       - name: 上传已验证 Windows 便携包
         uses: actions/upload-artifact@v4
         with:
@@ -93,6 +98,7 @@ jobs:
             release/windows/evidence/
             release/windows/launch-evidence/
             release/windows/legacy-links/
+            release/windows/review-evidence/
             release/windows/dependency-audit.json
           if-no-files-found: warn
           retention-days: 30

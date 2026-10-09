@@ -39,6 +39,6 @@ node scripts/release-assets-test.cjs
 node scripts/review-native.cjs --output /absolute/new/evidence-directory
 ```
 
-core共53套；六套新增为revision-workspace、annotations、delivery-checks、review-store、scene-review-ui、revision-workspace-ui。CI原有平台工作流调用统一runner，无需另列分叉测试。
+core共53套；六套新增为revision-workspace、annotations、delivery-checks、review-store、scene-review-ui、revision-workspace-ui。通用core与macOS/Windows PR工作流调用统一runner；两平台另跑review原生专项，并保留合成截图与实际PDF。标签发布工作流仍有历史独立清单，发布前须另行核对，不能把本轮PR验收表述为已发布Release。
 
 原生review入口复用已存在Electron，不下载安装运行时；独立临时userData，从创建时隐藏窗口，不接管用户应用。验收涵盖内置React/preload、实际选区、操作/恢复和PDF；DOM按钮驱动不能替代物理鼠标或用户真实中文输入法。Windows本地结构回归不等于Windows原生验收。无远端授权时不推送或触发CI。
