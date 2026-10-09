@@ -65,7 +65,36 @@ const context = async () => JSON.parse(await rawContext())?.entries.find(e => e.
 const recent = () => run('window.api.getRecent()');
 const homeReady = () => until(`!!document.querySelector('.startup')&&document.querySelector('.startup__recent-content')?.getAttribute('aria-busy')==='false'&&!document.querySelector('.startup__action:disabled')`, 'home ready');
 async function click(expression) {
-  await run(`(() => {const node=${expression};if(!node||node.disabled)throw Error('Missing/disabled hidden QA control');node.click();})()`);
+  const action = { expression, status: 'waiting', attempts: 0, startedAt: Date.now() };
+  (report.actions ||= []).push(action);
+  try {
+    // Home mounts before its effect starts refreshing recent projects. A ready
+    // snapshot can therefore precede a loading render that removes/disables a
+    // row. Test readiness and activate in one renderer task, never force-enable
+    // a control or click while it is missing/loading.
+    await until(async () => {
+      action.attempts += 1;
+      action.control = await run(`(() => {const node=${expression};
+        if(!node)return {clicked:false,reason:'missing'};
+        if(node.disabled)return {clicked:false,reason:'disabled'};
+        node.click();return {clicked:true};})()`);
+      return action.control.clicked;
+    }, 'synthetic control becomes available: ' + expression, 15000);
+    action.status = 'clicked';
+  } catch (error) {
+    action.status = 'failed'; action.error = error.message;
+    try {
+      action.diagnostics = { dom: await run(`(() => ({home:!!document.querySelector('.startup'),
+        recentBusy:document.querySelector('.startup__recent-content')?.getAttribute('aria-busy')??null,
+        modal:!!document.querySelector('[aria-modal="true"]'),
+        rows:Array.from(document.querySelectorAll('.startup__project')).map(node=>({path:node.querySelector('.startup__path')?.textContent,
+          disabled:node.querySelector('.startup__project-open')?.disabled})),
+        disabledActions:document.querySelectorAll('.startup__action:disabled').length}))()`), registry: await recent() };
+    } catch (diagnosticError) { action.diagnosticError = diagnosticError.message; }
+    throw error;
+  } finally {
+    action.waitedMs = Date.now() - action.startedAt; journal();
+  }
   assert.equal(win.isVisible(), false, 'DOM activation must not show QA window');
 }
 const button = (scope, text) => `Array.from(document.querySelectorAll(${q(scope + ' button')})).find(node=>node.textContent.trim()===${q(text)})`;
