@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useStore } from '../store/store';
 import { bridge } from '../io/native';
 import { parseProject, serializeProject } from '../io/zhsp';
@@ -8,6 +8,7 @@ import { createProject, newElement, sceneHeadings } from '../model/project';
 import { PAPER_MM } from '../model/stats';
 import type { ElementType } from '../model/types';
 import { buildCreativePdf } from '../io/creativePdf';
+import { loadStoredWritingContext } from './writingContext';
 
 /** 等待图片解码完成，避免 printToPDF 在图片卡尚未绘制时抢先输出。 */
 async function waitForPrintableAssets() {
@@ -23,11 +24,17 @@ async function waitForPrintableAssets() {
   }));
 }
 
-export function useCommands() {
+export function useCommands(options: { onActivate?: () => void; beforeReplace?: () => void } = {}) {
   const store = useStore;
+  const activate = useRef(options.onActivate);
+  activate.current = options.onActivate;
+  const beforeReplace = useRef(options.beforeReplace);
+  beforeReplace.current = options.beforeReplace;
   const saving = useRef(false);
   const isSaving = useCallback(() => saving.current, []);
   const openingRequest = useRef(0);
+  const opening = useRef(false);
+  const [isOpening, setIsOpening] = useState(false);
 
   const save = useCallback(
     async (asNew = false) => {
@@ -61,51 +68,85 @@ export function useCommands() {
     [store],
   );
 
-  const open = useCallback(async () => {
+  const openFile = useCallback(async (source: 'dialog' | 'recent' | 'relocate', id?: string, options?: { allowPrompt?: boolean }) => {
     const { loadProject, notify } = store.getState();
+    if (opening.current) return false;
+    opening.current = true;
+    setIsOpening(true);
     const epochAtOpen = store.getState().documentEpoch;
     const request = ++openingRequest.current;
     try {
-      const res = await bridge.openProject();
-      if (!res) return;
-      if (request !== openingRequest.current) return;
+      const res = await (source === 'dialog' ? bridge.openProject()
+        : source === 'recent' ? bridge.openRecent(id!, options) : bridge.relocateRecent(id!));
+      if (!res) return false;
+      if (request !== openingRequest.current) return false;
       if (store.getState().documentEpoch !== epochAtOpen) {
         notify('打开期间已切换剧本，请重新选择要打开的文件。', 'error');
-        return;
+        return false;
       }
-      // Ask at replacement time, including edits made while the dialog waited.
-      // Loading starts a fresh history: cancelled discard must retain both stacks.
-      if (store.getState().dirty && !window.confirm('当前剧本尚未保存，打开其他剧本将丢弃这些修改。确定继续吗？')) return;
+      // Parse before asking to discard anything. Invalid files cannot replace a
+      // document, recovery draft or the last successfully opened recent entry.
+      let project;
+      let filePath: string | null = null;
       if (res.path.toLowerCase().endsWith('.fdx')) {
         const { elements, title } = fromFdx(res.content);
         const p = createProject(res.path.split(/[\\/]/).pop()?.replace(/\.fdx$/i, '') || '导入的剧本');
         p.elements = elements.length ? elements : [newElement('action', '')];
         if (title) Object.assign(p.titlePage, title);
-        loadProject(p, null);
+        project = p;
       } else if (/\.(txt|md)$/i.test(res.path)) {
         const elements = fromPlainText(res.content);
         const p = createProject(res.path.split(/[\\/]/).pop()?.replace(/\.(txt|md)$/i, '') || '导入的剧本');
         p.elements = elements;
-        loadProject(p, null);
+        project = p;
       } else {
-        loadProject(parseProject(res.content), res.path);
+        project = parseProject(res.content);
+        filePath = res.path;
       }
+      const hasDraft = !!document.querySelector('[data-project-draft-pending="true"]');
+      if ((store.getState().dirty || hasDraft) && !window.confirm('当前剧本有未保存的修改或未确认的文字，打开其他剧本将放弃这些内容。确定继续吗？')) return false;
+      beforeReplace.current?.();
+      const relocatedContext = filePath && res.previousPath
+        ? loadStoredWritingContext(project.id, filePath) || loadStoredWritingContext(project.id, res.previousPath) : undefined;
+      loadProject(project, filePath, relocatedContext || undefined);
+      if (!filePath) store.setState({ dirty: true });
+      activate.current?.();
       notify('已打开剧本', 'ok');
+      if (res.openToken) {
+        try {
+          if (!await bridge.commitOpen(res.openToken, project.name)) notify('剧本已打开，但最近项目记录未能更新。', 'error');
+        } catch { notify('剧本已打开，但最近项目记录未能更新。', 'error'); }
+      }
+      return true;
     } catch (err) {
       notify(`打开失败：${(err as Error).message}`, 'error');
+      return false;
+    } finally {
+      opening.current = false;
+      setIsOpening(false);
     }
   }, [store]);
+  const open = useCallback(() => openFile('dialog'), [openFile]);
+  const openRecent = useCallback((id: string, options?: { allowPrompt?: boolean }) => openFile('recent', id, options), [openFile]);
+  const relocateRecent = useCallback((id: string) => openFile('relocate', id), [openFile]);
 
   const importAny = useCallback(async () => {
-    const { project, loadProject, notify, mutate } = store.getState();
-    const res = await bridge.openProject();
-    if (!res) return;
-    const isFdx = res.path.toLowerCase().endsWith('.fdx');
+    const { loadProject, notify, mutate, documentEpoch } = store.getState();
+    if (opening.current) return false;
+    opening.current = true;
+    setIsOpening(true);
     try {
+      const res = await bridge.openProject();
+      if (!res) return false;
+      if (store.getState().documentEpoch !== documentEpoch) {
+        notify('导入期间已切换剧本，请重新选择要导入的文件。', 'error');
+        return false;
+      }
+      const isFdx = res.path.toLowerCase().endsWith('.fdx');
       const elements = isFdx ? fromFdx(res.content).elements : fromPlainText(res.content);
       if (!elements.length) {
         notify('没有识别到内容', 'error');
-        return;
+        return false;
       }
       const append = window.confirm(`识别到 ${elements.length} 个元素。\n\n「确定」= 追加到当前剧本末尾\n「取消」= 替换整个剧本`);
       if (append) {
@@ -113,13 +154,24 @@ export function useCommands() {
           p.elements.push(...elements);
         });
       } else {
-        const p = createProject(project.name);
+        const current = store.getState();
+        const hasDraft = !!document.querySelector('[data-project-draft-pending="true"]');
+        if ((current.dirty || hasDraft) && !window.confirm('当前剧本有未保存的修改或未确认的文字，导入并替换将放弃这些内容。确定继续吗？')) return false;
+        const p = createProject(current.project.name);
         p.elements = elements;
+        beforeReplace.current?.();
         loadProject(p, null);
+        store.setState({ dirty: true });
       }
+      activate.current?.();
       notify('导入完成', 'ok');
+      return true;
     } catch (err) {
       notify(`导入失败：${(err as Error).message}`, 'error');
+      return false;
+    } finally {
+      opening.current = false;
+      setIsOpening(false);
     }
   }, [store]);
 
@@ -181,9 +233,15 @@ export function useCommands() {
 
   const newFile = useCallback(() => {
     const { dirty, notify } = store.getState();
-    if (dirty && !window.confirm('当前剧本尚未保存，确定新建吗？')) return;
+    if (opening.current) return false;
+    const hasDraft = !!document.querySelector('[data-project-draft-pending="true"]');
+    if ((dirty || hasDraft) && !window.confirm('当前剧本有未保存的修改或未确认的文字，确定新建吗？')) return false;
+    openingRequest.current++;
+    beforeReplace.current?.();
     store.getState().newProject();
+    activate.current?.();
     notify('已新建剧本');
+    return true;
   }, [store]);
 
   const setElementType = useCallback(
@@ -246,5 +304,5 @@ export function useCommands() {
     window.dispatchEvent(new Event('guangying:find'));
   }, [store]);
 
-  return { save, isSaving, open, importAny, exportPdf, exportAs, newFile, setElementType, insertScene, makeDual, openFind, sceneHeadings };
+  return { save, isSaving, isOpening, open, openRecent, relocateRecent, importAny, exportPdf, exportAs, newFile, setElementType, insertScene, makeDual, openFind, sceneHeadings };
 }

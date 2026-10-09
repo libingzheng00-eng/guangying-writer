@@ -89,6 +89,8 @@ const check = (label, actual, expected = true) => { assert.deepEqual(actual, exp
   project.titlePage.show = false;
   project.elements = [{ id: 'modal-a', type: 'action', text: '合成<b>焦点</b>正文甲' }, { id: 'modal-b', type: 'action', text: '合成正文乙' }];
   localStorage.setItem('guangying:autosave', JSON.stringify({ project, filePath: null }));
+  // This fixture tests editing dialogs, not the default landing decision.
+  localStorage.setItem('guangying:startup-preference', 'resume');
   root = createRoot(document.getElementById('root'));
   await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(App))));
   await act(async () => {

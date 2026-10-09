@@ -124,6 +124,7 @@ function memoryStorage() {
     img: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMIqAj4DwAETAIY7NJ6TgAAAABJRU5ErkJggg==',
     color: '#fff7d6', x: 820, y: 80, boardX: 320, boardY: 160, w: 240, h: 180 }];
   localStorage.setItem('guangying:autosave', JSON.stringify({ project, filePath: '/synthetic/设置 合成工程.zhsp' }));
+  localStorage.setItem('guangying:startup-preference', 'resume');
   root = createRoot(document.getElementById('root'));
   await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(App))));
   await act(async () => {

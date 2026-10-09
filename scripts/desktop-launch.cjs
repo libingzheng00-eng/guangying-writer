@@ -336,27 +336,29 @@ async function main(platform) {
     await pageClient.call('Log.enable');
     await pageClient.call('Page.enable');
     await pageClient.call('Inspector.enable');
-    await until(async () => evaluate(pageClient, `document.readyState === 'complete' && !!document.querySelector('.editor__scroll[data-ready=true]') && !!window.api?.isElectron`), 'real packaged renderer and preload bridge ready');
+    await until(async () => evaluate(pageClient, `document.readyState === 'complete' && !!document.querySelector('.startup') && document.querySelector('.startup__recent-content')?.getAttribute('aria-busy') === 'false' && !!window.api?.isElectron`), 'real packaged startup page and preload bridge ready');
     const snapshot = await evaluate(pageClient, `(async () => ({
       url: location.href, info: await window.api.getInfo(), recent: await window.api.getRecent(),
       paragraphs: Array.from(document.querySelectorAll('.script-flow .sc-el')).map(e => e.textContent),
       cards: document.querySelectorAll('.writing-material-card').length,
-      title: document.querySelector('.doc-title')?.textContent.trim(), dirty: !!document.querySelector('.dot-dirty'),
+      title: document.querySelector('.startup h1')?.textContent.trim(), dirty: !!document.querySelector('.dot-dirty'),
+      titleFocused: document.activeElement === document.querySelector('.startup h1'),
+      continueAvailable: !!document.querySelector('.startup__continue'),
+      homePreference: !!document.querySelector('.startup__preference input[value="home"]:checked'),
       autosave: localStorage.getItem('guangying:autosave'), legacyAutosave: localStorage.getItem('mojiang:autosave')
     }))()`);
     assert.equal(snapshot.url, expectedUrl);
     assert.deepEqual(snapshot.info, { version: manifest.version, platform });
     assert.deepEqual(snapshot.recent, []);
-    assert.deepEqual(snapshot.paragraphs, ['', '']);
-    assert.equal(snapshot.cards, 0); assert.equal(snapshot.title, '未命名剧本'); assert.equal(snapshot.dirty, false);
+    assert.deepEqual(snapshot.paragraphs, []);
+    assert.equal(snapshot.cards, 0); assert.equal(snapshot.title, '光影写手'); assert.equal(snapshot.dirty, false);
+    assert.equal(snapshot.titleFocused, true); assert.equal(snapshot.continueAvailable, false); assert.equal(snapshot.homePreference, true);
     assert.equal(snapshot.legacyAutosave, null);
-    if (snapshot.autosave) {
-      const recovered = JSON.parse(snapshot.autosave);
-      assert.ok(recovered.project.elements.every(element => element.text === ''));
-      assert.deepEqual(recovered.project.beats, []); assert.equal(recovered.filePath, null);
-    }
-    report.renderer = { ...snapshot, autosave: snapshot.autosave ? 'blank generated recovery point' : null };
-    pass('first launch is genuinely blank: two empty paragraphs, no cards, recent files, legacy recovery, or unsaved changes');
+    assert.equal(snapshot.autosave, null);
+    await pause(1100);
+    assert.equal(await evaluate(pageClient, `localStorage.getItem('guangying:autosave')`), null, 'Idle startup must not generate a blank recovery point');
+    report.renderer = snapshot;
+    pass('first launch shows the focused default-home startup page with no editor, recent projects, recovery point, or unsaved changes');
     pass('production contextBridge reports the expected alpha version and native platform');
     await evaluate(pageClient, 'document.fonts.ready.then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))');
     const screenshot = await pageClient.call('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false });
@@ -388,7 +390,7 @@ async function main(platform) {
     assert.ok(!/\[光影写手\] 主进程异常|Uncaught Exception:/.test(logText), 'Startup/close must not log a fatal main exception');
     assert.deepEqual(report.errors, []);
     report.exit = exit;
-    pass(`blank document closes through ${platform === 'darwin' ? 'app.quit' : 'BrowserWindow.close'} and the production beforeunload/lifecycle, with exit code 0`);
+    pass(`untouched startup page closes through ${platform === 'darwin' ? 'app.quit' : 'BrowserWindow.close'} and the production beforeunload/lifecycle, with exit code 0`);
     report.status = 'passed';
   } catch (error) {
     report.status = 'failed'; report.error = error.stack || String(error);

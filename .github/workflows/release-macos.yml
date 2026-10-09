@@ -60,6 +60,9 @@ jobs:
           node scripts/clipboard-ui-test.cjs
           node scripts/writing-range-integrity-test.cjs
           node scripts/file-commands-test.cjs
+          node scripts/recent-projects-test.cjs
+          node scripts/writing-context-test.cjs
+          node scripts/startup-ui-test.cjs
           node scripts/autosave-path-test.cjs
           node scripts/autosave-recovery-test.cjs
           node scripts/project-save-test.cjs

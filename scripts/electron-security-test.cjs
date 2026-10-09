@@ -80,12 +80,13 @@ async function ipcTests() {
   const s = h.state;
   const window = s.windows[0];
   const contents = window.webContents;
-  const channels = ['dialog:open', 'dialog:save', 'dialog:saveAs', 'pdf:export', 'file:show', 'app:recent', 'app:info'];
+  const channels = ['dialog:open', 'dialog:save', 'dialog:saveAs', 'pdf:export', 'file:show', 'app:recent', 'app:info',
+    'recent:open', 'recent:relocate', 'recent:commitOpen', 'recent:pin', 'recent:remove'];
   for (const event of [{}, { sender: {}, senderFrame: contents.mainFrame }, { sender: contents, senderFrame: null },
     { sender: contents, senderFrame: { url: contents.mainFrame.url, parent: contents.mainFrame } }]) {
     for (const channel of channels) await denied(() => h.invoke(channel, {}, event), `${channel} rejects unknown window or subframe`);
   }
-  eq([s.dialogs.length, s.helperCalls.length, s.pdfCalls.length, s.writes.length], [0, 0, 0, 0], 'rejected senders cause no privileged effects');
+  eq([s.dialogs.length, s.openDialogs.length, s.helperCalls.length, s.pdfCalls.length, s.writes.length], [0, 0, 0, 0, 0], 'rejected senders cause no privileged effects');
   const trustedURL = contents.mainFrame.url;
   for (const url of ['https://attacker.invalid/', 'file:///tmp/other.html', `${trustedURL}?privileged=1`]) {
     contents.mainFrame.url = url;
@@ -112,6 +113,19 @@ async function ipcTests() {
     await denied(() => h.invoke('dialog:save', payload), 'invalid save shape/path rejected before dialog');
   }
   for (const ext of ['js', '../zhsp', 'pdf', '', 4]) await denied(() => h.invoke('dialog:saveAs', { content: body, name: '合成', ext }));
+  for (const channel of ['recent:open', 'recent:relocate', 'recent:remove']) {
+    for (const payload of [undefined, null, [], {}, { id: '' }, { id: 4 }, { id: 'x'.repeat(257) }]) {
+      await denied(() => h.invoke(channel, payload), `${channel} rejects malformed record IDs`);
+    }
+  }
+  for (const payload of [undefined, null, [], {}, { id: '', pinned: true }, { id: 'synthetic-id' },
+    { id: 'synthetic-id', pinned: 1 }, { id: 'synthetic-id', pinned: 'false' }]) {
+    await denied(() => h.invoke('recent:pin', payload), 'pin requires a bounded ID and an explicit boolean');
+  }
+  for (const payload of [undefined, null, [], {}, { token: '' }, { token: 4 },
+    { token: 'x'.repeat(257) }, { token: 'synthetic-token', name: {} }]) {
+    await denied(() => h.invoke('recent:commitOpen', payload), 'commit requires a bounded opaque token and valid optional display name');
+  }
   for (const opts of [undefined, {}, { mode: 'other' }, { mode: 'creative', html: '<script>bad</script>' },
     { mode: 'creative', html: '<section class="export-sheet"></section>', pageSize: { width: Infinity, height: 200000 } },
     { mode: 'creative', html: '<section class="export-sheet"></section>', pageSize: { width: 210000, height: 5000001 } }]) {
@@ -229,6 +243,25 @@ async function filesystemTests() {
     const project2 = path.join(docs, 'opened.zhsp'); fs.writeFileSync(project2, body);
     eq(reopened.readSelected(project2).content, body);
     eq(reopened.authorizedProject(project2).canonical, project2, 'native open grants project Save');
+    eq(reopened.readAuthorizedProject(project2).content, body, 'explicit native selection authorizes identity-checked recent reads');
+    eq(reopened.projectStatus(project2), { missing: false, needsAuthorization: false });
+    const replacement = path.join(docs, 'replacement.zhsp'); fs.writeFileSync(replacement, 'synthetic external replacement');
+    fs.renameSync(replacement, project2);
+    eq(reopened.authorizedProject(project2).canonical, project2, 'parent-directory authorization continues to permit ordinary Save');
+    eq(reopened.projectStatus(project2), { missing: false, needsAuthorization: true }, 'a different file identity requires native selection before recent reads');
+    rejected(() => reopened.readAuthorizedProject(project2), 'recent read cannot follow an unselected external replacement');
+    eq(fs.readFileSync(project2, 'utf8'), 'synthetic external replacement', 'rejected read never modifies the replacement');
+    eq(reopened.readSelected(project2).content, 'synthetic external replacement');
+    eq(reopened.projectStatus(project2), { missing: false, needsAuthorization: false }, 'native reselection refreshes read identity');
+    const legacyData = path.join(root, 'legacy-ledger'); fs.mkdirSync(legacyData);
+    const selectedProject2 = reopened.selected(project2, 'zhsp');
+    fs.writeFileSync(path.join(legacyData, LEDGER_NAME), JSON.stringify({ version: 1, projects: [
+      { path: selectedProject2.canonical, parent: selectedProject2.parent },
+    ] }));
+    const legacyAccess = createFileAccess({ userData: () => legacyData });
+    eq(legacyAccess.authorizedProject(project2).canonical, project2, 'old ledgers keep their ordinary Save compatibility');
+    rejected(() => legacyAccess.readAuthorizedProject(project2), 'old ledgers without file identity require native reselection for automatic reads');
+    eq(legacyAccess.projectStatus(project2), { missing: false, needsAuthorization: true });
 
     // Windows legacy realpathSync can preserve an 8.3 spelling while native /
     // Promise realpath expands it. Model that API difference on every platform,
@@ -345,16 +378,30 @@ function preloadTests() {
   for (const mainFrame of [true, false]) {
     let exposed;
     let received;
+    const invocations = [];
     vm.runInNewContext(source, { process: { isMainFrame: mainFrame }, require(name) {
       assert.equal(name, 'electron');
       return { contextBridge: { exposeInMainWorld: (key, api) => { exposed = { key, api }; } },
-        ipcRenderer: { invoke() {}, on: (_name, callback) => { received = callback; }, removeListener() {} } };
+        ipcRenderer: { invoke: (...args) => invocations.push(args), on: (_name, callback) => { received = callback; }, removeListener() {} } };
     } });
     eq(!!exposed, mainFrame, 'only main frame receives bridge');
     if (exposed) {
       eq(exposed.key, 'api');
       eq(Object.isFrozen(exposed.api), true);
-      eq(Object.keys(exposed.api).sort(), ['exportPdf', 'getInfo', 'getRecent', 'isElectron', 'onMenu', 'openProject', 'saveProject', 'saveProjectAs', 'showInFolder'].sort(), 'no generic invoke/fs primitive exposed');
+      eq(Object.keys(exposed.api).sort(), ['exportPdf', 'getInfo', 'getRecent', 'isElectron', 'onMenu', 'openProject', 'saveProject', 'saveProjectAs', 'showInFolder',
+        'openRecent', 'relocateRecent', 'commitOpen', 'pinRecent', 'removeRecent'].sort(), 'only explicit project operations are exposed, with no generic invoke/fs primitive');
+      exposed.api.openRecent('synthetic-id');
+      exposed.api.openRecent('synthetic-id', { allowPrompt: false });
+      exposed.api.relocateRecent('synthetic-id');
+      exposed.api.commitOpen('synthetic-token', '合成标题');
+      exposed.api.pinRecent('synthetic-id', true);
+      exposed.api.removeRecent('synthetic-id');
+      eq(JSON.parse(JSON.stringify(invocations)), [
+        ['recent:open', { id: 'synthetic-id' }], ['recent:open', { id: 'synthetic-id', allowPrompt: false }],
+        ['recent:relocate', { id: 'synthetic-id' }],
+        ['recent:commitOpen', { token: 'synthetic-token', name: '合成标题' }],
+        ['recent:pin', { id: 'synthetic-id', pinned: true }], ['recent:remove', { id: 'synthetic-id' }],
+      ], 'recent bridge forwards scoped IDs and opaque completion tokens without paths');
       let values;
       exposed.api.onMenu((...args) => { values = args; });
       received({ sender: 'privileged Electron event' }, 'file:save');

@@ -16,9 +16,9 @@ function ok(value, message) { assert.ok(value, message || 'expected truthy value
 function harness(platform = 'darwin', initialDisk) {
   const handlers = new Map();
   const state = {
-    disk: initialDisk || new Map(), writes: [], helperCalls: [], pdfCalls: [], errors: [], dialogs: [], warnings: [],
+    disk: initialDisk || new Map(), reads: [], writes: [], helperCalls: [], pdfCalls: [], errors: [], dialogs: [], warnings: [],
     saves: [], choice: 0, closeDialogs: [], windows: [], menus: [], appEvents: new Map(),
-    nextHelper: null, nextPdf: null, throwOnWarn: false, opens: [], shown: [],
+    nextHelper: null, nextPdf: null, throwOnWarn: false, opens: [], openDialogs: [], shown: [], renames: [], now: undefined,
   };
   const pathApi = platform === 'win32' ? path.win32 : path.posix;
   class Window {
@@ -67,10 +67,11 @@ function harness(platform = 'darwin', initialDisk) {
     fsyncSync() {},
     fstatSync: fd => stat(handles.get(fd)),
     ftruncateSync: fd => state.disk.set(handles.get(fd), ''),
-    renameSync: (from, to) => { state.disk.set(to, state.disk.get(from)); state.disk.delete(from); },
+    renameSync: (from, to) => { state.renames.push({ from, to }); state.disk.set(to, state.disk.get(from)); state.disk.delete(from); },
     unlinkSync: file => state.disk.delete(file),
     readFileSync(file) {
       if (typeof file === 'number') file = handles.get(file);
+      state.reads.push(file);
       if (!state.disk.has(file)) throw Object.assign(new Error('synthetic missing'), { code: 'ENOENT' });
       return state.disk.get(file);
     },
@@ -94,7 +95,10 @@ function harness(platform = 'darwin', initialDisk) {
         state.dialogs.push(options);
         return state.saves.shift() || { canceled: true };
       },
-      showOpenDialog: async () => state.opens.shift() || ({ canceled: true, filePaths: [] }),
+      showOpenDialog: async (_window, options) => {
+        state.openDialogs.push(options);
+        return state.opens.shift() || ({ canceled: true, filePaths: [] });
+      },
       showErrorBox: (title, message) => state.errors.push({ title, message }),
       showMessageBoxSync: (_window, options) => { state.closeDialogs.push(options); return state.choice; },
     },
@@ -110,14 +114,17 @@ function harness(platform = 'darwin', initialDisk) {
       if (state.throwOnWarn) throw new Error('synthetic logging unavailable');
       state.warnings.push(args);
     } }, Buffer,
+    Date: class extends Date { static now() { return state.now === undefined ? Date.now() : state.now; } },
     require(name) {
       if (name === 'electron') return electron;
       if (name === 'node:fs') return fakeFs;
       if (name === 'node:path') return platform === 'win32' ? path.win32 : path.posix;
       if (name === 'node:url') return require('node:url');
+      if (name === 'node:crypto') return require('node:crypto');
       if (name === './platform') return require('../electron/platform');
       if (name === './security') return require('../electron/security');
       if (name === './fileAccess') return require('../electron/fileAccess');
+      if (name === './recentProjects') return require('../electron/recentProjects');
       if (name === './projectSave') return {
         saveProjectFile(file, content) {
           state.helperCalls.push({ file, content });
@@ -152,7 +159,10 @@ async function main() {
   // Establish write authority through the real native-open handler, not by
   // trusting an arbitrary renderer path or seeding the authorization ledger.
   s.disk.set(file, content); s.opens.push({ canceled: false, filePaths: [file] });
-  eq((await h.invoke('dialog:open')).path, file);
+  const opened = await h.invoke('dialog:open');
+  eq(opened.path, file);
+  ok(typeof opened.openToken === 'string', 'project open returns a commit token');
+  eq(s.disk.has(recentPath), false, 'native read alone does not publish an unvalidated project in recents');
   s.writes.length = 0;
 
   let finish;
@@ -167,7 +177,9 @@ async function main() {
   finish({ path: '/synthetic-canonical.zhsp' });
   eq(await pending, file, 'renderer receives chosen path, not canonical helper path');
   eq(s.writes.length, 1, 'only recent list is written by ordinary save route');
-  eq(s.writes[0].file, recentPath);
+  ok(path.posix.basename(s.writes[0].file).startsWith('.recent-projects-'), 'recent metadata is written to its exclusive temporary file');
+  deep(s.renames.at(-1), { from: s.writes[0].file, to: recentPath }, 'successful metadata write replaces recent.json atomically');
+  eq(s.disk.has(s.writes[0].file), false, 'metadata temporary file is gone after rename');
   const recent = JSON.parse(s.disk.get(recentPath));
   eq(recent.length, 1);
   eq(recent[0].path, file);
@@ -207,7 +219,10 @@ async function main() {
     eq(s.helperCalls.length, helperBefore + 1, 'only zhsp Save As uses safe helper');
     eq(s.helperCalls.at(-1).file, picked);
     eq(s.helperCalls.at(-1).content, content);
-    eq(s.writes.length, writeBefore, 'Save As project never direct-writes body/recent list');
+    eq(s.writes.length, writeBefore + 1, 'successful project Save As records metadata without directly writing the project body');
+    ok(path.posix.basename(s.writes.at(-1).file).startsWith('.recent-projects-'));
+    eq(s.renames.at(-1).to, recentPath);
+    ok(JSON.parse(s.disk.get(recentPath)).some(entry => entry.path === picked), 'Save As result is added to recent projects');
     eq(s.dialogs.at(-1).defaultPath, `合成另存为.${ext || 'zhsp'}`);
   }
 
@@ -225,7 +240,7 @@ async function main() {
       eq(await h.invoke(route, { path: destination, content, name: '合成同步', ext: 'zhsp' }), destination,
         'post-commit sync diagnostics never return null');
       eq(s.errors.length, errorBefore, 'post-commit sync warning never opens failure dialog');
-      eq(s.writes.length, writeBefore + (route === 'dialog:save' ? 1 : 0), 'successful Save recent behavior unchanged');
+      eq(s.writes.length, writeBefore + 1, 'successful Save and Save As update metadata after the project commit');
       eq(s.warnings.length, warningBefore + (warning === 'directory-sync-EIO' ? 1 : 0), 'only unexpected bounded sync code is logged');
       if (warning === 'directory-sync-EIO') {
         const logged = s.warnings.at(-1).join(' ');

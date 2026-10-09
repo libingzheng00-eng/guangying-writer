@@ -9,7 +9,7 @@ const { runSecurityChecks, verifySanitizedProject, verifyDisplaySafety, verifyHt
 
 const config = JSON.parse(fs.readFileSync(process.env.GUANGYING_WINDOWS_SMOKE_CONFIG, 'utf8'));
 const phase = process.env.GUANGYING_WINDOWS_SMOKE_PHASE;
-assert.ok(['first-launch', 'recovery'].includes(phase));
+assert.ok(['first-launch', 'recovery', 'auto-resume'].includes(phase));
 assert.equal(process.platform, config.expectedPlatform);
 const root = app.getAppPath();
 const { entryURL } = require(path.join(root, 'electron', 'security.js'));
@@ -225,7 +225,9 @@ loadProductionMain();
 app.whenReady().then(async () => {
   try {
     await until(() => !!win, 'production main creates BrowserWindow');
-    await until('!!document.querySelector(".editor__scroll[data-ready=true]")', 'packaged renderer ready', 30000);
+    await until(phase === 'auto-resume'
+      ? '!!document.querySelector(".toolbar") && !document.querySelector(".startup") && !!window.api?.isElectron'
+      : '!!document.querySelector(".startup") && !!window.api?.isElectron', 'packaged startup route and preload ready', 30000);
     const actualURL = win.webContents.getURL();
     const expectedURL = pathToFileURL(path.join(root, 'dist-renderer', 'index.html')).href;
     const canonicalURL = entryURL(expectedURL);
@@ -245,8 +247,31 @@ app.whenReady().then(async () => {
     await recordWindowGeometry('primary-startup', { width: 1440, height: 960 });
     journal();
     pass('packaged production main/preload/renderer start with isolated userData');
+    const startupQa = require('./startup-native-qa.cjs')({ win, run, key, pause, until, snapshot, screenshot, pass,
+      menu, command, openChoices, syntheticDir, recordWindowGeometry });
+    if (phase === 'auto-resume') {
+      const expected = JSON.parse(fs.readFileSync(expectedPath, 'utf8'));
+      await startupQa.automaticResume(expected.automaticResumeContext, savedFile);
+      assert.equal(await text(), expected.unsavedText);
+      assert.equal((await snapshot()).filePath, savedFile);
+      assert.deepEqual((await snapshot()).project, expected.project);
+      assert.equal(fs.readFileSync(savedFile, 'utf8'), expected.diskAfterRecovery, 'Automatic resume does not rewrite the disk project');
+      assert.equal(report.nativeCalls.open, 0, 'Automatic recovery must not request a native picker');
+      assert.equal(report.nativeCalls.save, 0, 'Automatic recovery is not an implicit disk save');
+      await closeAndStay();
+      assert.equal(await text(), expected.unsavedText);
+      pass('automatic-resume process preserves the complete recovered project and disk bytes; production dirty close defaults to continue writing');
+      await screenshot('automatic-resume-close-protected.png');
+      report.automaticResume = { context: expected.automaticResumeContext, sameUserData: true,
+        reseeded: false, nativePickerRequests: report.nativeCalls.open, diskWritesRequested: report.nativeCalls.save };
+      journal();
+      pass('automatic-resume process leaves only after the explicit leave choice through the production close guard');
+      await finishClose(true);
+      return;
+    }
     if (phase === 'recovery') {
       const expected = JSON.parse(fs.readFileSync(expectedPath, 'utf8'));
+      await startupQa.recover(expected.startupContext, savedFile);
       await until(`!!document.querySelector(${JSON.stringify(actionSelector)})`, 'recovered action');
       assert.equal(await text(), expected.unsavedText);
       const recovered = await snapshot();
@@ -269,11 +294,15 @@ app.whenReady().then(async () => {
       pass('production Save command after process restart writes associated Chinese path and backs up previous disk version (' + report.commandInput.method + ')');
       pass('complete recovered project matches: all paragraphs, formatting, cards, coordinates, settings, and metadata');
       await screenshot('recovered.png');
+      const automaticResumeContext = await startupQa.prepareAutomaticResume('windows-synthetic', savedFile, actionSelector);
+      fs.writeFileSync(expectedPath, JSON.stringify({ ...expected, automaticResumeContext,
+        diskAfterRecovery: fs.readFileSync(savedFile, 'utf8') }));
       pass('saved document closes through production beforeunload without an extra prompt');
       await finishClose(false);
       return;
     }
 
+    await startupQa.firstLaunch();
     const blank = await run(`Array.from(document.querySelectorAll('.script-flow .sc-el')).map(e=>e.textContent)`);
     assert.equal(blank.length, 2); assert.ok(blank.every(value => value === ''));
     assert.equal(await run('document.querySelectorAll(".writing-material-card").length'), 0);
@@ -283,7 +312,7 @@ app.whenReady().then(async () => {
       assert.deepEqual(firstRecovery.project.beats, []); assert.equal(firstRecovery.filePath, null);
     }
     assert.deepEqual(await run('window.api.getRecent()'), []);
-    pass('first launch is blank: two empty editable paragraphs, no cards, prior text, associated file, or recent files');
+    pass('real startup New button creates two empty editable paragraphs, no cards, prior text, associated file, or recent files');
     await screenshot('first-launch.png');
     report.security = await runSecurityChecks({ win, run, until, pause, root, temporary: config.temporary, saveChoices, report, pass });
     journal();
@@ -328,6 +357,8 @@ app.whenReady().then(async () => {
     assert.equal(smartSaved.elements.length, 3);
     assert.equal(smartSaved.elements.find(e => e.id === smartId).text, '特写');
     assert.equal(smartSaved.elements.find(e => e.id === smartId).type, 'shot');
+    report.startup = await startupQa.recentProjects(smartSaved);
+    journal();
     // Generated 1x1 RGBA pixel, valid PNG chunk CRCs and zlib stream.
     const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMIqAj4DwAETAIY7NJ6TgAAAABJRU5ErkJggg==';
     const project = { id: 'windows-synthetic', name: 'Windows 合成验收', createdAt: 1, updatedAt: 1,
@@ -467,7 +498,9 @@ app.whenReady().then(async () => {
     assert.equal(readProject(savedFile).elements[1].text, diskText, 'Autosave must not pretend to save the disk .zhsp');
     await closeAndStay(); assert.equal(await text(), unsavedText);
     pass('dirty close reaches real beforeunload/will-prevent-unload and defaults to continue writing');
-    fs.writeFileSync(expectedPath, JSON.stringify({ unsavedText, image, project: (await snapshot()).project, diskBeforeRecovery: fs.readFileSync(savedFile, 'utf8') }));
+    const startupContext = await startupQa.prepareRestart('windows-synthetic', savedFile, actionSelector);
+    fs.writeFileSync(expectedPath, JSON.stringify({ unsavedText, image, project: (await snapshot()).project,
+      startupContext, diskBeforeRecovery: fs.readFileSync(savedFile, 'utf8') }));
     await screenshot('before-restart.png');
     pass('explicit leave choice uses production guard; next phase restarts same QA executable/profile');
     await finishClose(true);

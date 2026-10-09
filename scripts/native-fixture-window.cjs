@@ -52,6 +52,9 @@ async function createFixtureWindow({
     if (project !== undefined || theme !== undefined) {
       const seed = path.join(output, `fixture-${token}-seed.js`);
       let js = '// Only synthetic test state; generated before React mounts.\n';
+      // These fixed editing suites explicitly opt into restoring their synthetic
+      // fixture. Recovery reloads keep the same storage and do not seed again.
+      js += "localStorage.setItem('guangying:startup-preference','resume');\n";
       if (project !== undefined) js += `localStorage.setItem('guangying:autosave',${scriptString(JSON.stringify({ project, filePath: null }))});\n`;
       if (theme !== undefined) js += `localStorage.setItem('guangying:appTheme',${scriptString(theme)});\n`;
       fs.writeFileSync(seed, js, { encoding: 'utf8', flag: 'wx' });

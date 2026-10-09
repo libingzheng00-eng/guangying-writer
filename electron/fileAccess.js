@@ -23,6 +23,9 @@ function createFileAccess({ fileSystem = fs, pathApi = path, platform = process.
   // A differently-spelled path can be a different file and must be reselected.
   const key = value => value;
   const sameDirectory = (a, b) => a.dev === b.dev && a.ino === b.ino;
+  const identity = stat => stat ? { dev: stat.dev, ino: stat.ino } : null;
+  const sameFile = (a, b) => !!a && !!b && a.dev === b.dev && a.ino === b.ino;
+  const unchangedFile = (a, b) => sameFile(a, b) && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
 
   function validPath(file) {
     if (typeof file !== 'string' || !file || file.length > 32768 || /[\0\r\n]/.test(file) || !pathApi.isAbsolute(file)) rejectRequest();
@@ -74,7 +77,9 @@ function createFileAccess({ fileSystem = fs, pathApi = path, platform = process.
         if (typeof grant?.path !== 'string' || pathApi.extname(grant.path).toLowerCase() !== '.zhsp' ||
             !Number.isFinite(grant?.parent?.dev) || !Number.isFinite(grant?.parent?.ino)) continue;
         const canonical = validPath(grant.path);
-        projects.set(key(canonical), { canonical, key: key(canonical), parent: grant.parent });
+        const fileIdentity = Number.isFinite(grant?.fileIdentity?.dev) && Number.isFinite(grant?.fileIdentity?.ino)
+          ? { dev: grant.fileIdentity.dev, ino: grant.fileIdentity.ino } : null;
+        projects.set(key(canonical), { canonical, key: key(canonical), parent: grant.parent, fileIdentity });
       }
     } catch { /* Missing/invalid grants require a native selection; never infer. */ }
   }
@@ -88,7 +93,9 @@ function createFileAccess({ fileSystem = fs, pathApi = path, platform = process.
       try { existing = fileSystem.lstatSync(ledger()); } catch (error) { if (error.code !== 'ENOENT') throw error; }
       if (existing && (!existing.isFile() || existing.isSymbolicLink())) rejectRequest();
       temporary = pathApi.join(userData(), `.file-authorizations-${randomUUID()}.tmp`);
-      const data = JSON.stringify({ version: 1, projects: [...projects.values()].map(grant => ({ path: grant.canonical, parent: grant.parent })) });
+      const data = JSON.stringify({ version: 1, projects: [...projects.values()].map(grant => ({
+        path: grant.canonical, parent: grant.parent, fileIdentity: grant.fileIdentity,
+      })) });
       descriptor = fileSystem.openSync(temporary, fileSystem.constants.O_WRONLY | fileSystem.constants.O_CREAT | fileSystem.constants.O_EXCL, 0o600);
       created = true;
       fileSystem.writeFileSync(descriptor, data, 'utf8');
@@ -119,11 +126,12 @@ function createFileAccess({ fileSystem = fs, pathApi = path, platform = process.
     return current;
   }
 
-  function grantProject(selection) {
+  function grantProject(selection, fromRead = false) {
     const current = check(selection, 'zhsp');
+    if (fromRead && !unchangedFile(current.stat, selection.stat)) rejectRequest();
     load();
     projects.delete(current.key);
-    projects.set(current.key, current);
+    projects.set(current.key, { ...current, fileIdentity: identity(current.stat) });
     if (projects.size > MAX_GRANTS) projects.delete(projects.keys().next().value);
     remember(current); persist();
   }
@@ -137,24 +145,56 @@ function createFileAccess({ fileSystem = fs, pathApi = path, platform = process.
     return current;
   }
 
-  function readSelected(file) {
-    const selection = inspect(file);
+  function readSelection(selection, grant) {
     if (!selection.stat || selection.stat.size > MAX_CONTENT_BYTES) rejectRequest();
     const fd = fileSystem.openSync(selection.canonical, fileSystem.constants.O_RDONLY | (fileSystem.constants.O_NOFOLLOW || 0));
     try {
       const current = fileSystem.fstatSync(fd);
-      if (!current.isFile() || current.dev !== selection.stat.dev || current.ino !== selection.stat.ino || current.size > MAX_CONTENT_BYTES) rejectRequest();
+      if (!current.isFile() || !unchangedFile(current, selection.stat) || current.size > MAX_CONTENT_BYTES) rejectRequest();
       const content = fileSystem.readFileSync(fd, 'utf8');
       if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT_BYTES) rejectRequest();
+      const after = inspect(selection.requested);
+      if (after.key !== selection.key || !sameDirectory(after.parent, selection.parent) ||
+          !unchangedFile(after.stat, current) || !unchangedFile(fileSystem.fstatSync(fd), current)) rejectRequest();
       remember(selection);
       // An explicitly opened .zhsp is eligible for ordinary Save. Imports and
       // backup files are read-only selections and cannot grant arbitrary writes.
-      if (pathApi.extname(file).toLowerCase() === '.zhsp') {
-        try { grantProject(selection); }
+      if (grant && pathApi.extname(selection.requested).toLowerCase() === '.zhsp') {
+        try { grantProject(selection, true); }
         catch { /* A readable protected project may still be opened read-only. */ }
       }
       return { selection, content };
     } finally { fileSystem.closeSync(fd); }
+  }
+
+  function readSelected(file) { return readSelection(inspect(file), true); }
+
+  function authorizedReadProject(file) {
+    const current = authorizedProject(file);
+    if (!current) return null;
+    const grant = projects.get(current.key);
+    // A saved parent-directory grant is enough for ordinary Save, but automatic
+    // reads additionally require the selected file identity. Old ledgers that
+    // predate this field remain usable for Save and require native re-selection
+    // before automatic reads. An external atomic replacement also re-prompts.
+    if (!current.stat || !sameFile(current.stat, grant.fileIdentity)) return null;
+    return current;
+  }
+
+  function readAuthorizedProject(file) {
+    const selection = authorizedReadProject(file);
+    if (!selection) rejectRequest();
+    return readSelection(selection, false);
+  }
+
+  function projectStatus(file) {
+    try {
+      const current = inspect(file, 'zhsp');
+      if (!current.stat) return { missing: true, needsAuthorization: true };
+      return { missing: false, needsAuthorization: !authorizedReadProject(file) };
+    } catch (error) {
+      return { missing: error.code === 'ENOENT' || error.code === 'ENOTDIR', needsAuthorization: true };
+    }
   }
 
   function writeExport(selection, data, encoding) {
@@ -179,7 +219,8 @@ function createFileAccess({ fileSystem = fs, pathApi = path, platform = process.
     return current.canonical;
   }
 
-  return { selected, check, grantProject, authorizedProject, readSelected, writeExport, shownPath, validPath };
+  return { selected, check, grantProject, authorizedProject, readSelected, readAuthorizedProject,
+    projectStatus, writeExport, shownPath, validPath };
 }
 
 module.exports = { createFileAccess, LEDGER_NAME };

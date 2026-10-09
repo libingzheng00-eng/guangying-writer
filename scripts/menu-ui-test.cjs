@@ -63,12 +63,14 @@ function nativeMenus(platform) {
       if (name === 'electron') return electron;
       if (name === 'node:path') return platform === 'win32' ? path.win32 : path.posix;
       if (name === 'node:url') return require('node:url');
+      if (name === 'node:crypto') return require('node:crypto');
       if (name === 'node:fs') return new Proxy({}, { get() { throw new Error('No filesystem access permitted by main mock'); } });
       if (name === './pdf') return { renderPdf() { throw new Error('No PDF export permitted'); } };
       if (name === './projectSave') return { saveProjectFile() { throw new Error('No project save permitted'); } };
       if (name === './platform') return require('../electron/platform');
       if (name === './security') return require('../electron/security');
       if (name === './fileAccess') return require('../electron/fileAccess');
+      if (name === './recentProjects') return require('../electron/recentProjects');
       throw new Error(`Unexpected main dependency: ${name}`);
     },
   }, { filename: mainFile });
@@ -105,6 +107,7 @@ function nativeMenus(platform) {
   const button = label => [...document.querySelectorAll('.toolbar button')].find(node => node.textContent.trim() === label);
   const render = async () => act(async () => root.render(React.createElement(Toolbar, {
     commands, modalOpen,
+    onOpenHome: () => { calls.push(['home']); document.getElementById('outside').focus(); },
     onOpenSettings: () => { calls.push(['settings']); document.getElementById('outside').focus(); },
     onOpenTitle: () => { calls.push(['title']); openerAtTitle = document.activeElement; document.getElementById('outside').focus(); },
   })));
@@ -121,7 +124,7 @@ function nativeMenus(platform) {
 
   check('文件菜单初始关闭', [menu(), trigger().getAttribute('aria-expanded')], [null, 'false']);
   await open();
-  check('菜单有可关联的语义和11个保留的操作', [trigger().getAttribute('aria-controls'), menu().id, menu().getAttribute('aria-label'), items().length], [menu().id, menu().id, '文件', 11]);
+  check('菜单保留既有11个操作并新增启动页入口', [trigger().getAttribute('aria-controls'), menu().id, menu().getAttribute('aria-label'), items().length], [menu().id, menu().id, '文件', 12]);
   check('鼠标打开聚焦首项且菜单项不加入普通Tab序列', [document.activeElement, items().every(item => item.tabIndex === -1)], [items()[0], true]);
   await key(document.activeElement, 'ArrowUp');
   check('向上从首项循环至最后一项', document.activeElement, items().at(-1));
@@ -228,6 +231,9 @@ function nativeMenus(platform) {
   const beforeCalls = calls.length;
   await click(items().find(item => item.textContent === '另存为…'));
   check('菜单操作执行一次，保留原参数和稳定返回焦点', [menu(), calls.slice(beforeCalls), document.activeElement], [null, [['save', true]], trigger()]);
+  await open();
+  await click(items().find(item => item.textContent === '启动页 / 最近项目'));
+  check('启动页入口关闭菜单并允许目标页面接管焦点', [menu(), calls.at(-1), document.activeElement.id], [null, ['home'], 'outside']);
   await open();
   await click(items().at(-1));
   check('标题页执行前建立稳定返回按钮，执行后不夺回新焦点', [menu(), calls.at(-1), openerAtTitle, document.activeElement.id], [null, ['title'], trigger(), 'outside']);

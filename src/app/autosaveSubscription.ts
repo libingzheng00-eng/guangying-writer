@@ -1,10 +1,13 @@
 import type { ScriptProject } from '../model/types';
+import type { RecoverySnapshot } from './autosaveStorage';
+import type { WritingContext } from './writingContext';
 
 interface AutosaveState {
   version: number;
   project: ScriptProject;
   filePath: string | null;
   documentEpoch?: number;
+  writingContext?: WritingContext | null;
 }
 
 interface AutosaveStore {
@@ -20,7 +23,7 @@ interface AutosaveStore {
  */
 export function subscribeAutosave(
   store: AutosaveStore,
-  write: (saved: { project: ScriptProject; filePath: string | null }) => void | boolean,
+  write: (saved: RecoverySnapshot) => void | boolean,
   // Browser timer functions must be called as globals, not as methods on `clock`.
   clock: {
     set: (fn: () => void, delay?: number) => ReturnType<typeof setTimeout>;
@@ -44,8 +47,8 @@ export function subscribeAutosave(
     if (timer !== undefined) clock.clear(timer);
     timer = undefined;
     startedAt = undefined;
-    const { project, filePath } = store.getState();
-    try { lastWriteSucceeded = write({ project, filePath }) !== false; }
+    const { project, filePath, writingContext } = store.getState();
+    try { lastWriteSucceeded = write({ project, filePath, ...(writingContext ? { context: writingContext } : {}) }) !== false; }
     catch { lastWriteSucceeded = false; }
     return lastWriteSucceeded;
   };
@@ -60,8 +63,8 @@ export function subscribeAutosave(
       // Clear before writing so a reentrant state update may schedule a new job.
       timer = undefined;
       startedAt = undefined;
-      const { project, filePath } = store.getState();
-      try { lastWriteSucceeded = write({ project, filePath }) !== false; }
+      const { project, filePath, writingContext } = store.getState();
+      try { lastWriteSucceeded = write({ project, filePath, ...(writingContext ? { context: writingContext } : {}) }) !== false; }
       catch { lastWriteSucceeded = false; }
     }, delay);
   };

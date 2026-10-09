@@ -92,8 +92,8 @@ function timerClock() {
   check('empty storage has no false corruption warning', readRecovery(memoryStorage()).warning, null);
 
   // JSON-valid payloads may fail the same schema/HTML admission as file open.
-  // Startup still schedules a blank draft at 900ms; original bytes must first
-  // reach protected storage, or the active recovery must remain untouched.
+  // An explicitly activated autosave subscription still schedules at 900ms;
+  // original bytes must first reach protected storage or remain untouched.
   const blank = createProject('合成启动空稿'); blank.elements = [];
   const blankSnapshot = { project: blank, filePath: null };
   const blankRaw = JSON.stringify(blankSnapshot);
@@ -281,6 +281,15 @@ function timerClock() {
   check('StrictMode legacy migration failure cannot replace restored script', useStore.getState().project.elements[0].text, project.elements[0].text);
   check('recovered project remains conservatively dirty', useStore.getState().dirty);
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 1000)); });
+  check('landing page waits for explicit recovery choice and preserves legacy bytes',
+    [!!document.querySelector('.startup'), appStorage.values.get(legacy), appStorage.values.has(key)], [true, raw, false]);
+  const homeClose = new window.Event('beforeunload', { cancelable: true });
+  await act(async () => window.dispatchEvent(homeClose));
+  check('closing an unactivated landing page does not flush or pretend editing has started',
+    [homeClose.defaultPrevented, appStorage.values.has(key)], [false, false]);
+  await act(async () => [...document.querySelectorAll('.startup button')]
+    .find(button => button.textContent.trim() === '继续写作').click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 1000)); });
   check('actual App exposes recovery failure', [useRecoveryStatus.getState().phase, document.querySelector('.statusbar__recovery').textContent], ['error', '恢复点失败']);
   check('legacy bytes still available after failed App write', appStorage.values.get(legacy), raw);
   appStorage.writesFail = null;
@@ -365,9 +374,9 @@ function timerClock() {
   check('ordinary search input does not block clean successful-save unload', (await unload()).defaultPrevented, false);
   await act(async () => tree.unmount());
 
-  // Actual startup falls back to the empty template when current JSON is valid
-  // but its project is not admissible. Exercise the real 900ms App subscription
-  // and close guard, not just the storage helper in isolation.
+  // Rejected recovery remains byte-for-byte intact while the landing page is
+  // idle or closed. Only an explicit new document activates the real timer and
+  // its original protection/close behavior.
   for (const occupied of [false, true]) {
     const badRaw = invalidSnapshots[0].raw;
     const startupStorage = memoryStorage({ [key]: badRaw, ...(occupied ? { [unreadable]: '合成既有保护内容' } : {}) });
@@ -377,6 +386,14 @@ function timerClock() {
     await act(async () => tree.render(React.createElement(React.StrictMode, null, React.createElement(App))));
     check(`schema-invalid App startup/${occupied}: rejects recovery while retaining original before timer`,
       [useStore.getState().project.elements.every(el => !el.text), startupStorage.values.get(key)], [true, badRaw]);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1000)); });
+    check(`schema-invalid landing/${occupied}: no timer overwrite or new protection slot`,
+      [startupStorage.values.get(key), startupStorage.values.get(unreadable)],
+      [badRaw, occupied ? '合成既有保护内容' : undefined]);
+    check(`schema-invalid landing/${occupied}: close is read-only before editing`, (await unload()).defaultPrevented, false);
+    check(`schema-invalid landing/${occupied}: closing retains exact original`, startupStorage.values.get(key), badRaw);
+    await act(async () => [...document.querySelectorAll('.startup button')]
+      .find(button => button.textContent.includes('新建剧本')).click());
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 1000)); });
     if (occupied) {
       check('actual App cannot overwrite either payload when protection slot belongs to another recovery',

@@ -13,7 +13,7 @@ try {
   const qa = path.join(temp, 'qa-only-helpers');
   fs.mkdirSync(qa);
   const qaHashes = copyQaEntries(qa);
-  assert.deepEqual(Object.keys(qaHashes), ['windows-smoke-shell.cjs', 'windows-ui-layers.cjs', 'desktop-security-qa.cjs']);
+  assert.deepEqual(Object.keys(qaHashes), ['windows-smoke-shell.cjs', 'windows-ui-layers.cjs', 'desktop-security-qa.cjs', 'startup-native-qa.cjs']);
   for (const name of Object.keys(qaHashes)) assert.equal(fs.readFileSync(path.join(qa, name), 'utf8'), fs.readFileSync(path.join(__dirname, name), 'utf8'));
   assert.throws(() => copyQaEntries(qa), /EEXIST/, 'QA staging cannot overwrite an existing helper');
   assert.ok(phaseTimeoutMs['first-launch'] >= 180000 && phaseTimeoutMs['first-launch'] <= 360000);

@@ -10,14 +10,39 @@ export interface PdfOptions {
 
 export interface NativeApi {
   isElectron: boolean;
-  openProject: () => Promise<{ path: string; content: string } | null>;
+  openProject: () => Promise<NativeOpenResult | null>;
   saveProject: (payload: { content: string; path?: string | null; name?: string }) => Promise<string | null>;
   saveProjectAs: (payload: { content: string; name: string; ext?: string }) => Promise<string | null>;
   exportPdf: (opts: PdfOptions) => Promise<string | null>;
   showInFolder: (path: string) => void;
-  getRecent: () => Promise<{ path: string; name: string; updatedAt: number }[]>;
+  getRecent: () => Promise<RecentProject[]>;
+  // Optional on an older host/mock. The bridge below always supplies a safe
+  // fallback; absence never turns a renderer-provided path into file authority.
+  openRecent?: (id: string, options?: { allowPrompt?: boolean }) => Promise<NativeOpenResult | null>;
+  relocateRecent?: (id: string) => Promise<NativeOpenResult | null>;
+  commitOpen?: (token: string, name?: string) => Promise<boolean>;
+  pinRecent?: (id: string, pinned: boolean) => Promise<RecentProject[]>;
+  removeRecent?: (id: string) => Promise<RecentProject[]>;
   onMenu: (cb: (action: string) => void) => () => void;
   getInfo: () => Promise<{ version: string; platform: string }>;
+}
+
+export interface NativeOpenResult {
+  path: string;
+  content: string;
+  openToken?: string;
+  /** Main-owned recent record's former location, only after native relocation. */
+  previousPath?: string;
+}
+
+export interface RecentProject {
+  id: string;
+  name: string;
+  path: string;
+  updatedAt: number;
+  pinned: boolean;
+  missing?: boolean;
+  needsAuthorization?: boolean;
 }
 
 declare global {
@@ -47,7 +72,7 @@ function download(filename: string, content: string, mime = 'text/plain;charset=
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export const bridge: NativeApi = {
+export const bridge = {
   isElectron: isElectron(),
   openProject: async () => api()?.openProject() ?? null,
   saveProject: async ({ content, path, name }) => {
@@ -65,9 +90,22 @@ export const bridge: NativeApi = {
   exportPdf: async (opts) => api()?.exportPdf(opts) ?? null,
   showInFolder: (path) => api()?.showInFolder(path),
   getRecent: async () => api()?.getRecent() ?? [],
+  openRecent: async (id: string, options?: { allowPrompt?: boolean }) => api()?.openRecent?.(id, options) ?? null,
+  relocateRecent: async (id: string) => api()?.relocateRecent?.(id) ?? null,
+  commitOpen: async (token: string, name?: string) => api()?.commitOpen?.(token, name) ?? false,
+  pinRecent: async (id: string, pinned: boolean) => {
+    const method = api()?.pinRecent;
+    if (!method) throw new Error('当前版本不支持管理最近项目。');
+    return method(id, pinned);
+  },
+  removeRecent: async (id: string) => {
+    const method = api()?.removeRecent;
+    if (!method) throw new Error('当前版本不支持管理最近项目。');
+    return method(id);
+  },
   onMenu: (cb) => api()?.onMenu(cb) ?? (() => {}),
   getInfo: async () => api()?.getInfo() ?? { version: 'web', platform: 'web' },
-};
+} satisfies NativeApi;
 
 export function onMenuAction(cb: (action: string) => void): () => void {
   return bridge.onMenu(cb);

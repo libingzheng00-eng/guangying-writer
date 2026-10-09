@@ -1,12 +1,13 @@
 import { parseProjectValue } from '../io/zhsp';
 import type { ScriptProject } from '../model/types';
+import { readWritingContext, validateWritingContext, type WritingContext } from './writingContext';
 
 export const AUTOSAVE_KEY = 'guangying:autosave';
 export const LEGACY_AUTOSAVE_KEY = 'mojiang:autosave';
 // Only used to protect an unreadable recovery payload before replacing it.
 // Never delete or overwrite a different payload already protected here.
 export const UNREADABLE_AUTOSAVE_KEY = 'guangying:autosave:unreadable';
-export interface RecoverySnapshot { project: ScriptProject; filePath: string | null }
+export interface RecoverySnapshot { project: ScriptProject; filePath: string | null; context?: WritingContext }
 type StoragePort = Pick<Storage, 'getItem' | 'setItem'>;
 
 function validateSnapshot(value: unknown): RecoverySnapshot {
@@ -15,8 +16,11 @@ function validateSnapshot(value: unknown): RecoverySnapshot {
       typeof saved.project !== 'object' || !saved.project || !Array.isArray(saved.project.elements)) {
     throw new Error('Invalid recovery snapshot');
   }
-  return { project: parseProjectValue(saved.project),
-    filePath: typeof saved.filePath === 'string' && saved.filePath ? saved.filePath : null };
+  const project = parseProjectValue(saved.project);
+  const context = validateWritingContext(saved.context, project.id);
+  return { project,
+    filePath: typeof saved.filePath === 'string' && saved.filePath ? saved.filePath : null,
+    ...(context ? { context } : {}) };
 }
 
 function decode(raw: string): RecoverySnapshot { return validateSnapshot(JSON.parse(raw)); }
@@ -35,7 +39,12 @@ export function readRecovery(storage: StoragePort): {
     catch { unavailable = true; continue; }
     if (!raw) continue;
     try {
-      return { snapshot: decode(raw), source, warning: unreadable || unavailable
+      const snapshot = decode(raw);
+      // The independent table can be newer than the last full project write.
+      // Read only the supplied storage, including in isolated test environments.
+      const context = readWritingContext(storage, snapshot.project.id, snapshot.filePath);
+      if (context && (!snapshot.context || (context.updatedAt || 0) >= (snapshot.context.updatedAt || 0))) snapshot.context = context;
+      return { snapshot, source, warning: unreadable || unavailable
         ? '已从备用恢复点恢复；原恢复点读取异常，未删除。请另存工程文件。' : null };
     } catch { unreadable = true; }
   }

@@ -14,7 +14,7 @@ const VIEWS: { key: ViewMode; label: string }[] = [
   { key: 'reports', label: '统计' },
 ];
 
-export function Toolbar({ commands, onOpenSettings, onOpenTitle, modalOpen = false }: { commands: ReturnType<typeof useCommands>; onOpenSettings: () => void; onOpenTitle: () => void; modalOpen?: boolean }) {
+export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, modalOpen = false }: { commands: ReturnType<typeof useCommands>; onOpenSettings: () => void; onOpenTitle: () => void; onOpenHome?: () => void; modalOpen?: boolean }) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const project = useStore((s) => s.project);
@@ -261,6 +261,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, modalOpen = fal
             <div className="menu" id={menuId} ref={menuPopupRef} role="menu" aria-label="文件">
               <Item label="新建剧本" onClick={() => runMenuAction(commands.newFile)} />
               <Item label="打开…" onClick={() => runMenuAction(commands.open)} />
+              {onOpenHome ? <Item label="启动页 / 最近项目" onClick={() => runMenuAction(onOpenHome)} /> : null}
               <Item label="另存为…" onClick={() => runMenuAction(() => commands.save(true))} />
               <div className="menu__sep" role="separator" />
               <Item label="导入文本 / FDX…" onClick={() => runMenuAction(commands.importAny)} />
