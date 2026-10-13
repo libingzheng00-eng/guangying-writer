@@ -1556,29 +1556,6 @@ textarea {
   font-size: 11px;
   font-weight: 600;
 }
-.write-progress__goal {
-  grid-area: goal;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  color: var(--muted);
-  justify-self: end;
-}
-.write-progress__goal input {
-  width: 58px;
-  min-width: 58px;
-  flex: 0 0 58px;
-  height: 20px;
-  padding: 1px 4px;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  background: #0c1119;
-  color: #e6edf3;
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  text-align: right;
-}
 .zoom {
   display: flex;
   align-items: center;
@@ -2448,23 +2425,11 @@ textarea {
 .editor > .write-progress .write-progress__milestone { top: 7px; height: 14px; background: rgba(238,224,205,.18); }
 .editor > .write-progress .write-progress__scenes { height: 18px; min-height: 18px; border-color: rgba(214,203,188,.15); border-radius: 4px; background: #111316; }
 .editor > .write-progress .write-progress__scene { filter: saturate(.5) brightness(.88); }
-.editor > .write-progress .write-progress__goal { min-width: max-content; padding-left: 12px; gap: 4px; }
-.editor > .write-progress .write-progress__goal input { width: 58px; min-width: 58px; height: 28px; padding: 0 8px; color: #f0dfcd; border-color: rgba(221,205,186,.22); background: #202327; text-align: center; }
-.editor > .write-progress { grid-template-areas: 'label road tools' 'label scenes tools'; }
+.editor > .write-progress { grid-template-areas: 'label road' 'label scenes'; }
 .editor > .write-progress .write-progress__label { align-self: stretch; min-width: 94px; padding-right: 0; justify-content: center; }
 .editor > .write-progress .write-progress__value { justify-content: center; gap: 0; }
 .editor > .write-progress .write-progress__divider { margin-inline: 1px; }
-.editor > .write-progress .write-progress__tools { grid-area: tools; display: flex; min-width: max-content; align-self: stretch; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
-.editor > .write-progress .write-progress__goal { display: inline-flex; min-width: 0; padding-left: 0; }
 
-.writing-material-controls { display: inline-flex; align-items: center; gap: 5px; margin-left: 0; }
-.writing-material-controls__group { display: inline-flex; align-items: stretch; }
-.writing-material-controls button { height: 28px; min-width: 30px; padding: 0 7px; border: 1px solid rgba(221,205,186,.18); background: #202327; color: #d8c7b5; cursor: pointer; font-size: 12px; line-height: 1; }
-.writing-material-controls__group button:first-child { border-radius: 999px 0 0 999px; }
-.writing-material-controls__group button + button { min-width: 25px; margin-left: -1px; padding: 0; border-radius: 0 999px 999px 0; opacity: .9; font-size: 15px; }
-.writing-material-controls button:hover { filter: brightness(1.16); }
-.writing-material-controls button[aria-pressed='false'] { color: #7f8791; background: #181b20; }
-.writing-material-controls b { display: inline-grid; min-width: 16px; height: 16px; margin-left: 2px; place-items: center; border-radius: 8px; background: rgba(217,180,140,.18); font-size: 9px; font-weight: 650; }
 
 .editor__scroll { position: relative; }
 .editor__scroll.is-image-drop-target::after { content: '松开以添加图片素材'; position: absolute; z-index: 9; inset: 18px; display: grid; place-items: center; pointer-events: none; border: 2px dashed rgba(116,168,208,.72); border-radius: 14px; color: #d8edff; background: rgba(41,85,122,.16); font: 600 14px -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; letter-spacing: .08em; }
@@ -2549,12 +2514,11 @@ textarea {
 .app-shell[data-theme='day'] .script-flow { background: rgba(255,255,255,.76); border-color: rgba(61,84,100,.16); box-shadow: 0 12px 38px rgba(48,67,80,.14); }
 .app-shell[data-theme='day'] .sc-el--editable { color: #273640; text-shadow: none; }
 .app-shell[data-theme='day'] .editor > .write-progress { background: linear-gradient(180deg,#f4f1ec,#e9e5de); border-color: rgba(57,49,42,.12); }
-.app-shell[data-theme='day'] .editor > .write-progress .write-progress__label, .app-shell[data-theme='day'] .editor > .write-progress .write-progress__goal { color: #62584e; }
+.app-shell[data-theme='day'] .editor > .write-progress .write-progress__label { color: #62584e; }
 .app-shell[data-theme='day'] .editor > .write-progress .write-progress__value { color: #62584e; }
 .app-shell[data-theme='day'] .editor > .write-progress .write-progress__scenes { background: #d8ddd8; border-color: rgba(73,61,50,.22); }
 .app-shell[data-theme='day'] .editor > .write-progress .write-progress__scene { color: #26333c; }
 .app-shell[data-theme='day'] .editor > .write-progress .write-progress__road { background: repeating-linear-gradient(90deg, transparent 0 31px, rgba(70,59,49,.11) 31px 32px), linear-gradient(180deg,#dad5cd 0 18%,#eeeae4 18% 79%,#ccc5bb 79%); border-color: rgba(73,61,50,.22); }
-.app-shell[data-theme='day'] .editor > .write-progress .write-progress__goal input, .app-shell[data-theme='day'] .writing-material-controls button { color: #4c3d32; background: rgba(255,255,255,.72); border-color: rgba(73,61,50,.18); }
 .app-shell[data-theme='day'] .writing-material-card { color: #273640; background: rgba(255,255,255,.88); border-color: rgba(68,89,104,.22); box-shadow: 0 14px 32px rgba(47,64,76,.18); }
 .app-shell[data-theme='day'] .writing-material-card textarea { color: #273640; background: rgba(236,241,244,.82); border-color: rgba(68,89,104,.18); }
 .app-shell[data-theme='day'] .editor__scroll.is-image-drop-target::after { color: #23475f; border-color: rgba(57,119,164,.58); background: rgba(210,233,248,.42); }
@@ -2596,10 +2560,7 @@ textarea {
 .editor > .write-progress .write-progress__hint { display: none; }
 
 @media (max-width: 1100px) {
-  .editor > .write-progress { grid-template-columns: 74px minmax(160px, 1fr) max-content; column-gap: 8px; padding-inline: 9px; }
-  .editor > .write-progress .write-progress__goal { padding-left: 7px; gap: 3px; }
-  .writing-material-controls { gap: 3px; margin-left: 3px; }
-  .writing-material-controls button { padding-inline: 5px; }
+  .editor > .write-progress { grid-template-columns: 74px minmax(160px, 1fr); column-gap: 8px; padding-inline: 9px; }
 }
 .writing-select-toolbar { margin-left: 8px; padding-left: 10px; border-left: 1px solid rgba(111, 168, 211, .18); }
 .writing-select-toolbar button { height: 28px; padding: 0 9px; border: 1px solid transparent; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; white-space: nowrap; }

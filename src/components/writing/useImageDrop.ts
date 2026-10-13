@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store/store';
+import { hasDraggedFiles, imageTitle, isImageFile, readImageFile } from '../../utils/imageFiles';
 
 /** 写作面板接管本地图片拖入：生成图片卡，绝不把图片插进正文。 */
 export function useImageDrop(scrollRef: React.RefObject<HTMLDivElement>) {
@@ -8,12 +9,10 @@ export function useImageDrop(scrollRef: React.RefObject<HTMLDivElement>) {
   // .editor 才是滚动容器，内层 bounds.top 已包含滚动偏移，不能再加 scrollTop。
   const onDropCapture = async (event: React.DragEvent<HTMLDivElement>) => {
     setActive(false);
-    if (!Array.from(event.dataTransfer.types).includes('Files')) return;
+    if (!hasDraggedFiles(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
-    const images = Array.from(event.dataTransfer.files).filter((file) =>
-      file.type.startsWith('image/') || (!file.type && /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(file.name)),
-    );
+    const images = Array.from(event.dataTransfer.files).filter(isImageFile);
     if (!images.length) {
       useStore.getState().notify('请拖入本地图片文件（如 PNG、JPEG 或 WebP）。', 'error');
       return;
@@ -26,23 +25,11 @@ export function useImageDrop(scrollRef: React.RefObject<HTMLDivElement>) {
     const documentAtDrop = useStore.getState().documentEpoch;
     for (const [index, image] of images.entries()) {
       try {
-        const img = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onerror = () => reject(new Error('读取失败'));
-          reader.onabort = () => reject(new Error('读取中断'));
-          reader.onload = () => {
-            const data = String(reader.result || '');
-            const decoded = new Image();
-            decoded.onload = () => resolve(data);
-            decoded.onerror = () => reject(new Error('图片无法解码'));
-            decoded.src = data;
-          };
-          reader.readAsDataURL(image);
-        });
+        const img = await readImageFile(image);
         // 读取期间切换工程时，不能把上一份工程的图片写进新工程。
         if (useStore.getState().documentEpoch !== documentAtDrop) return;
         useStore.getState().addBeat(Math.min(maxX, x + index * 20), y, '', 'image', {
-          title: image.name.replace(/\.[^.]+$/, '') || '图片素材', img,
+          title: imageTitle(image), img,
         });
       } catch {
         if (useStore.getState().documentEpoch !== documentAtDrop) return;
@@ -52,7 +39,7 @@ export function useImageDrop(scrollRef: React.RefObject<HTMLDivElement>) {
   };
 
   const onDragOverCapture = (event: React.DragEvent<HTMLDivElement>) => {
-    if (Array.from(event.dataTransfer.types).includes('Files')) {
+    if (hasDraggedFiles(event.dataTransfer)) {
       event.preventDefault();
       event.dataTransfer.dropEffect = 'copy';
       setActive(true);

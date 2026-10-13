@@ -31,7 +31,7 @@ const Module = require('node:module');
   assert.match(css,/@media screen/);
   assert.ok(main.indexOf('progress-bands.css') > main.indexOf('studio.css'));
   assert.ok(component.includes("requestFocus(scene.elementId, 'start', 'start')"), '保留既有精确场标题跳转');
-  assert.match(css,/grid-template-columns:\s*max-content minmax\(160px, 1fr\) max-content/, '页数使用实际内容宽度');
+  assert.match(css,/grid-template-columns:\s*max-content minmax\(160px, 1fr\);/, '页数使用实际内容宽度，进度条延伸到栏尾');
   assert.match(css,/font-family:\s*"Snell Roundhand"/, '使用本机英式圆手体');
   // 用户批准收细轨道和场景条；仅限制外栏、标尺点击盒和两行网格，允许内部绘制变薄。
   for (const [, selector, declarations] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {

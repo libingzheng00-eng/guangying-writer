@@ -125,7 +125,7 @@
 
   /* 标尺保留全部刻度、PNG 指针、25/75% 标记与目标输入，仅更换表面材质。 */
   .app-shell[data-theme] .editor > .write-progress { background: var(--panel); border-color: var(--border); box-shadow: 0 1px 0 var(--border); }
-  .app-shell[data-theme] .editor > .write-progress :is(.write-progress__label, .write-progress__goal, .write-progress__value) { color: var(--text); }
+  .app-shell[data-theme] .editor > .write-progress :is(.write-progress__label, .write-progress__value) { color: var(--text); }
   .app-shell[data-theme] .editor > .write-progress .write-progress__value { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 18px; font-weight: 500; letter-spacing: -.03em; -webkit-text-stroke: 0; }
   .app-shell[data-theme] .write-progress__value strong { font-size: 24px; font-weight: 600; }
   .app-shell[data-theme] :is(.write-progress__divider, .write-progress__target) { font-size: 15px; font-weight: 400; }
@@ -142,11 +142,7 @@
   .app-shell[data-theme] .editor > .write-progress .write-progress__scene.is-active { outline: 2px solid #49644b; outline-offset: -2px; filter: none; }
   .app-shell[data-theme] .editor > .write-progress .write-progress__scene:focus-visible { outline: 2px solid #263328; outline-offset: -2px; }
   .app-shell[data-theme] .editor > .write-progress .write-progress__scenes.is-over-target { border-color: var(--danger); }
-  .app-shell[data-theme] .editor > .write-progress .write-progress__goal input,
-  .app-shell[data-theme] .writing-material-controls button { color: var(--text); background: var(--control-bg); border-color: var(--border); }
-  .app-shell[data-theme] .writing-material-controls b { background: var(--accent-soft); }
   .app-shell[data-theme] .write-progress__tip { background: var(--panel); }
-  .app-shell[data-theme] .writing-material-controls button[aria-pressed='false'] { color: var(--muted); background: var(--panel-2); }
 
   .app-shell[data-theme] .writing-material-card { color: var(--text); background: var(--glass-bg); border-color: var(--border); box-shadow: var(--card-glow); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .app-shell[data-theme] .writing-material-card textarea { color: var(--text); background: var(--control-bg); border-color: var(--border); }
@@ -165,18 +161,21 @@
   .app-shell[data-theme] .board__link-state { color: var(--accent); }
 
   .app-shell[data-theme] :is(.cards__label, .reports__label, .preview__label, .cards__act-title) { color: var(--text); }
-  /* 故事卡：中性卡面，作者选择的场景色只留在左侧 4px 色条（卡片内联底色从卡面左缘露出）。 */
+  /* 故事卡：场景色铺满整张卡。卡片内联底色是场景色，上面盖一层半透明卡面色把它调淡
+     （日间约 70% 场景色，夜间约 32%），和自由板卡片同一套浓度。 */
   .app-shell[data-theme] .cards .card {
+    --card-wash: color-mix(in srgb, var(--panel) 30%, transparent);
     border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--card-glow); backdrop-filter: none; color: var(--text);
-    background-image: linear-gradient(var(--panel), var(--panel)); background-size: calc(100% - 4px) 100%; background-position: right; background-repeat: no-repeat;
+    background-image: linear-gradient(var(--card-wash), var(--card-wash)); background-size: 100% 100%; background-repeat: no-repeat;
   }
+  .app-shell[data-theme='night'] .cards .card { --card-wash: color-mix(in srgb, var(--panel) 68%, transparent); }
   .app-shell[data-theme] .cards .card:hover { border-color: var(--border-strong); }
   .app-shell[data-theme] .cards .card.is-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--card-glow); }
   .app-shell[data-theme] .cards :is(.card__title, .card__synopsis) { color: var(--text); background: transparent; border-color: transparent; }
   .app-shell[data-theme] .cards :is(.card__title, .card__synopsis):is(:hover, :focus) { background: var(--control-hover); }
   .app-shell[data-theme] .cards .card__synopsis::placeholder { color: var(--muted); }
   .app-shell[data-theme] .cards .card__heading { color: var(--muted); }
-  .app-shell[data-theme] .cards .card__no { color: var(--muted); background: var(--panel-2); }
+  .app-shell[data-theme] .cards .card__no { color: var(--muted); background: color-mix(in srgb, var(--panel) 65%, transparent); }
 
   /* 色块、移至菜单只在悬停、键盘聚焦或选中时出现；控件仍可用 Tab 到达。 */
   .app-shell[data-theme] .cards .card .card__footer > :is(select, .btn) { opacity: 0; transition: opacity .12s ease; }
@@ -271,6 +270,19 @@
   .app-shell[data-theme] .sidebar__tab { display: inline-flex; align-items: center; justify-content: center; height: 30px; border-radius: 6px; line-height: 1; }
   .app-shell[data-theme] .sidebar__tab:hover { color: var(--text); background: var(--control-hover); }
   .app-shell[data-theme] .sidebar__tab.is-active { color: var(--accent); background: var(--accent-soft); box-shadow: none; font-weight: 600; }
+
+  /* 写作页正文两侧空白处的右键菜单（新建声音卡 / 图片卡、显示或隐藏全部卡片）。 */
+  .app-shell[data-theme] .writing-context-menu {
+    position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 2px; min-width: 168px; padding: 5px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); box-shadow: var(--studio-popover-shadow);
+  }
+  .app-shell[data-theme] .writing-context-menu button {
+    display: flex; align-items: center; width: 100%; min-height: 30px; padding: 6px 10px; border: 0; border-radius: 4px;
+    background: transparent; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+  }
+  .app-shell[data-theme] .writing-context-menu button:is(:hover, :focus-visible) { background: var(--control-hover); outline: none; }
+  .app-shell[data-theme] .writing-context-menu button:disabled { opacity: .45; cursor: default; background: transparent; }
+  .app-shell[data-theme] .writing-context-menu hr { width: 100%; margin: 3px 0; border: 0; border-top: 1px solid var(--border); }
 
   /* 窄窗口：带图标的按钮只留图标，文字转为读屏可读的隐藏文本，工具栏不溢出。 */
   @media (max-width: 1279px) {

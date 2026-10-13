@@ -10,6 +10,7 @@ import { safeDisplayColor, safeEmbeddedImageSource } from '../utils/displayValue
 import { SceneCard, BeatCard } from './board/BoardCards';
 import { BoardLinks } from './board/BoardLinks';
 import { stopMouse, stopWheel, type Layout } from './board/boardShared';
+import { hasDraggedFiles, imageTitle, isImageFile, pickImageFile, readImageFile } from '../utils/imageFiles';
 
 type Filter = 'both' | 'scenes' | 'beats';
 type Preview = Record<string, { x?: number; y?: number; w?: number; h?: number }>;
@@ -337,22 +338,48 @@ export function BoardView() {
     const store = useStore.getState(); const pos = autoPos(deriveScenes(store.project).length + store.project.beats.length);
     const id = store.addBoardScene(pos.x, pos.y); if (id) selectCard(`scene:${id}`); closeAddMenu();
   };
-  const addImage = () => {
-    closeAddMenu();
+  // 新建 / 拖入图片卡共用：读取并解码成功才建卡；读取期间换了工程就放弃。
+  const addImageCards = async (files: File[], at?: { x: number; y: number }) => {
     const documentEpoch = useStore.getState().documentEpoch;
-    const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
-    input.onchange = () => {
-      const file = input.files?.[0]; if (!file) return;
-      const reader = new FileReader();
-      reader.onerror = () => { if (useStore.getState().documentEpoch === documentEpoch) useStore.getState().notify('图片读取失败，未创建卡片', 'error'); };
-      reader.onload = () => {
-        if (typeof reader.result !== 'string' || useStore.getState().documentEpoch !== documentEpoch) return;
-        const store = useStore.getState(); const pos = autoPos(deriveScenes(store.project).length + store.project.beats.length);
-        const id = store.addBeat(pos.x, pos.y, '', 'image', { img: reader.result, title: file.name }); selectCard(`beat:${id}`);
-      };
-      reader.readAsDataURL(file);
-    };
-    input.click();
+    let last = '';
+    for (const [index, file] of files.entries()) {
+      try {
+        const img = await readImageFile(file);
+        if (useStore.getState().documentEpoch !== documentEpoch) return;
+        const store = useStore.getState();
+        const pos = at ? { x: at.x + index * 24, y: at.y + index * 24 } : autoPos(deriveScenes(store.project).length + store.project.beats.length);
+        last = store.addBeat(pos.x, pos.y, '', 'image', { img, title: imageTitle(file) });
+      } catch {
+        if (useStore.getState().documentEpoch === documentEpoch) useStore.getState().notify(`无法读取图片“${file.name}”，请尝试有效的 PNG、JPEG 或 WebP 文件。`, 'error');
+      }
+    }
+    if (last) selectCard(`beat:${last}`);
+  };
+  const addImage = async () => {
+    closeAddMenu();
+    const file = await pickImageFile();
+    if (file) await addImageCards([file]);
+  };
+  // 从访达 / 桌面直接把图片拖进画布：落在松手的位置。
+  const [dropActive, setDropActive] = useState(false);
+  const onDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!hasDraggedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setDropActive(true);
+  };
+  const onDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropActive(false);
+  };
+  const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    setDropActive(false);
+    if (!hasDraggedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const images = Array.from(event.dataTransfer.files).filter(isImageFile);
+    if (!images.length) { useStore.getState().notify('请拖入本地图片文件（如 PNG、JPEG 或 WebP）。', 'error'); return; }
+    const rect = canvasRef.current!.getBoundingClientRect();
+    void addImageCards(images, { x: Math.round((event.clientX - rect.left - pan.x) / zoom - 20), y: Math.round((event.clientY - rect.top - pan.y) / zoom - 20) });
   };
   const onDoubleClick = (event: React.MouseEvent) => {
     if ((event.target as Element).closest('[data-card],.board-links,.board__context-menu')) return;
@@ -420,7 +447,8 @@ export function BoardView() {
         </details>
       </div>
     </div>
-    <div ref={canvasRef} className="board__canvas" tabIndex={-1} aria-label="自由板画布" data-grid={showGrid ? 'on' : 'off'} data-panning={spaceHeld ? 'on' : 'off'}
+    <div ref={canvasRef} className={`board__canvas${dropActive ? ' is-image-drop-target' : ''}`} tabIndex={-1} aria-label="自由板画布" data-grid={showGrid ? 'on' : 'off'} data-panning={spaceHeld ? 'on' : 'off'}
+      onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
       style={{ backgroundSize: `${BOARD_GRID_SIZE * zoom}px ${BOARD_GRID_SIZE * zoom}px`, backgroundPosition: `${pan.x}px ${pan.y}px` }}
       onWheel={onWheel} onMouseDownCapture={onMouseDownCapture} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}>
       <div className="board__world" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>

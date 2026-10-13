@@ -483,6 +483,11 @@
   .app-shell[data-theme] .board--polished .board-link__stroke { stroke: var(--border-strong); stroke-width: 1.6; }
   .app-shell[data-theme] .board--polished .board-link__label { min-height: 22px; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); font-size: 13px; line-height: 20px; box-shadow: var(--card-glow); }
   .app-shell[data-theme] .board--polished .board-link__label.is-empty { max-width: 120px; font-size: 12px; border-style: dashed; }
+  /* 从软件外拖入图片时的提示层。 */
+  .app-shell[data-theme] .board--polished .board__canvas.is-image-drop-target::after {
+    content: '松开即可添加图片卡'; position: absolute; z-index: 140; inset: 16px; display: grid; place-items: center; pointer-events: none;
+    border: 2px dashed var(--accent); border-radius: 12px; background: var(--accent-soft); color: var(--accent); font-size: 14px; font-weight: 600; animation: none;
+  }
   /* 顶栏缩放：− 百分比 + 三格连成一个小胶囊，百分比居中、可直接输入。 */
   .app-shell[data-theme] .board--polished .board__zoom {
     display: inline-flex; align-items: center; height: 28px; box-sizing: border-box;

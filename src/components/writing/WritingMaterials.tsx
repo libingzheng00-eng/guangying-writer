@@ -2,37 +2,13 @@ import React, { useRef } from 'react';
 import { safeEmbeddedImageSource } from '../../utils/displayValues';
 import { RichNoteField } from '../RichNoteField';
 
-/** 写作画布上的声音 / 图片素材卡（与自由板共用同一套 Beat，坐标用 x/y）。 */
-export function MaterialControls({
-  soundCount, showSound, onToggleSound, onAddSound,
-}: {
-  soundCount: number; showSound: boolean;
-  onToggleSound: () => void; onAddSound: () => void;
-}) {
-  return (
-    <span className="writing-material-controls" aria-label="写作素材">
-      <span className="writing-material-controls__group">
-        <button type="button" className="writing-material-controls__toggle" aria-label="显示或隐藏声音卡" aria-pressed={showSound}
-          title={showSound ? '暂时隐藏声音卡' : '显示声音卡'} onClick={onToggleSound}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M11 5 6 9H2v6h4l5 4V5z" />{showSound ? <path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14" /> : <path d="m22 9-6 6M16 9l6 6" />}
-          </svg>
-          <span>声音</span><b>{soundCount}</b>
-        </button>
-        <button type="button" className="writing-material-controls__add" aria-label="新建声音卡" title="新建声音卡（放在当前页旁边）" onClick={onAddSound}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-        </button>
-      </span>
-    </span>
-  );
-}
-
 /** 与 CSS 中的 clamp() 相同：卡片不超出写作区右缘，免得出现横向滚动条。保存的坐标不变。 */
 function shownX(x: number, layerWidth: number, cardWidth: number): number {
   if (!layerWidth || !cardWidth) return x;
   return Math.max(16, Math.min(x, layerWidth - cardWidth - 16));
 }
 
+/** 写作画布上的声音 / 图片素材卡（与自由板共用同一套 Beat，坐标用 x/y）。 */
 export function WritingMaterialCards({ cards, onUpdate, onMove, onDelete }: {
   cards: Array<{ id: string; x: number; y: number; text: string; title?: string; img?: string; kind?: 'beat' | 'sound' | 'image' }>;
   onUpdate: (id: string, patch: { title?: string; text?: string }) => void;
