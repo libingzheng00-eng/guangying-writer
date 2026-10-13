@@ -480,4 +480,56 @@
     .app-shell[data-theme] .board--polished .board__bar { flex-wrap: wrap; justify-content: flex-start; }
     .app-shell[data-theme] .board--polished .board__dock { flex-wrap: wrap; justify-content: center; width: max-content; }
   }
+
+  /* ---- 2026-10-13 自由板卡片与工具：卡片白底 + 顶部色带；颜色、状态、关联移到顶栏；圆点拖拽连线 ---- */
+  .app-shell[data-theme] .board--polished .bcard {
+    padding: 12px 14px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    box-shadow: inset 0 3px 0 var(--card-color, var(--scene-color, var(--border-strong))), var(--card-glow);
+  }
+  .app-shell[data-theme] .board--polished .bcard:hover { border-color: var(--border-strong); }
+  .app-shell[data-theme] .board--polished .bcard.is-selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .app-shell[data-theme] .board--polished .bcard.is-linking { outline: 2px dashed var(--accent); outline-offset: 2px; }
+  .app-shell[data-theme] .board--polished .bcard__head { margin-bottom: 10px; }
+  .app-shell[data-theme] .board--polished .bcard__no {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 5px;
+    border-radius: 5px; background: var(--panel-2); color: var(--muted); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .app-shell[data-theme] .board--polished .bcard__status { flex: none; padding: 0 7px; border-radius: 999px; font-size: 11px; line-height: 18px; background: var(--panel-2); color: var(--muted); }
+  .app-shell[data-theme] .board--polished .bcard__status.is-todo { background: rgba(217, 119, 6, .12); color: #b45309; }
+  .app-shell[data-theme] .board--polished .bcard__status.is-revising { background: var(--accent-soft); color: var(--accent); }
+  .app-shell[data-theme] .board--polished .bcard__status.is-done { background: rgba(22, 163, 74, .12); color: #15803d; }
+  .app-shell[data-theme] .board--polished :is(.bcard__scene-notes, .bcard__edit) { font-size: 13.5px; line-height: 1.6; color: var(--text); }
+  .app-shell[data-theme] .board--polished .bcard__image-notes { font-size: 12px; color: var(--muted); }
+  /* 连线圆点：悬停或选中时出现在卡片右缘，拖到另一张卡片松开即可。 */
+  .app-shell[data-theme] .board--polished .bcard__connector {
+    position: absolute; z-index: 4; top: 50%; right: -9px; transform: translateY(-50%);
+    display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0;
+    border: 0; border-radius: 50%; background: transparent; cursor: crosshair; opacity: 0; transition: opacity .12s ease;
+  }
+  .app-shell[data-theme] .board--polished .bcard__connector span { width: 12px; height: 12px; border: 2px solid var(--accent); border-radius: 50%; background: var(--panel); box-sizing: border-box; }
+  .app-shell[data-theme] .board--polished .bcard__connector:hover span { background: var(--accent); }
+  .app-shell[data-theme] .board--polished .bcard:is(:hover, .is-selected) .bcard__connector,
+  .app-shell[data-theme] .board--polished .bcard__connector:focus-visible,
+  .app-shell[data-theme] .board--polished[data-linking='on'] .bcard__connector { opacity: 1; }
+  .app-shell[data-theme] .board--polished .board-links--draft { pointer-events: none; overflow: visible; }
+  .app-shell[data-theme] .board--polished .board-link__draft { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 5; }
+  .app-shell[data-theme] .board--polished[data-linking='on'] .board__canvas { cursor: crosshair; }
+  /* 顶栏的所选卡片工具 */
+  .app-shell[data-theme] .board--polished .board__selection-tools { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: nowrap; }
+  .app-shell[data-theme] .board--polished .board__selection-tools .board__color-bar { display: flex; gap: 5px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+  .app-shell[data-theme] .board--polished .board__selection-tools .board__color-bar button {
+    width: 18px; height: 18px; min-width: 18px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; cursor: pointer;
+  }
+  .app-shell[data-theme] .board--polished .board__selection-tools .board__color-bar button:hover { transform: scale(1.12); }
+  .app-shell[data-theme] .board--polished .board__selection-tools select {
+    height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control-bg); color: var(--text); font-size: 13px; max-width: 220px;
+  }
+  .app-shell[data-theme] .board--polished .board__selection-tools .board__connect { height: 30px; }
+  /* 关系线：比底色更清楚；说明做成小胶囊，空白时只给一行很小的提示。 */
+  .app-shell[data-theme] .board--polished .board-link__stroke { stroke: var(--border-strong); stroke-width: 1.6; }
+  .app-shell[data-theme] .board--polished .board-link__label { min-height: 22px; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); font-size: 13px; line-height: 20px; box-shadow: var(--card-glow); }
+  .app-shell[data-theme] .board--polished .board-link__label.is-empty { max-width: 120px; font-size: 12px; border-style: dashed; }
 }

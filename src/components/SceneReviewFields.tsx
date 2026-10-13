@@ -50,17 +50,16 @@ export function SceneReviewText({ value, label, placeholder, multiline = false, 
 }
 
 export function SceneReviewSummary({ scene }: { scene: Scene }) {
-  const values = [scene.location || '地点未填写', scene.storyTime || '故事时间未填写', scene.revisionStatus ? SCENE_REVIEW_LABELS[scene.revisionStatus] : '未标记'];
-  return <div className="scene-review__summary" title={values.join(' · ')}>{values.map((value, index) => <span key={index}>{value}</span>)}</div>;
+  const value = scene.revisionStatus ? SCENE_REVIEW_LABELS[scene.revisionStatus] : '未标记';
+  return <div className="scene-review__summary" title={`修改状态：${value}`}><span>{value}</span></div>;
 }
 
+/** 场景的地点、时间已写在场次标题里，这里只保留修改状态。 */
 export function SceneReviewFields({ scene, expanded = false }: { scene: Scene; expanded?: boolean }) {
   const epoch = useStore(state => state.documentEpoch);
-  const commit = (patch: { location?: string; storyTime?: string; revisionStatus?: Scene['revisionStatus'] }) =>
+  const commit = (patch: { revisionStatus?: Scene['revisionStatus'] }) =>
     useStore.getState().commitReviewSceneMeta(scene.elementId, patch, epoch);
   const fields = <div className="scene-review__fields" key={`${epoch}:${scene.elementId}`}>
-    <label className="scene-review__field"><span>地点</span><SceneReviewText value={scene.location || ''} label={`第 ${scene.number} 场地点`} placeholder="自由填写" onCommit={location => commit({ location })} /></label>
-    <label className="scene-review__field"><span>故事时间</span><SceneReviewText value={scene.storyTime || ''} label={`第 ${scene.number} 场故事时间`} placeholder="如：三天后" onCommit={storyTime => commit({ storyTime })} /></label>
     <label className="scene-review__field"><span>修改状态</span><select className="scene-review__input" aria-label={`第 ${scene.number} 场修改状态`} value={scene.revisionStatus || ''}
       onChange={event => commit({ revisionStatus: event.target.value ? event.target.value as NonNullable<Scene['revisionStatus']> : undefined })}>
       <option value="">未标记</option><option value="todo">待修改</option><option value="revising">修改中</option><option value="done">已确认</option>

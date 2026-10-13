@@ -214,26 +214,26 @@ process.on('exit', cleanTemporaryBundle);
           sceneCards: qa('.bcard--scene').length,
           beatCards: qa('.bcard--beat').length,
           zoomCtl: !!q('.zoom-ctl'),
-          linkSelects: qa('.board__context select[aria-label="关联到场景"]').length,
+          linkSelects: qa('.board__selection-tools select[aria-label="关联到场景"]').length,
           // 工作区方案：三分区常驻，颜色/关联只在选中相应卡片后显示。
           subTabs: qa('.board__subtabs [role="tab"]').length,
           colorControls: qa('.board__color-bar button[aria-label^="卡片颜色"]').length,
-          contextHiddenInitially: !q('.board__context'),
+          contextHiddenInitially: !q('.board__selection-tools'),
           // Item 6a：所有自由板卡片（scene / image / beat / sound）都应有 resize 手柄
           allBcardsHaveResize: qa('.bcard').length > 0 && qa('.bcard__resize').length >= qa('.bcard').length,
           imagePreserved: !!q('.bcard[data-id="qa-image-1"] img[alt="城市远景"]'),
           soundPreserved: q('.bcard[data-id="qa-sound-1"] span.bcard__media-title')?.textContent === '雨夜环境声'
-            && q('.bcard[data-id="qa-sound-1"] textarea.bcard__edit')?.value === '雨声渐强，远处列车经过。',
+            && q('.bcard[data-id="qa-sound-1"] [data-rich-note].bcard__edit')?.textContent === '雨声渐强，远处列车经过。',
         }
       : null;
 
     // 通过实际新入口选择卡片、显示上下文、进入连接模式、点两端并编辑说明。
     // jsdom检验事件与渲染状态；不代表真实鼠标或原生输入法验收。
     const flushBoard = () => new Promise((resolve) => setTimeout(resolve, 30));
-    const pressBoardCard = async (id) => {
+    const pressBoardCard = async (id, shiftKey = false) => {
       const card = q(`[data-card][data-id="${id}"]`);
       if (!card) return false;
-      (card.querySelector('.bcard__head') || card).dispatchEvent(new w.MouseEvent('mousedown', { button: 0, clientX: 50, clientY: 50, bubbles: true, cancelable: true }));
+      (card.querySelector('.bcard__head') || card).dispatchEvent(new w.MouseEvent('mousedown', { button: 0, clientX: 50, clientY: 50, ctrlKey: shiftKey, bubbles: true, cancelable: true }));
       await flushBoard();
       w.dispatchEvent(new w.MouseEvent('mouseup', { button: 0, clientX: 50, clientY: 50, bubbles: true, cancelable: true }));
       await flushBoard();
@@ -241,15 +241,16 @@ process.on('exit', cleanTemporaryBundle);
     };
     await pressBoardCard('qa-beat-1');
     if (board) {
-      board.colorControls = qa('.board__context .board__color-bar button[aria-label^="卡片颜色"]').length;
-      board.linkSelects = qa('.board__context select[aria-label="关联到场景"]').length;
+      board.colorControls = qa('.board__selection-tools .board__color-bar button[aria-label^="卡片颜色"]').length;
+      board.linkSelects = qa('.board__selection-tools select[aria-label="关联到场景"]').length;
     }
-    const connectTool = q('.board__dock button[aria-label="连接两张卡片"]');
-    const selectTool = q('.board__dock button[aria-label="选择卡片"]');
+    // 新连线方式：选中两张卡片后点顶栏「连线」（也可拖动卡片右侧圆点）。
+    await pressBoardCard('qa-scene-1');
+    await pressBoardCard('qa-beat-1', true);
+    const connectTool = q('.board__selection-tools .board__connect');
+    const selectTool = qa('.bcard__connector').length >= qa('.bcard').length ? true : null;
     if (connectTool) connectTool.click();
     await flushBoard();
-    await pressBoardCard('qa-scene-1');
-    await pressBoardCard('qa-beat-1');
     const boardRelationCreated = qa('.board-link__hit[data-link-id]').length === 1;
     const relationLabel = q('.board-link__label');
     if (relationLabel) relationLabel.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true, cancelable: true }));

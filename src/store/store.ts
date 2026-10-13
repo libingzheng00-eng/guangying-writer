@@ -178,6 +178,8 @@ interface StoreState {
   moveBoardCards: (positions: BoardCardPosition[]) => void;
   /** 调用方提供当前可见卡片 ID；批量改色为一次独立撤销事务。 */
   setBoardCardColors: (ids: string[], color: string) => void;
+  /** 一次为多个场景设定修改状态（空值清除），一步撤销。 */
+  setScenesRevisionStatus: (elementIds: string[], status: SceneMeta['revisionStatus'] | null) => void;
   /** 一次自由板缩放提交；保留既有类型尺寸限制，不与前后缩放或文本编辑合并。 */
   resizeBoardCard: (id: string, w: number, h: number) => void;
 
@@ -966,6 +968,24 @@ export const useStore = create<StoreState>((set, get) => ({
         } else {
           p.beats.find((item) => item.id === target.id)!.color = color;
         }
+      }
+    });
+  },
+
+  setScenesRevisionStatus: (elementIds, status) => {
+    const project = get().project;
+    const headings = new Set(project.elements.filter((element) => element.type === 'scene_heading').map((element) => element.id));
+    if (!Array.isArray(elementIds) || !elementIds.length || elementIds.some((id) => !headings.has(id)) ||
+        (status !== null && status !== undefined && !['todo', 'revising', 'done'].includes(status))) { lastCoalesce = null; return; }
+    get().mutate((p) => {
+      for (const elementId of new Set(elementIds)) {
+        let meta = p.sceneMeta.find((item) => item.elementId === elementId);
+        if (!meta) {
+          if (!status) continue;
+          meta = { id: uid('sc'), elementId, title: '', synopsis: '', color: '#cfe4ff' };
+          p.sceneMeta.push(meta);
+        }
+        if (status) meta.revisionStatus = status; else delete meta.revisionStatus;
       }
     });
   },

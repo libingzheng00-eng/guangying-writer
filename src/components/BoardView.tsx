@@ -7,15 +7,17 @@ import { BOARD_GRID_SIZE, boardBeatPosition, snapBoardPosition, type BoardCardPo
 import { cardCenters, marqueeSel } from '../model/selection';
 import type { Beat, BoardLink, Scene } from '../model/types';
 import { safeDisplayColor, safeEmbeddedImageSource } from '../utils/displayValues';
-import { SceneReviewFields, SceneReviewSummary } from './SceneReviewFields';
+import { SCENE_REVIEW_LABELS } from './SceneReviewFields';
+import { RichNoteField } from './RichNoteField';
 
 type Filter = 'both' | 'scenes' | 'beats';
-type Mode = 'select' | 'link';
 interface Layout extends BoardCardPosition { w: number; h: number; kind: ResizableKind }
 type Preview = Record<string, { x?: number; y?: number; w?: number; h?: number }>;
 interface ContextMenu { x: number; y: number; ids: string[]; linkId?: string }
 interface Gesture {
-  mode: 'move' | 'resize' | 'pan' | 'marquee';
+  mode: 'move' | 'resize' | 'pan' | 'marquee' | 'link';
+  /** 连线：从卡片的连线圆点拖出，松开在另一张卡片上即建立关系。 */
+  linkFrom?: string;
   sx: number; sy: number; zoom: number; pan: { x: number; y: number }; moved: boolean;
   members: Layout[]; anchor?: Layout; additive?: boolean; previous?: string[];
   final?: BoardCardPosition[]; size?: { w: number; h: number };
@@ -30,7 +32,7 @@ const isTextTarget = (target: EventTarget | null) => target instanceof Element &
 const stopMouse = (event: React.MouseEvent) => event.stopPropagation();
 const stopWheel = (event: React.WheelEvent) => event.stopPropagation();
 const keepsNativeWheel = (target: EventTarget | null) => isTextTarget(target) ||
-  (target instanceof Element && !!target.closest('.board__context, .board__dock, .board__context-menu'));
+  (target instanceof Element && !!target.closest('.board__dock, .board__context-menu'));
 
 export function BoardView() {
   const project = useStore((s) => s.project);
@@ -53,8 +55,7 @@ export function BoardView() {
     state.updateWritingContext({ board: { zoom: state.writingContext?.board?.zoom ?? 1, panX: value.x, panY: value.y } }, documentEpoch);
   };
   const [filter, setFilter] = useState<Filter>('both');
-  const [mode, setMode] = useState<Mode>('select');
-  const [linkFrom, setLinkFrom] = useState<string | null>(null);
+  const [linkDraft, setLinkDraft] = useState<{ from: string; x: number; y: number; target: string | null } | null>(null);
   const [selectedLink, setSelectedLink] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [snap, setSnap] = useState(false);
@@ -73,7 +74,7 @@ export function BoardView() {
   useEffect(() => {
     gesture.current = null; lastAnchor.current = null; spaceRef.current = false;
     setPreview({}); setMarquee(null); setSnapping(false); setSpaceHeld(false);
-    setMode('select'); setLinkFrom(null); setSelectedLink(null); setContextMenu(null);
+    setLinkDraft(null); setSelectedLink(null); setContextMenu(null);
   }, [documentEpoch]);
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -127,41 +128,38 @@ export function BoardView() {
   const focusCanvas = useCallback(() => canvasRef.current?.focus({ preventScroll: true }), []);
   const cancelGesture = useCallback(() => {
     gesture.current = null;
-    setPreview({}); setMarquee(null); setSnapping(false);
+    setPreview({}); setMarquee(null); setSnapping(false); setLinkDraft(null);
   }, []);
-  const switchMode = useCallback((next: Mode) => {
-    cancelGesture(); setMode(next); setLinkFrom(null); setSelectedLink(null); setContextMenu(null);
-    if (next === 'link') useStore.getState().setSelectedIds([]);
-    focusCanvas();
-  }, [cancelGesture, focusCanvas]);
   const selectCard = useCallback((id: string) => {
     setSelectedLink(null); useStore.getState().setSelectedIds([id]); lastAnchor.current = id;
     if (id.startsWith('scene:')) useStore.getState().updateWritingContext({ sceneId: id.slice(6) });
   }, []);
   const selectLink = useCallback((id: string) => {
     cancelGesture(); useStore.getState().setSelectedIds([]); setSelectedLink(id);
-    setMode('select'); setLinkFrom(null); setContextMenu(null); focusCanvas();
+    setContextMenu(null); focusCanvas();
   }, [cancelGesture, focusCanvas]);
   const changeFilter = (next: Filter) => {
-    cancelGesture(); setFilter(next); setMode('select'); setLinkFrom(null); setSelectedLink(null); setContextMenu(null);
+    cancelGesture(); setFilter(next); setSelectedLink(null); setContextMenu(null);
     useStore.getState().setSelectedIds(visibleSelected.filter((id) => next === 'both' || id.startsWith(next === 'scenes' ? 'scene:' : 'beat:')));
     lastAnchor.current = null;
   };
   useEffect(() => {
     if (selectedLink && !links.some((link) => link.id === selectedLink)) setSelectedLink(null);
-    if (linkFrom && !visibleSet.has(linkFrom)) setLinkFrom(null);
-  }, [links, selectedLink, linkFrom, visibleSet]);
+  }, [links, selectedLink]);
 
-  const connectCard = (id: string) => {
-    if (!visibleSet.has(id)) return;
-    if (!linkFrom) { setLinkFrom(id); return; }
-    if (linkFrom !== id) {
-      useStore.getState().addBoardLink(linkFrom, id);
-      const link = useStore.getState().project.boardLinks?.find((item) =>
-        (item.from === linkFrom && item.to === id) || (item.from === id && item.to === linkFrom));
-      setSelectedLink(link?.id || null);
-    }
-    setLinkFrom(null); setMode('select'); focusCanvas();
+  // 建立一条关系线（不自连、不重复）；建好后选中它，方便直接写关系说明。
+  const connectCards = useCallback((from: string, to: string) => {
+    if (from === to || !visibleSet.has(from) || !visibleSet.has(to)) return false;
+    useStore.getState().addBoardLink(from, to);
+    const link = useStore.getState().project.boardLinks?.find((item) =>
+      (item.from === from && item.to === to) || (item.from === to && item.to === from));
+    if (link) { useStore.getState().setSelectedIds([]); setSelectedLink(link.id); }
+    focusCanvas();
+    return !!link;
+  }, [visibleSet, focusCanvas]);
+  const cardAt = (clientX: number, clientY: number) => {
+    const node = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('[data-card]');
+    return node ? `${node.dataset.drag ? 'scene' : 'beat'}:${node.dataset.id}` : null;
   };
 
   // 红线：场景卡删除是整场正文删除，必须确认；Delete 在任何文字编辑区域都不能触发此路径。
@@ -187,7 +185,7 @@ export function BoardView() {
     const keydown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || isTextTarget(event.target)) return;
       if (event.key === 'Escape') {
-        event.preventDefault(); cancelGesture(); setMode('select'); setLinkFrom(null); setContextMenu(null);
+        event.preventDefault(); cancelGesture(); setContextMenu(null);
         if (addMenuRef.current) addMenuRef.current.open = false;
         if (viewMenuRef.current) viewMenuRef.current.open = false;
         return;
@@ -196,8 +194,9 @@ export function BoardView() {
       if (event.code === 'Space' || event.key === ' ') {
         event.preventDefault(); spaceRef.current = true; setSpaceHeld(true); return;
       }
-      if (event.key.toLowerCase() === 'l' && !event.shiftKey && !event.repeat) {
-        event.preventDefault(); switchMode(mode === 'link' ? 'select' : 'link');
+      // L：恰好选中两张卡片时直接连线（键盘也能完成连线）。
+      if (event.key.toLowerCase() === 'l' && !event.shiftKey && !event.repeat && visibleSelected.length === 2) {
+        event.preventDefault(); connectCards(visibleSelected[0], visibleSelected[1]);
       }
       if ((event.key === 'Delete' || event.key === 'Backspace') && !event.repeat && !gesture.current && (selectedLink || visibleSelected.length)) {
         event.preventDefault(); deleteSelection();
@@ -209,7 +208,7 @@ export function BoardView() {
     const blur = () => { spaceRef.current = false; setSpaceHeld(false); cancelGesture(); };
     window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup); window.addEventListener('blur', blur);
     return () => { window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); window.removeEventListener('blur', blur); };
-  }, [view, mode, selectedLink, visibleSelected, deleteSelection, switchMode, cancelGesture]);
+  }, [view, selectedLink, visibleSelected, deleteSelection, connectCards, cancelGesture]);
 
   const beginGesture = (event: React.MouseEvent, data: Pick<Gesture, 'mode' | 'members' | 'anchor' | 'additive' | 'previous'>) => {
     gesture.current = { ...data, sx: event.clientX, sy: event.clientY, zoom, pan, moved: false };
@@ -220,15 +219,10 @@ export function BoardView() {
       event.preventDefault(); event.stopPropagation(); setContextMenu(null); focusCanvas();
       beginGesture(event, { mode: 'pan', members: [] }); return;
     }
-    if (mode === 'link' && event.button === 0) {
-      const node = (event.target as HTMLElement).closest<HTMLElement>('[data-card]');
-      if (node) { event.preventDefault(); event.stopPropagation(); connectCard(`${node.dataset.drag ? 'scene' : 'beat'}:${node.dataset.id}`); }
-    }
   };
   const onMouseDown = (event: React.MouseEvent) => {
     if (event.button !== 0) return;
     setContextMenu(null);
-    if (mode === 'link') { switchMode('select'); return; }
     const node = (event.target as HTMLElement).closest<HTMLElement>('[data-card]');
     setSelectedLink(null); focusCanvas(); event.preventDefault();
     if (node) {
@@ -269,6 +263,12 @@ export function BoardView() {
         setPreview({ [data.anchor.id]: data.size });
       }
       if (data.mode === 'marquee') setMarquee({ sx: data.sx, sy: data.sy, ex: event.clientX, ey: event.clientY });
+      if (data.mode === 'link' && data.linkFrom && canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const target = cardAt(event.clientX, event.clientY);
+        setLinkDraft({ from: data.linkFrom, x: (event.clientX - rect.left - data.pan.x) / data.zoom, y: (event.clientY - rect.top - data.pan.y) / data.zoom,
+          target: target && target !== data.linkFrom ? target : null });
+      }
     };
     const up = (event: MouseEvent) => {
       const data = gesture.current;
@@ -276,6 +276,10 @@ export function BoardView() {
       if (data.mode === 'move' && data.moved && data.final) useStore.getState().moveBoardCards(data.final);
       if (data.mode === 'resize' && data.anchor && data.size && (data.size.w !== data.anchor.w || data.size.h !== data.anchor.h))
         useStore.getState().resizeBoardCard(data.anchor.id, data.size.w, data.size.h);
+      if (data.mode === 'link' && data.linkFrom && data.moved) {
+        const target = cardAt(event.clientX, event.clientY);
+        if (target && target !== data.linkFrom) connectCards(data.linkFrom, target);
+      }
       if (data.mode === 'marquee' && data.moved && canvasRef.current) {
         const rect = canvasRef.current.getBoundingClientRect();
         const x = (Math.min(data.sx, event.clientX) - rect.left - data.pan.x) / data.zoom;
@@ -287,8 +291,15 @@ export function BoardView() {
     };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
     return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-  }, [snap, cancelGesture, documentEpoch]);
+  }, [snap, cancelGesture, documentEpoch, connectCards]);
 
+  const startLink = (event: React.MouseEvent, id: string) => {
+    event.preventDefault(); event.stopPropagation();
+    if (!layoutMap.get(id)) return;
+    setContextMenu(null); setSelectedLink(null); focusCanvas();
+    beginGesture(event, { mode: 'link', members: [] });
+    gesture.current!.linkFrom = id;
+  };
   const startResize = (event: React.MouseEvent, id: string) => {
     event.preventDefault(); event.stopPropagation();
     const anchor = layoutMap.get(id);
@@ -329,7 +340,7 @@ export function BoardView() {
     input.click();
   };
   const onDoubleClick = (event: React.MouseEvent) => {
-    if (mode !== 'select' || (event.target as Element).closest('[data-card],.board-links,.board__context,.board__dock,.board__context-menu')) return;
+    if ((event.target as Element).closest('[data-card],.board-links,.board__dock,.board__context-menu')) return;
     const rect = canvasRef.current!.getBoundingClientRect();
     const id = useStore.getState().addBeat((event.clientX - rect.left - pan.x) / zoom, (event.clientY - rect.top - pan.y) / zoom);
     selectCard(`beat:${id}`);
@@ -350,26 +361,32 @@ export function BoardView() {
     }
   };
 
-  const contextAnchor = layoutMap.get(lastAnchor.current && visibleSelected.includes(lastAnchor.current) ? lastAnchor.current : visibleSelected[0]);
   const selectedBeat = visibleSelected.length === 1 && visibleSelected[0].startsWith('beat:') ? project.beats.find((beat) => `beat:${beat.id}` === visibleSelected[0]) : null;
   const selectedScene = visibleSelected.length === 1 && visibleSelected[0].startsWith('scene:') ? scenes.find((scene) => `scene:${scene.elementId}` === visibleSelected[0]) : null;
-  const contextWidth = Math.min(selectedBeat ? 370 : selectedScene ? 320 : 208, Math.max(180, canvasSize.width - 24));
-  const contextPosition = contextAnchor ? {
-    width: contextWidth,
-    left: Math.max(12, Math.min(contextAnchor.x * zoom + pan.x, canvasSize.width - contextWidth - 12)),
-    top: Math.max(10, Math.min(contextAnchor.y * zoom + pan.y - (selectedScene ? 190 : 48), canvasSize.height - (selectedScene ? 210 : 100))),
-  } : null;
   const menuDeleteLabel = contextMenu?.linkId ? '删除连线' : contextMenu?.ids.some((id) => id.startsWith('scene:'))
     ? contextMenu.ids.length === 1 ? '删除整场' : '删除所选（含整场）' : contextMenu?.ids.length === 1 ? '删除卡片' : '删除所选';
   const canvasRect = canvasRef.current?.getBoundingClientRect();
 
-  return <div className="board board--polished board--workspace" data-mode={mode} data-snap={snap ? 'on' : 'off'} data-selected-link={selectedLink || ''}>
+  const draftFrom = linkDraft ? layoutMap.get(linkDraft.from) : undefined;
+  return <div className="board board--polished board--workspace" data-linking={linkDraft ? 'on' : 'off'} data-snap={snap ? 'on' : 'off'} data-selected-link={selectedLink || ''}>
     <div className="board__bar">
       <div className="board__subtabs" role="tablist" aria-label="自由板显示范围">
         {([['both', '总览'], ['scenes', '场景板'], ['beats', '灵感板']] as const).map(([value, label]) =>
           <button key={value} role="tab" aria-selected={filter === value} className={filter === value ? 'is-active' : ''} onClick={() => changeFilter(value)}>{label}</button>)}
       </div>
-      <span className="board__selection-status" aria-live="polite">{mode === 'link' ? linkFrom ? '再点一张卡片 · Esc 取消' : '点两张卡片建立关系' : selectedLink ? '已选关系线 · Delete 删除' : visibleSelected.length ? `已选 ${visibleSelected.length}` : ''}</span>
+      <span className="board__selection-status" aria-live="polite">{linkDraft ? linkDraft.target ? '松开即连线' : '拖到另一张卡片上' : selectedLink ? '已选关系线 · 双击写说明 · Delete 删除' : visibleSelected.length ? `已选 ${visibleSelected.length}` : ''}</span>
+      {!!visibleSelected.length && !linkDraft && <div className="board__selection-tools" role="group" aria-label="所选卡片设置">
+        <div className="board__color-bar" aria-label="所选卡片颜色">{CARD_COLORS.map((color, index) => <button key={color} aria-label={`卡片颜色 ${index + 1}`} style={{ background: color }}
+          onClick={() => useStore.getState().setBoardCardColors(visibleSelected, color)} />)}</div>
+        {selectedScene && <select className="board__status" aria-label={`第 ${selectedScene.number} 场修改状态`} value={selectedScene.revisionStatus || ''}
+          onChange={(event) => useStore.getState().commitReviewSceneMeta(selectedScene.elementId, { revisionStatus: event.target.value ? event.target.value as NonNullable<Scene['revisionStatus']> : undefined }, documentEpoch)}>
+          <option value="">未标记</option><option value="todo">待修改</option><option value="revising">修改中</option><option value="done">已确认</option>
+        </select>}
+        {selectedBeat && <select className="board__association" aria-label="关联到场景" value={selectedBeat.sceneId || ''} onChange={(e) => useStore.getState().linkBeat(selectedBeat.id, e.target.value || undefined)}>
+          <option value="">未关联场景</option>{scenes.map((scene) => <option key={scene.id} value={scene.id}>第 {scene.number} 场 · {scene.title || scene.heading || '场景标题'}</option>)}
+        </select>}
+        {visibleSelected.length === 2 && <button className="btn board__connect" title="连接这两张卡片（L）" onClick={() => connectCards(visibleSelected[0], visibleSelected[1])}>连线</button>}
+      </div>}
       <div className="board__actions">
         <details ref={addMenuRef} className="board__dropdown"><summary className="btn--primary" aria-label="新增卡片">+ 新增</summary>
           <div className="board__menu"><button onClick={addScene}>场景卡</button><button onClick={() => addCard('beat')}>灵感卡</button><button onClick={() => addCard('sound')}>声音卡</button><button onClick={addImage}>图片卡</button></div>
@@ -388,33 +405,24 @@ export function BoardView() {
       onWheel={onWheel} onMouseDownCapture={onMouseDownCapture} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}>
       <div className="board__world" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
         <BoardLinks links={links} layouts={layoutMap} selectedLink={selectedLink} zoom={zoom} onSelect={selectLink} onFinish={focusCanvas} />
+        {linkDraft && draftFrom && <svg className="board-links board-links--draft" aria-hidden="true"><path className="board-link__draft"
+          d={`M ${draftFrom.x + draftFrom.w} ${draftFrom.y + draftFrom.h / 2} L ${linkDraft.x} ${linkDraft.y}`} vectorEffect="non-scaling-stroke" /></svg>}
         {filter !== 'beats' && scenes.map((scene) => <SceneCard key={scene.elementId} scene={scene} layout={layoutMap.get(`scene:${scene.elementId}`)!}
-          selected={visibleSelected.includes(`scene:${scene.elementId}`)} linking={linkFrom === `scene:${scene.elementId}`} snapping={snapping && visibleSelected.includes(`scene:${scene.elementId}`)}
-          onSelect={() => selectCard(`scene:${scene.elementId}`)} onResizeStart={startResize} onOpen={() => {
-            if (mode !== 'select') return;
+          selected={visibleSelected.includes(`scene:${scene.elementId}`)} linking={linkDraft?.target === `scene:${scene.elementId}`} snapping={snapping && visibleSelected.includes(`scene:${scene.elementId}`)}
+          onSelect={() => selectCard(`scene:${scene.elementId}`)} onResizeStart={startResize} onLinkStart={startLink} onOpen={() => {
             useStore.getState().setView('write'); useStore.getState().requestFocus(scene.elementId, 'start');
           }} />)}
         {filter !== 'scenes' && project.beats.map((beat) => <BeatCard key={beat.id} beat={beat} layout={layoutMap.get(`beat:${beat.id}`)!}
-          selected={visibleSelected.includes(`beat:${beat.id}`)} linking={linkFrom === `beat:${beat.id}`} snapping={snapping && visibleSelected.includes(`beat:${beat.id}`)}
-          onSelect={() => selectCard(`beat:${beat.id}`)} onResizeStart={startResize} />)}
+          selected={visibleSelected.includes(`beat:${beat.id}`)} linking={linkDraft?.target === `beat:${beat.id}`} snapping={snapping && visibleSelected.includes(`beat:${beat.id}`)}
+          onSelect={() => selectCard(`beat:${beat.id}`)} onResizeStart={startResize} onLinkStart={startLink} />)}
       </div>
       {marquee && <div className="board__marquee" style={{ left: Math.min(marquee.sx, marquee.ex) - (canvasRect?.left || 0), top: Math.min(marquee.sy, marquee.ey) - (canvasRect?.top || 0), width: Math.abs(marquee.ex - marquee.sx), height: Math.abs(marquee.ey - marquee.sy) }} />}
-      {!!visibleSelected.length && contextPosition && !gesture.current && mode === 'select' && !contextMenu && <div className={`board__context${selectedScene ? ' scene-review__board-tools' : ''}`} style={{ ...contextPosition, ...(selectedScene ? { maxHeight: Math.max(70, canvasSize.height - 24) } : {}) }} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel}>
-        <div className="board__color-bar" aria-label="所选卡片颜色">{CARD_COLORS.map((color, index) => <button key={color} aria-label={`卡片颜色 ${index + 1}`} style={{ background: color }}
-          onClick={() => useStore.getState().setBoardCardColors(visibleSelected, color)} />)}</div>
-        {selectedBeat && <label className="board__association"><select aria-label="关联到场景" value={selectedBeat.sceneId || ''} onChange={(e) => useStore.getState().linkBeat(selectedBeat.id, e.target.value || undefined)}>
-          <option value="">未关联</option>{scenes.map((scene) => <option key={scene.id} value={scene.id}>第 {scene.number} 场 · {scene.title || scene.heading || '场景标题'}</option>)}
-        </select></label>}
-        {selectedScene && <SceneReviewFields scene={selectedScene} expanded />}
-      </div>}
       {contextMenu && <div className="board__context-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseDown={stopMouse} onDoubleClick={stopMouse}>
-        {!contextMenu.linkId && <button role="menuitem" onClick={() => { setMode('link'); setLinkFrom(contextMenu.ids[0]); setSelectedLink(null); useStore.getState().setSelectedIds([]); setContextMenu(null); focusCanvas(); }}>连接另一张卡片</button>}
+        {!contextMenu.linkId && contextMenu.ids.length === 2 && <button role="menuitem" onClick={() => { connectCards(contextMenu.ids[0], contextMenu.ids[1]); setContextMenu(null); }}>连接这两张卡片</button>}
         <button role="menuitem" className="is-danger" onClick={() => { if (contextMenu.linkId) { useStore.getState().deleteBoardLink(contextMenu.linkId); setSelectedLink(null); } else deleteCards(contextMenu.ids); setContextMenu(null); }}>{menuDeleteLabel}</button>
       </div>}
-      <div className="board__hint">{mode === 'link' ? linkFrom ? '请选择另一张卡片 · Esc 取消' : '点击起点，再点击终点 · Esc 取消' : 'Shift 多选 · L 连线 · Delete 删除 · 空格拖动画布'}</div>
+      <div className="board__hint">拖动卡片右侧的圆点到另一张卡片即可连线 · Shift 多选 · Delete 删除 · 空格拖动画布</div>
       <div className="board__dock" role="toolbar" aria-label="自由板工具" onMouseDown={stopMouse} onDoubleClick={stopMouse}>
-        <button className={`btn ${mode === 'select' ? 'is-active' : ''}`} aria-label="选择卡片" aria-pressed={mode === 'select'} onClick={() => switchMode('select')}>选择</button>
-        <button className={`btn ${mode === 'link' ? 'is-active' : ''}`} aria-label="连接两张卡片" aria-pressed={mode === 'link'} title="连接两张卡片（L）；Esc 取消" onClick={() => switchMode('link')}>连线 <small>L</small></button>
         <div className="zoom-ctl"><button className="icon-btn" aria-label="缩小自由板" onClick={() => setZoom((value) => Math.max(.4, Math.round((value - .1) * 10) / 10))}>−</button>
           <span className="zoom-val">{Math.round(zoom * 100)}%</span><button className="icon-btn" aria-label="放大自由板" onClick={() => setZoom((value) => Math.min(2, Math.round((value + .1) * 10) / 10))}>+</button></div>
       </div>
@@ -424,7 +432,11 @@ export function BoardView() {
 
 interface CardProps {
   layout: Layout; selected: boolean; linking: boolean; snapping: boolean;
-  onSelect: () => void; onResizeStart: (event: React.MouseEvent, id: string) => void;
+  onSelect: () => void; onResizeStart: (event: React.MouseEvent, id: string) => void; onLinkStart: (event: React.MouseEvent, id: string) => void;
+}
+function LinkHandle({ id, onStart }: { id: string; onStart: CardProps['onLinkStart'] }) {
+  return <button className="bcard__connector" aria-label="拖到另一张卡片建立连线" title="拖到另一张卡片建立连线"
+    onMouseDown={(event) => onStart(event, id)} onClick={(event) => { event.preventDefault(); event.stopPropagation(); }} onDoubleClick={stopMouse}><span /></button>;
 }
 const cardClass = (props: CardProps) => `bcard${props.selected ? ' is-selected' : ''}${props.linking ? ' is-linking' : ''}${props.snapping ? ' is-snapping' : ''}`;
 function ResizeHandle({ layout, onStart }: { layout: Layout; onStart: CardProps['onResizeStart'] }) {
@@ -436,10 +448,11 @@ function SceneCard(props: CardProps & { scene: Scene; onOpen: () => void }) {
   const { scene, layout, onSelect } = props;
   return <div className={`${cardClass(props)} bcard--scene`} data-card="scene" data-drag="scene" data-id={scene.elementId} data-kind="scene"
     style={{ left: layout.x, top: layout.y, width: layout.w, height: layout.h, '--scene-color': safeDisplayColor(scene.color) } as React.CSSProperties} onDoubleClick={(event) => { event.stopPropagation(); props.onOpen(); }}>
-    <div className="bcard__head"><span className="bcard__no">{scene.number}</span><span className="bcard__title" title={scene.title || scene.heading}>{scene.title || scene.heading || '场景标题'}</span></div>
-    <textarea className="bcard__scene-notes" aria-label={`第 ${scene.number} 场故事信息`} placeholder="这一场发生了什么？" value={scene.synopsis || ''} onFocus={onSelect}
-      onChange={(event) => useStore.getState().updateSceneMeta(scene.elementId, { synopsis: event.target.value })} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel} />
-    <SceneReviewSummary scene={scene} />
+    <div className="bcard__head"><span className="bcard__no">{scene.number}</span><span className="bcard__title" title={scene.title || scene.heading}>{scene.title || scene.heading || '场景标题'}</span>
+      {scene.revisionStatus && <span className={`bcard__status is-${scene.revisionStatus}`}>{SCENE_REVIEW_LABELS[scene.revisionStatus]}</span>}</div>
+    <RichNoteField className="bcard__scene-notes" label={`第 ${scene.number} 场简介`} placeholder="这一场发生了什么？" value={scene.synopsis} onFocus={onSelect} stopPointer
+      onChange={(synopsis) => useStore.getState().updateSceneMeta(scene.elementId, { synopsis })} />
+    <LinkHandle id={layout.id} onStart={props.onLinkStart} />
     <ResizeHandle layout={layout} onStart={props.onResizeStart} />
   </div>;
 }
@@ -454,9 +467,10 @@ function BeatCard(props: CardProps & { beat: Beat }) {
     {!image && <div className="bcard__head"><CardTitle value={beat.title || ''} label={sound ? '声音标题' : '灵感标题'} placeholder={sound ? '声音标题' : '添加标题'} onSelect={onSelect} onCommit={(title) => useStore.getState().commitBoardCardTitle(beat.id, title)} /></div>}
     {image && <><div className="bcard__media">{imageSource ? <img className="bcard__media-img" src={imageSource} alt={beat.title || '参考图片'} draggable={false} /> : <div className="bcard__empty-media">{beat.img ? '图片来源已阻止，请重新导入本地图片' : '暂无图片'}</div>}</div>
       <input className="bcard__caption" aria-label="图片标题" placeholder="图片标题（可选）" value={beat.title || ''} onFocus={onSelect} onChange={(event) => update({ title: event.target.value })} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel} /></>}
-    <textarea className={`bcard__edit${image ? ' bcard__image-notes' : ''}`} aria-label={image ? '图片备注' : sound ? '声音说明' : '灵感内容'}
-      placeholder={image ? '图片备注、画面灵感…' : sound ? '声音、音乐或氛围说明…' : '写下灵感、人物动机或事件关系…'} value={beat.text || ''} onFocus={onSelect}
-      onChange={(event) => update({ text: event.target.value })} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel} />
+    <RichNoteField className={`bcard__edit${image ? ' bcard__image-notes' : ''}`} label={image ? '图片备注' : sound ? '声音说明' : '灵感内容'}
+      placeholder={image ? '图片备注、画面灵感…' : sound ? '声音、音乐或氛围说明…' : '写下灵感、人物动机或事件关系…'} value={beat.text} onFocus={onSelect} stopPointer
+      onChange={(text) => update({ text })} />
+    <LinkHandle id={layout.id} onStart={props.onLinkStart} />
     <ResizeHandle layout={layout} onStart={props.onResizeStart} />
   </div>;
 }
@@ -527,7 +541,7 @@ function LinkLabel({ link, selected, onSelect, onFinish }: { link: BoardLink; se
       onKeyDown={(event) => {
         event.stopPropagation(); if (event.nativeEvent.isComposing || event.keyCode === 229) return;
         if (event.key === 'Enter' || event.key === 'Escape') { event.preventDefault(); finish(event.key === 'Enter'); }
-      }} /> : (link.note || selected) ? <button className="board-link__label" aria-label={link.note ? `关系说明：${link.note}` : '添加关系说明'} title="双击编辑关系说明"
+      }} /> : (link.note || selected) ? <button className={`board-link__label${link.note ? '' : ' is-empty'}`} aria-label={link.note ? `关系说明：${link.note}` : '添加关系说明'} title="双击编辑关系说明"
       onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); onSelect(link.id); }} onDoubleClick={begin}
       onKeyDown={(event) => { if (event.key === 'Enter' || event.key === 'F2') { event.preventDefault(); event.stopPropagation(); begin(); } }}>{link.note || '双击添加关系说明'}</button> : null}
   </div>;

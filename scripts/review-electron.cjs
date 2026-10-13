@@ -133,17 +133,18 @@ app.whenReady().then(async () => {
     win.setSize(1440, 960);
     await click('故事板', '.toolbar');
     await input('故事板排列', 'script');
-    await editSceneField('第 1 场地点', '合成客厅');
-    await editSceneField('第 1 场故事时间', '三天后');
+    // 地点 / 故事时间不再单独填写（场次标题已含）；只验证修改状态与简介编辑区。
+    assert.equal(await run(`document.querySelectorAll('[aria-label="第 1 场地点"],[aria-label="第 1 场故事时间"]').length`), 0);
+    assert.ok(await run(`!!document.querySelector('.scene-review__list [data-rich-note][aria-label="第 1 场简介"]')`));
     await input('第 1 场修改状态', 'revising');
-    await until(async () => (await model()).sceneMeta.some(item => item.elementId === 'scene-a' && item.location === '合成客厅' && item.storyTime === '三天后' && item.revisionStatus === 'revising'));
+    await until(async () => (await model()).sceneMeta.some(item => item.elementId === 'scene-a' && item.revisionStatus === 'revising'));
     await run(`document.querySelector('[aria-label="下移第 1 场"]').click()`);
     await until(async () => (await model()).elements[0].id === 'scene-empty');
     win.webContents.send('menu:action', 'edit:undo');
     await until(async () => (await model()).elements[0].id === 'scene-a');
     fs.writeFileSync(path.join(out, 'scene-script-order-day.png'), (await win.webContents.capturePage()).toPNG());
     await click('自由板', '.toolbar');
-    assert.ok(await run(`document.querySelector('.board').textContent.includes('三天后')`));
+    assert.ok(await run(`document.querySelector('.bcard--scene .bcard__status')?.textContent === '修改中'`));
     await click('写作', '.toolbar');
     await until(`!!document.querySelector('.editor__scroll[data-ready="true"]')`);
     pass('Actual storyboard scene fields, body-order move/undo and freeboard projection remain linked');

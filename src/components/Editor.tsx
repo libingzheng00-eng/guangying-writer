@@ -3,6 +3,7 @@ import { useStore } from '../store/store';
 import { usePagination } from '../hooks/PaginationProvider';
 import { EditableBlock } from './ScriptBlock';
 import { ProgressBar } from './ProgressBar';
+import { RichNoteField } from './RichNoteField';
 import { caretOffset, splitHtml, domLength, domText, makeTextRange, setCaret, offsetOf } from '../utils/dom';
 import { applySmartDoubleQuotes } from '../utils/smartQuotes';
 import { isBlank, plain, stripSceneNumber, escapeHtml } from '../utils/text';
@@ -15,6 +16,8 @@ import { createSmartTypeCatalogReader, getSmartTypeSuggestions, type SmartTypeCa
 import { searchText } from '../model/search';
 import type { ScriptElement, ElementType } from '../model/types';
 import { safeEmbeddedImageSource } from '../utils/displayValues';
+
+const PROGRESS_COLLAPSED_KEY = 'guangying:progress-collapsed';
 
 interface SuggestState {
   id: string;
@@ -94,6 +97,14 @@ export function Editor() {
     [readSmartTypeCatalog, project.elements, activeId, documentEpoch],
   );
   const [showSoundCards, setShowSoundCards] = useState(true);
+  // 进度栏可像侧栏一样收起；只是本机界面偏好，不写入工程。
+  const [progressCollapsed, setProgressCollapsed] = useState(() => {
+    try { return localStorage.getItem(PROGRESS_COLLAPSED_KEY) === '1'; } catch { return false; }
+  });
+  const toggleProgress = (collapsed: boolean) => {
+    setProgressCollapsed(collapsed);
+    try { localStorage.setItem(PROGRESS_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* 偏好未保存不影响写作 */ }
+  };
   const [isImageDropTarget, setIsImageDropTarget] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -837,14 +848,18 @@ export function Editor() {
         e.preventDefault(); e.stopPropagation(); setWritingSelectedIds(project.elements.map((el) => el.id));
       } else if (e.key === 'Escape') { setWritingSelectionMode(false); }
     }}>
-      <ProgressBar>
+      {progressCollapsed ? <div className="write-progress-collapsed">
+        <button type="button" className="write-progress-collapsed__reveal" title="展开进度栏" aria-label="展开进度栏" onClick={() => toggleProgress(false)}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+        </button>
+      </div> : <ProgressBar onCollapse={() => toggleProgress(true)}>
         <MaterialControls
           soundCount={writingSounds.length}
           showSound={showSoundCards}
           onToggleSound={() => setShowSoundCards((v) => !v)}
           onAddSound={addWritingSound}
         />
-      </ProgressBar>
+      </ProgressBar>}
       <div
         className={`editor__scroll${isImageDropTarget ? ' is-image-drop-target' : ''}`}
         data-ready={readyKey === `${version}:${project.settings.paper}` ? 'true' : 'false'}
@@ -1040,7 +1055,7 @@ function WritingMaterialCards({ cards, onUpdate, onMove, onDelete }: {
 }) {
   const dragRef = useRef<{ id: string; x: number; y: number; startX: number; startY: number } | null>(null);
   const onPointerDown = (event: React.PointerEvent<HTMLElement>, card: { id: string; x: number; y: number }) => {
-    if ((event.target as HTMLElement).closest('input, textarea, button')) return;
+    if ((event.target as HTMLElement).closest('input, textarea, button, [data-rich-note]')) return;
     dragRef.current = { id: card.id, x: card.x, y: card.y, startX: event.clientX, startY: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -1063,7 +1078,7 @@ function WritingMaterialCards({ cards, onUpdate, onMove, onDelete }: {
           {card.kind === 'image' && card.img ? (safeEmbeddedImageSource(card.img)
             ? <img className="writing-material-card__image" src={safeEmbeddedImageSource(card.img)} alt={card.title || '图片素材'} draggable={false} />
             : <div className="bcard__empty-media">图片来源已阻止，请重新导入本地图片</div>) : null}
-          <textarea value={card.text} placeholder={card.kind === 'image' ? '图片备注、画面灵感或场景提示…' : '声音、环境、节奏或情绪提示…'} aria-label={card.kind === 'image' ? '图片卡备注' : '声音卡内容'} onChange={(e) => onUpdate(card.id, { text: e.target.value })} />
+          <RichNoteField className="writing-material-card__note" value={card.text} placeholder={card.kind === 'image' ? '图片备注、画面灵感或场景提示…' : '声音、环境、节奏或情绪提示…'} label={card.kind === 'image' ? '图片卡备注' : '声音卡内容'} onChange={(text) => onUpdate(card.id, { text })} />
         </article>
       ))}
     </div>

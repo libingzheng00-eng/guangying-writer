@@ -5,11 +5,13 @@
   .app-shell[data-theme] .toolbar > .toolbar__group { flex-shrink: 0; }
   .app-shell[data-theme] .toolbar .toolbar__document { min-width: 64px; flex: 0 1 160px; }
   .app-shell[data-theme] .toolbar .doc-title { max-width: 100%; min-width: 0; flex-shrink: 1; }
-  .app-shell[data-theme] .toolbar .toolbar__context { width: 316px; gap: 5px; }
+  /* 宽度须容纳类型、B/I/U、分隔线、＋场、双列、省略；否则省略按钮会压到右侧「多选段落」的分隔线上。 */
+  .app-shell[data-theme] .toolbar .toolbar__context { width: 342px; gap: 5px; }
+  @media (max-width: 1279px) { .app-shell[data-theme] .toolbar .toolbar__context { width: 316px; } }
   .app-shell[data-theme] .toolbar .toolbar__context > .type-select { width: 110px; }
   .app-shell[data-theme] .toolbar .toolbar__context > .icon-btn { min-width: 27px; padding-inline: 5px; }
   .app-shell[data-theme] .toolbar .toolbar__view-select { display: none; }
-  .app-shell[data-theme] .toolbar .writing-select-toolbar--toggle { width: 91px; margin-left: 0; padding-left: 7px; }
+  .app-shell[data-theme] .toolbar .writing-select-toolbar--toggle { width: 91px; margin-left: 0; padding-left: 7px; border-left-color: var(--border); }
   .app-shell[data-theme] .toolbar .writing-select-toolbar--actions { margin: 0; padding: 0; border: 0; width: 100%; gap: 5px; }
   .app-shell[data-theme] .toolbar .writing-select-toolbar__count { display: inline-block; width: 78px; overflow: hidden; text-overflow: ellipsis; }
   .app-shell[data-theme] .toolbar .toolbar__revisions { max-width: 112px; overflow-x: auto; scrollbar-width: thin; }

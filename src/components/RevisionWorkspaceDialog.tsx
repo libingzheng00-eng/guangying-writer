@@ -1,4 +1,5 @@
 import React, { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { richNotePlain } from '../utils/richNote';
 import { useStore } from '../store/store';
 import { containModal, createModalSession, type ModalSession } from '../app/modalFocus';
 import type { ReviewContext } from '../app/reviewContext';
@@ -30,7 +31,7 @@ const sceneStatuses = { todo: '待修改', revising: '修改中', done: '已确�
 
 function SceneInformation({ scenes, label }: { scenes: SceneMeta[]; label: string }) {
   return <>{scenes.map(scene => <p key={scene.id} className="revision-workspace__muted" style={{ whiteSpace: 'pre-wrap' }}>
-    {label}：{[scene.title && `标题 ${scene.title}`, scene.synopsis && `梗概 ${scene.synopsis}`, scene.location && `地点 ${scene.location}`, scene.storyTime && `故事时间 ${scene.storyTime}`, scene.revisionStatus && `修改状态 ${sceneStatuses[scene.revisionStatus]}`].filter(Boolean).join(' · ') || '未填写'}
+    {label}：{[scene.title && `标题 ${scene.title}`, scene.synopsis && `梗概 ${richNotePlain(scene.synopsis)}`, scene.location && `地点 ${scene.location}`, scene.storyTime && `故事时间 ${scene.storyTime}`, scene.revisionStatus && `修改状态 ${sceneStatuses[scene.revisionStatus]}`].filter(Boolean).join(' · ') || '未填写'}
   </p>)}</>;
 }
 
