@@ -9,6 +9,7 @@ import type { ElementType } from '../model/types';
 import { buildCreativePdf } from '../io/creativePdf';
 import { buildPrintPdf } from '../io/printPdf';
 import { loadStoredWritingContext } from './writingContext';
+import { askChoice } from './choiceDialog';
 
 /** 等待图片解码完成，避免 printToPDF 在图片卡尚未绘制时抢先输出。 */
 async function waitForPrintableAssets() {
@@ -149,16 +150,27 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
         notify('没有识别到内容', 'error');
         return false;
       }
-      const append = window.confirm(`识别到 ${elements.length} 个元素。\n\n「确定」= 追加到当前剧本末尾\n「取消」= 替换整个剧本`);
-      if (append) {
+      const current = store.getState();
+      const hasDraft = !!document.querySelector('[data-project-draft-pending="true"]');
+      const choice = await askChoice({
+        title: '导入文本 / FDX',
+        message: `识别到 ${elements.length} 个元素。要怎样放进当前剧本？`,
+        warning: current.dirty || hasDraft ? '当前剧本有未保存的修改。选择「替换整个剧本」会放弃这些修改。' : undefined,
+        options: [
+          { value: 'append', label: '追加到剧本末尾', tone: 'primary' },
+          { value: 'replace', label: '替换整个剧本', tone: 'danger' },
+          { value: 'cancel', label: '不导入' },
+        ],
+        cancelValue: 'cancel',
+      });
+      // The document may have changed while the dialog was open.
+      if (choice === 'cancel' || store.getState().documentEpoch !== documentEpoch) return false;
+      if (choice === 'append') {
         mutate((p) => {
           p.elements.push(...elements);
         });
       } else {
-        const current = store.getState();
-        const hasDraft = !!document.querySelector('[data-project-draft-pending="true"]');
-        if ((current.dirty || hasDraft) && !window.confirm('当前剧本有未保存的修改或未确认的文字，导入并替换将放弃这些内容。确定继续吗？')) return false;
-        const p = createProject(current.project.name);
+        const p = createProject(store.getState().project.name);
         p.elements = elements;
         beforeReplace.current?.();
         loadProject(p, null);

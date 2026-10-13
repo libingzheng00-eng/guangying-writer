@@ -24,6 +24,7 @@ import { useRecoveryStatus } from './app/recoveryStatus';
 import { ownsNativeHistory, runEditHistory } from './utils/editHistory';
 import { createModalSession, type ModalSession } from './app/modalFocus';
 import { StartupPage } from './components/StartupPage';
+import { ChoiceDialogHost } from './components/ChoiceDialog';
 import { bridge, type RecentProject } from './io/native';
 import { readStartupPreference, writeStartupPreference, type StartupPreference } from './app/startupPreference';
 import { subscribeWritingContextPersistence } from './app/writingContext';
@@ -415,6 +416,7 @@ export default function App() {
         {dialog === 'settings' ? <SettingsDialog onClose={closeDialog} session={modalSession.current!} /> : null}
         {dialog === 'title' ? <TitlePageDialog onClose={closeDialog} session={modalSession.current!} /> : null}
         {dialog === 'review' && reviewContext ? <RevisionWorkspaceDialog onClose={closeDialog} session={modalSession.current!} context={reviewContext} /> : null}
+        <ChoiceDialogHost />
         {toast ? <Toast text={toast.text} kind={toast.kind} ts={toast.ts} /> : null}
       </div>
     </PaginationProvider>

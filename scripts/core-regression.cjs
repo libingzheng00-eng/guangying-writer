@@ -13,6 +13,7 @@ const suites = [
   'clipboard-ui-test.cjs',
   'writing-range-integrity-test.cjs',
   'file-commands-test.cjs',
+  'choice-dialog-ui-test.cjs',
   'recent-projects-test.cjs',
   'writing-context-test.cjs',
   'startup-ui-test.cjs',
