@@ -52,8 +52,8 @@
 ## 四、故事板与自由板
 
 - 大纲拖动场号把手到目标卡片的上/下半部，必须按稳定场景 ID 移动整场（含正文），一次操作可完整撤销。原位、取消、外部拖入不得新增历史；标题/摘要编辑不能触发跳转或拖动。双击场号定位正文，Alt+↑/↓ 可相邻移动。
-- 自由板场景卡上方显示标题，下方直接编辑 `SceneMeta.synopsis`，与大纲、故事板共用一份故事信息。空摘要显示提示语，不重复标题；文本输入、选择、双击和滚动不能误拖卡、跳正文、缩放画布或删除场景。不得因此改变正文、坐标、尺寸或关系线。
-- 故事板卡片支持排序、修改标题/梗概/颜色，并能稳定拖入某一幕归幕；一次拖拽只产生一次状态变更与一次撤销记录。
+- 自由板场景卡上方显示标题，下方直接编辑 `SceneMeta.synopsis`（简介），与大纲、故事板共用一份故事信息。**简介与灵感文字（2026-10-13，用户要求）**可用工具栏 B/I/U 或 ⌘/Ctrl+B/I/U 加粗、斜体、下划线：只保存 b/i/u/br，粘贴只取纯文字，没有格式时仍存纯文本；渲染前统一净化。界面不再提供地点、故事时间输入（场次标题已含这些信息），旧工程里的值原样保存。专项：card-notes-ui / scene-notes / scene-review-ui。空摘要显示提示语，不重复标题；文本输入、选择、双击和滚动不能误拖卡、跳正文、缩放画布或删除场景。不得因此改变正文、坐标、尺寸或关系线。
+- 故事板卡片支持排序、修改标题/简介，并能稳定拖入某一幕归幕；一次拖拽只产生一次状态变更与一次撤销记录。简介是卡片主体，场景标题在卡片底部；颜色与修改状态在顶栏，对所选场景一次生效、一步撤销。在简介里按住鼠标选字时暂停整卡拖动。
 - **故事板归幕红线（用户批准的新方案）**：未归幕置顶；移回未归幕只清除旧 `actId`，无论从菜单还是拖放，都必须保留正文位置。移入正式幕才移动整场正文：卡片左/右半部落点对应前/后插入线，组内空白放在幕末。多选移动保持源场景的正文相对顺序，并一次完整撤销。标题区、折叠幕、空白网格、空组提示区、已有卡片均可接收；拖动期间不得卸载源节点，取消/原位不制造历史。不得删除 `storyboard-drop` / `storyboard-acts` 断言绕过回归。
 - 幕可折叠、自由命名，显示场数和当前排版涉及页数（同组同页去重，跨幕共页各计一次，标题页不计）。提供复选框、Shift 可见卡片范围选、⌘/Ctrl 增减选，以及单卡/多卡“移至”菜单。选择不影响正文编辑或自由板选择。
 - 删除幕需明确说明保留场景，将所属场景解除归幕；不删正文、素材、关系线，不移动正文位置，单次撤销可恢复幕与归属。允许删除全部幕，显式 `acts: []` 保存重开后保持零幕；仅缺失字段的旧工程补默认幕。新场景默认未归幕。
@@ -62,14 +62,14 @@
 - 自由板支持 ⌘/Ctrl 多选、Shift 范围选、框选、批量删除；删除需同时清理孤儿关系线，但不能误删未选卡片的关系。
 - 场景卡的“删除整场”必须存在，并在可撤销的单次操作中处理正文、场景元数据、关系线与关联卡的解除关联。
 - 自由板筛选后，连线须两端均可见；Shift 选区、批量改色与删除只影响当前可见卡片。删除涉及整场正文必须先确认，取消不能改选区或撤销栈。专项：`board-polish-test.cjs`。
-- **自由板交互红线（2026-10-07，第2稿）**：普通点击仅选择/编辑；L 或底部“连线”显式进入连接模式，点 A/B 后退出，Esc 取消，不自连、不重复连接。点线仅选线并清空卡片选区，点卡清空线选区；Delete 只删除当前选中对象。关系说明居中加粗，双击/F2/Enter 编辑，Enter/失焦提交、Esc 回滚；组合输入期间不得提交。所有文字框、关联选择器和嵌套 contenteditable 中，L/空格/Delete 均不能触发画布命令。
+- **自由板交互红线（2026-10-13，第3稿，用户要求）**：普通点击仅选择/编辑，不弹出浮动窗口；所选卡片的颜色、修改状态、关联场景放在顶栏。连线方式：拖动卡片右缘圆点到另一张卡片松开；或选中恰好两张卡片后按 L / 点顶栏「连线」；Esc、切换显示范围或松在空白处都取消，不自连、不重复连接。点线仅选线并清空卡片选区，点卡清空线选区；Delete 只删除当前选中对象。关系说明居中加粗，双击/F2/Enter 编辑，Enter/失焦提交、Esc 回滚；组合输入期间不得提交。所有文字框、关联选择器和嵌套 contenteditable 中，L/空格/Delete 均不能触发画布命令。
 - **板面与写作坐标隔离**：自由板素材只写可选 `Beat.boardX/boardY`；缺失时显示回退到原 `x/y`，打开/切板/开网格不能凭空补字段。写作素材和创作 PDF 继续用原 `x/y`，自由板移动不得牵动它们。整场删除须解除规范 `SceneMeta.id` 及旧场次元素 ID 两种素材关联，保留未选场景关联。
 - 标题/关系备注每次完成编辑用独立提交入口；不可与此前正文输入或另一次确认误合并撤销。自由板不能因焦点产生原生scrollLeft/scrollTop导航，pan/zoom是唯一画布位移；附近工具必须在窗口改变后仍留在可见画布内。
 - 网格显示和磁吸为独立开关，磁吸默认关闭；开启/关闭不得自动排布旧卡。磁吸仅在拖动时作用于28单位网格、按屏幕像素容差，Alt 暂停。组拖动保持相对位置；拖动/缩放过程中仅预览，释放后整组一次写入、一次完整撤销，连续两次独立手势不可误合并；Esc/窗口失焦取消不写工程。空白拖动框选，空格拖动/中键平移；缩放只改变视图。专项：`board-workspace-model-test.cjs` / `board-workspace-ui-test.cjs`，另需真实浏览器鼠标验收。
 
 ## 五、结构、统计与界面
 
-- 目标页数、单一打字机指针进度、按场景篇幅的色带与精确跳转保持可用。
+- 目标页数、单一打字机指针进度、按场景篇幅的色带与精确跳转保持可用。进度栏可用栏底把手收起、顶部把手展开（本机偏好 `guangying:progress-collapsed`，不写工程）；展开时几何保持原样。
 - 场景色带未完成目标时必须按实际占目标比例留白，禁止 flex-grow、最小宽度或内边距把短场景撑满；超目标才按当前篇幅归一，提示仍保留目标比例。`progress-bands-test.cjs` 同时保护纯计算及样式契约。
 - 进度栏可见轨道可收细，鼠标点击盒仍为30px、外栏仍为76px，两行网格保持30px/18px；绘制伪元素不得拦截跳页、遮挡提示或改变56px打字机指针的锚点。场景条变薄不能更改比例、场号及跳转语义。
 - 写作工具栏在多选时原位替换格式工具，退出即恢复；全选、删除、撤销、完成入口保持可用，不能因按钮挤压折字或更改工具栏高度而影响正文/素材/PDF坐标。窄屏导航可改为等价选择器，但不能删除视图入口。专项：`writing-controls-test.cjs`。
@@ -138,7 +138,7 @@ node scripts/progress-bands-test.cjs
 | 回车移动尾部、剪切粘贴原子撤销、只读全文查找 | `Editor.tsx`、`ScriptBlock.tsx`、`store.ts`、`src/utils/dom.ts`、`FindPanel.tsx`、`search.ts` | editing / search / search-ui / editing-electron / search-electron |
 | 拖入图片、原位卡片创作 PDF、A4 纯文本 | `Editor.tsx`、`src/io/creativePdf.ts`、`useCommands.ts`、`PreviewView.tsx`、`PaginationProvider.tsx`、`electron/pdf.js` | image-drop-electron / pdf-layout-electron / pagination-safety / PDF 渲染检查 |
 | 选择、归幕、删除、撤销重做 | `store.ts`、`selection.ts`、`board.ts`、`BoardView.tsx`、`CardsView.tsx` | history / writing / render / 实机拖放 |
-| 自由板独立坐标、组拖动磁吸、显式连线与线/卡互斥删除 | `boardWorkspace.ts`、`BoardView.tsx`、`store.ts`、`zhsp.ts` | board-workspace-model / board-workspace-ui / board-polish / 真实鼠标 |
+| 自由板独立坐标、组拖动磁吸、圆点拖拽 / L 连线与线/卡互斥删除 | `boardWorkspace.ts`、`BoardView.tsx`、`store.ts`、`zhsp.ts` | board-workspace-model / board-workspace-ui / board-polish / 真实鼠标 |
 | 大纲整场拖动、场景故事信息同步编辑 | `outline.ts`、`Sidebar.tsx`、`BoardView.tsx`、`CardsView.tsx` | outline-reorder / scene-notes / 实机拖放与输入 |
 | 工程兼容、空白启动、保存恢复 | `src/io/zhsp.ts`、`src/model/sample.ts`、`src/App.tsx`、`electron/main.js` | zhsp-compat / core-guard / 隔离用户目录启动保存重开 |
 | 单快照恢复、坏载荷保护、恢复失败与关闭提示 | `src/app/autosaveStorage.ts`、`autosaveSubscription.ts`、`recoveryStatus.ts`、`src/App.tsx`、`StatusBar.tsx`、`electron/main.js` | autosave-recovery / autosave-path / 真机关闭与恢复 |

@@ -288,7 +288,7 @@ function CharacterLinesSession({ onLocate, onReturnToWriting, epoch }: Character
         <label className="character-lines__check"><input type="checkbox" checked={showAllScenes} onChange={event => { setShowAllScenes(event.target.checked); setChunkIndex(0); }} />显示所有场景（可手动标记）</label>
         <div className="character-lines__scene-heading"><strong>正文顺序</strong><span>{visibleScenes.length} 场</span></div>
         <nav className="character-lines__scenes" aria-label="人物相关场景">{visibleScenes.slice(0, sceneListLimit).map(scene => <button key={scene.headingId || 'preamble'} aria-current={scene === currentScene ? 'true' : undefined} onClick={() => chooseScene(scene.headingId)}>
-          <span className="character-lines__scene-number">{scene.number}</span><span><strong>{scene.heading || '未命名场景'}</strong><small>{scene.storyTime || '故事时间未填写'}{scene.omitted ? ' · 已省略' : ''}</small></span>
+          <span className="character-lines__scene-number">{scene.number}</span><span><strong>{scene.heading || '未命名场景'}</strong>{(scene.storyTime || scene.omitted) && <small>{scene.storyTime || ''}{scene.storyTime && scene.omitted ? ' · ' : ''}{scene.omitted ? '已省略' : ''}</small>}</span>
         </button>)}{visibleScenes.length > sceneListLimit && <button className="btn" onClick={() => setSceneListLimit(value => value + 100)}>显示更多场景</button>}</nav>
         {selected && !visibleScenes.length && <p className="character-lines__empty">当前范围没有相关证据。可换一个筛选，或显示所有场景后手动标记。</p>}
       </aside>

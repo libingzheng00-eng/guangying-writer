@@ -95,7 +95,7 @@ const check = (label, run) => { run(); checks += 1; console.log(`  ✓ ${label}`
       assert.equal(document.querySelectorAll('[draggable="true"]').length, 4);
       assert.equal(card('a').draggable, false);
       assert.equal(card('a').querySelector('input').draggable, false);
-      assert.equal(card('a').querySelector('textarea').draggable, false);
+      assert.equal(card('a').querySelector('[data-rich-note]').draggable, false);
       assert.equal(handle('a').tagName, 'BUTTON');
     });
     for (const [source, target, edge, expected] of [
@@ -147,7 +147,7 @@ const check = (label, run) => { run(); checks += 1; console.log(`  ✓ ${label}`
       reset();
       const data = start('d');
       hover('b', 'after', data);
-      const event = dispatch(card('b').querySelector('textarea'), 'drop', data, 190);
+      const event = dispatch(card('b').querySelector('[data-rich-note]'), 'drop', data, 190);
       assert.equal(event.defaultPrevented, true);
       assert.deepEqual(ids(), orderedIds(['a', 'b', 'd', 'c']));
       keepAssociations();
@@ -175,12 +175,13 @@ const check = (label, run) => { run(); checks += 1; console.log(`  ✓ ${label}`
     });
     check('标题/摘要仍可编辑，点击标题不抢回正文焦点', () => {
       reset();
-      for (const [selector, ctor, value, key] of [['input', 'HTMLInputElement', '新合成标题', 'title'], ['textarea', 'HTMLTextAreaElement', '新合成摘要', 'synopsis']]) {
+      for (const [selector, ctor, value, key] of [['input', 'HTMLInputElement', '新合成标题', 'title'], ['[data-rich-note]', null, '新合成摘要', 'synopsis']]) {
         const input = card('a').querySelector(selector);
         act(() => { input.focus(); input.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
         assert.equal(document.activeElement, input);
         assert.equal(state().focus, null);
-        Object.getOwnPropertyDescriptor(dom.window[ctor].prototype, 'value').set.call(input, value);
+        if (ctor) Object.getOwnPropertyDescriptor(dom.window[ctor].prototype, 'value').set.call(input, value);
+        else input.textContent = value;
         act(() => input.dispatchEvent(new dom.window.Event('input', { bubbles: true })));
         assert.equal(state().project.sceneMeta.find((meta) => meta.elementId === 'a-scene')[key], value);
       }

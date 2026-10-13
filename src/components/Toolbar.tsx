@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Icon } from './Icon';
 import { useStore, type ViewMode } from '../store/store';
 import { ELEMENT_META, ELEMENT_ORDER } from '../model/elements';
 import type { ElementType } from '../model/types';
@@ -191,18 +192,20 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
         <button className="icon-btn" title="下划线 ⌘/Ctrl+U" onMouseDown={e => e.preventDefault()} onClick={() => fmt('underline')}>
           <u>U</u>
         </button>
-        <button className="icon-btn" title="插入新场景 ⌘/Ctrl+Enter" onClick={commands.insertScene}>
-          ＋场
+        <span className="toolbar__sep" aria-hidden="true" />
+        <button className="icon-btn toolbar__labeled" title="插入新场景 ⌘/Ctrl+Enter" onClick={commands.insertScene}>
+          <Icon name="scene" /><span className="toolbar__label">场</span>
         </button>
-        <button className="icon-btn" title="双列对白 ⌘/Ctrl+D" onClick={commands.makeDual}>
-          ⇄
+        <button className="icon-btn" title="双列对白 ⌘/Ctrl+D" aria-label="双列对白" onClick={commands.makeDual}>
+          <Icon name="dual" />
         </button>
         <button
           className="icon-btn"
           title="省略该元素"
+          aria-label="省略该元素"
           onClick={() => activeEl && toggleOmit(activeEl.id)}
         >
-          ⊘
+          <Icon name="omit" />
         </button>
       </>}
       </div>
@@ -235,7 +238,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
             title="选择多个正文段落后统一删除"
             onClick={() => setWritingSelectionMode(!writingSelectionMode)}
           >
-            {writingSelectionMode ? '完成多选' : '多选段落'}
+            <Icon name="select" />{writingSelectionMode ? '完成多选' : '多选段落'}
           </button>
         </div>
       ) : null}
@@ -243,21 +246,23 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
       <div className="spacer" />
 
       <div className="toolbar__group toolbar__file-actions">
-        {onOpenReview ? <button className="icon-btn toolbar__review" disabled={modalOpen} title="改稿工作台：版本、批注、暂存与交稿检查" onMouseDown={event => event.preventDefault()} onClick={onOpenReview}>改稿</button> : null}
-        <button className="icon-btn" title="查找正文 ⌘/Ctrl+F" onClick={commands.openFind}>查找</button>
-        <button className="icon-btn" disabled={!canUndo} title="撤销 ⌘/Ctrl+Z" onMouseDown={e => e.preventDefault()} onClick={undo}>
-          ↶
+        {onOpenReview ? <button className="icon-btn toolbar__labeled toolbar__review" disabled={modalOpen} title="改稿工作台：版本、批注、暂存与交稿检查" onMouseDown={event => event.preventDefault()} onClick={onOpenReview}><Icon name="review" /><span className="toolbar__label">改稿</span></button> : null}
+        <button className="icon-btn toolbar__labeled" title="查找正文 ⌘/Ctrl+F" onClick={commands.openFind}><Icon name="search" /><span className="toolbar__label">查找</span></button>
+        <span className="toolbar__sep" aria-hidden="true" />
+        <button className="icon-btn" disabled={!canUndo} title="撤销 ⌘/Ctrl+Z" aria-label="撤销" onMouseDown={e => e.preventDefault()} onClick={undo}>
+          <Icon name="undo" />
         </button>
-        <button className="icon-btn" disabled={!canRedo} title="重做 ⌘/Ctrl+Shift+Z" onMouseDown={e => e.preventDefault()} onClick={redo}>
-          ↷
+        <button className="icon-btn" disabled={!canRedo} title="重做 ⌘/Ctrl+Shift+Z" aria-label="重做" onMouseDown={e => e.preventDefault()} onClick={redo}>
+          <Icon name="redo" />
         </button>
-        <button className="btn btn--ghost" onClick={() => commands.save(false)}>
+        <span className="toolbar__sep" aria-hidden="true" />
+        <button className="btn btn--ghost toolbar__save" onClick={() => commands.save(false)}>
           保存
         </button>
         <div className="menu-wrap" ref={menuRef} onKeyDown={onMenuKeyDown}>
           <button ref={menuTriggerRef} className="btn btn--ghost" aria-haspopup="menu" aria-expanded={menuOpen} aria-controls={menuId}
             disabled={modalOpen} onClick={() => menuOpen ? closeMenu(true) : openMenu()}>
-            文件 ▾
+            文件<Icon name="chevron" size={14} />
           </button>
           {menuOpen ? (
             <div className="menu" id={menuId} ref={menuPopupRef} role="menu" aria-label="文件">
@@ -279,8 +284,8 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
             </div>
           ) : null}
         </div>
-        <button className="btn btn--ghost" onClick={onOpenSettings}>
-          设置
+        <button className="btn btn--ghost toolbar__labeled" onClick={onOpenSettings}>
+          <Icon name="settings" /><span className="toolbar__label">设置</span>
         </button>
       </div>
     </div>

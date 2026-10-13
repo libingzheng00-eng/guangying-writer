@@ -47,7 +47,7 @@ async function verifyDisplaySafety(run) {
     const blocked=cards.find(e=>e.querySelector('input')?.value==='合成阻止外部图片');
     return { count:cards.length, imageCount:cards.reduce((n,e)=>n+e.querySelectorAll('img').length,0),
       blocked:!!blocked&&!blocked.querySelector('img')&&blocked.textContent.includes('图片来源已阻止'),
-      note:blocked?.querySelector('textarea')?.value };
+      note:blocked?.querySelector('[data-rich-note]')?.textContent };
   })()`);
   assert.deepEqual(value, { count: 2, imageCount: 1, blocked: true, note: '外部地址必须保留为备注，不能请求资源。' });
 }

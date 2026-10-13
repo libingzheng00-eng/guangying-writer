@@ -119,4 +119,23 @@
   }
   .editor > .write-progress .write-progress__scene-no { margin-left: 4px; }
   .editor > .write-progress .write-progress__over { position: absolute; right: 0; top: 0; pointer-events: none; }
+
+  /* 进度栏收起 / 展开把手：与侧栏把手同一形式，挂在栏底中央；只是本机界面偏好。 */
+  .app-shell[data-theme] .editor > .write-progress .write-progress__collapse {
+    position: absolute; left: 50%; bottom: -1px; transform: translate(-50%, 100%); z-index: 3;
+    display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 16px; padding: 0;
+    border: 1px solid var(--border); border-top: 0; border-radius: 0 0 8px 8px;
+    background: var(--panel); color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .15s ease;
+  }
+  .app-shell[data-theme] .editor > .write-progress:hover .write-progress__collapse,
+  .app-shell[data-theme] .editor > .write-progress .write-progress__collapse:focus-visible { opacity: 1; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__collapse:hover { color: var(--accent); }
+  .app-shell[data-theme] .editor > .write-progress-collapsed { position: sticky; top: 0; z-index: 12; height: 0; overflow: visible; }
+  .app-shell[data-theme] .write-progress-collapsed__reveal {
+    position: absolute; left: 50%; top: 0; transform: translateX(-50%);
+    display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 18px; padding: 0;
+    border: 1px solid var(--border); border-top: 0; border-radius: 0 0 8px 8px;
+    background: var(--panel); color: var(--muted); cursor: pointer; box-shadow: var(--card-glow);
+  }
+  .app-shell[data-theme] .write-progress-collapsed__reveal:hover { color: var(--accent); }
 }

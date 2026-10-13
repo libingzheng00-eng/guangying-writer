@@ -11,7 +11,7 @@ import {
 import typewriterPointer from '../assets/typewriter-pointer.png';
 import { safeDisplayColor } from '../utils/displayValues';
 
-export function ProgressBar({ children }: { children?: React.ReactNode }) {
+export function ProgressBar({ children, onCollapse }: { children?: React.ReactNode; onCollapse?: () => void }) {
   const project = useStore((s) => s.project);
   const activeId = useStore((s) => s.activeId);
   const pageCount = useStore((s) => s.pageCount);
@@ -211,6 +211,9 @@ export function ProgressBar({ children }: { children?: React.ReactNode }) {
         </label>
         {children}
       </div>
+      {onCollapse ? <button type="button" className="write-progress__collapse" title="收起进度栏" aria-label="收起进度栏" onClick={onCollapse}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
+      </button> : null}
     </div>
   );
 }

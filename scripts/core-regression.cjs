@@ -52,6 +52,7 @@ const suites = [
   'board-polish-test.cjs',
   'board-workspace-model-test.cjs',
   'board-workspace-ui-test.cjs',
+  'card-notes-ui-test.cjs',
   'writing-controls-test.cjs',
   'progress-bands-test.cjs',
   'revision-workspace-test.cjs',

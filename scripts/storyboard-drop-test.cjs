@@ -59,14 +59,13 @@ let root;
   const actId = id => state().project.sceneMeta.find(m => m.elementId === id).actId;
   assert.equal(document.querySelector('.cards__act').dataset.actId, '', '未归幕固定在首位');
 
-  // 空梗概在双击后才挂载；拖出卡片时不得卸载正在原生拖动的 DOM 源。
+  // 简介编辑区常驻；拖动整张卡片时不得卸载卡内节点，否则浏览器会取消原生拖拽。
   const source = card('合成场景1');
-  await fire(source, 'dblclick');
-  const textarea = source.querySelector('textarea');
+  const textarea = source.querySelector('[data-rich-note]');
   assert.ok(textarea);
-  await fire(textarea, 'dragstart');
+  await fire(source, 'dragstart');
   await fire(source, 'mouseout');
-  assert.ok(textarea.isConnected, '拖动期间不得卸载空梗概源节点，否则浏览器会取消原生拖拽');
+  assert.ok(textarea.isConnected, '拖动期间不得卸载简介节点，否则浏览器会取消原生拖拽');
   await fire(section(2).querySelector('.cards__empty'), 'drop');
   assert.equal(actId('s1'), undefined, '落到未归幕提示区解除归幕');
   assert.equal(state().past.length, 1, '冒泡落点只产生一次撤销记录');

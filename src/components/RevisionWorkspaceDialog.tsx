@@ -1,4 +1,5 @@
 import React, { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { richNotePlain } from '../utils/richNote';
 import { useStore } from '../store/store';
 import { containModal, createModalSession, type ModalSession } from '../app/modalFocus';
 import type { ReviewContext } from '../app/reviewContext';
@@ -30,7 +31,7 @@ const sceneStatuses = { todo: '待修改', revising: '修改中', done: '已确�
 
 function SceneInformation({ scenes, label }: { scenes: SceneMeta[]; label: string }) {
   return <>{scenes.map(scene => <p key={scene.id} className="revision-workspace__muted" style={{ whiteSpace: 'pre-wrap' }}>
-    {label}：{[scene.title && `标题 ${scene.title}`, scene.synopsis && `梗概 ${scene.synopsis}`, scene.location && `地点 ${scene.location}`, scene.storyTime && `故事时间 ${scene.storyTime}`, scene.revisionStatus && `修改状态 ${sceneStatuses[scene.revisionStatus]}`].filter(Boolean).join(' · ') || '未填写'}
+    {label}：{[scene.title && `标题 ${scene.title}`, scene.synopsis && `梗概 ${richNotePlain(scene.synopsis)}`, scene.location && `地点 ${scene.location}`, scene.storyTime && `故事时间 ${scene.storyTime}`, scene.revisionStatus && `修改状态 ${sceneStatuses[scene.revisionStatus]}`].filter(Boolean).join(' · ') || '未填写'}
   </p>)}</>;
 }
 
@@ -393,7 +394,7 @@ export function RevisionWorkspaceDialog({ context, onClose, session }: { context
         {confirmation && <section className="revision-workspace__confirm" role="alert" aria-label="确认操作"><p>{confirmation.message}</p><div className="revision-workspace__row">
           <button className="btn" data-review-confirm-cancel onClick={() => setConfirmation(null)}>取消操作</button><button className="btn btn--primary" disabled={!valid && !confirmation.documentIndependent} onClick={() => { if (confirmation.documentIndependent ? confirmation.action() : run(confirmation.action)) setConfirmation(null); }}>{confirmation.label}</button>
         </div></section>}
-        <footer className="revision-workspace__foot"><span className="revision-workspace__muted">版本 {usage.versions} / 20 · 暂存 {usage.stash} / 100 · {(usage.bytes / 1024 / 1024).toFixed(2)} / 2 MiB<br />批注 {project.annotations?.length || 0} / {MAX_ANNOTATIONS} · {(annotationBytes / 1024).toFixed(1)} / {MAX_ANNOTATIONS_BYTES / 1024} KiB<br />版本、批注、暂存随工程保存，操作可撤销。<br />正文版本不含图片、板面位置或设置。</span>
+        <footer className="revision-workspace__foot"><span className="revision-workspace__muted" title="版本与暂存合计上限 2 MiB，批注上限 1 MiB">版本 {usage.versions} / 20 · 暂存 {usage.stash} / 100 · 批注 {project.annotations?.length || 0} / {MAX_ANNOTATIONS} · 已用空间 {Math.min(100, Math.ceil(Math.max(usage.bytes / (2 * 1024 * 1024), annotationBytes / MAX_ANNOTATIONS_BYTES) * 100))}%<br />以上内容随工程保存，每次操作都可以撤销。</span>
           <div className="revision-workspace__row"><button className="btn" disabled={!valid || !!confirmation} onClick={() => history('undo')}>撤销本次操作</button><button className="btn" disabled={!valid || !!confirmation} onClick={() => history('redo')}>重做</button><button className="btn" onClick={close}>关闭</button></div></footer>
       </div>
     </div>

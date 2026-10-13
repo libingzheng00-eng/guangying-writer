@@ -2665,3 +2665,8 @@ textarea {
 .choice-dialog__message { margin: 0 0 12px; line-height: 1.7; white-space: pre-line; }
 .choice-dialog__warning { margin: 0 0 12px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--danger, #d9534f); line-height: 1.6; }
 .choice-dialog__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
+/* 卡片简介 / 灵感文字的富文本编辑区（粗体、斜体、下划线）。 */
+.rich-note { outline: none; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; cursor: text; user-select: text; -webkit-user-select: text; }
+.rich-note:empty::before { content: attr(data-placeholder); color: var(--muted); opacity: .85; pointer-events: none; }
+.rich-note b { font-weight: 700; }

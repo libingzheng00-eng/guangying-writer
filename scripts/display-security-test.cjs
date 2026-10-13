@@ -135,7 +135,7 @@ const payload = '</style><script id="metadata-script">window.syntheticAttack=1</
       check(`${name}: all valid embedded formats retained`, [...document.querySelectorAll(selector)].map(node => node.getAttribute('src')), safeImages);
       check(`${name}: blocked images keep original card count`, document.querySelectorAll(name === 'Editor' ? '.writing-material-card--image' : '.bcard--image').length, project.beats.length);
       check(`${name}: blocked media has clear inline explanation`, [...document.querySelectorAll('.bcard__empty-media')].filter(node => node.textContent.includes('图片来源已阻止')).length, blockedImages.length);
-      check(`${name}: every image title and note retained`, [...document.querySelectorAll(name === 'Editor' ? '.writing-material-card--image' : '.bcard--image')].every((card, i) => card.querySelector('input').value === project.beats[i].title && card.querySelector('textarea').value === project.beats[i].text));
+      check(`${name}: every image title and note retained`, [...document.querySelectorAll(name === 'Editor' ? '.writing-material-card--image' : '.bcard--image')].every((card, i) => card.querySelector('input').value === project.beats[i].title && card.querySelector('[data-rich-note]').textContent === project.beats[i].text));
     }
     if (name === 'Editor') {
       // jsdom does not decode images. This models decoded known synthetic pixels

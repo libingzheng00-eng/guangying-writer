@@ -227,7 +227,7 @@ const check = (label, actual, expected = true) => { assert.deepEqual(actual, exp
   check('tracked composition ignores plain Escape until compositionend', !!modal());
   await dispatch(field('新批注'), new w.CompositionEvent('compositionend', { bubbles: true }));
   unchanged('focus/tab/IME navigation creates no project changes', beforeDraftExit);
-  check('footer reports separate annotation count and capacity', modal().querySelector('footer').textContent.includes('批注 1 / 500') && modal().querySelector('footer').textContent.includes('1024 KiB'));
+  check('footer reports annotation count and plain-language capacity', modal().querySelector('footer').textContent.includes('批注 1 / 500') && /已用空间 \d+%/.test(modal().querySelector('footer').textContent) && !/MiB|KiB/.test(modal().querySelector('footer').textContent));
   await click(button('编辑 / 处理'));
   const beforeDecision = snapshot();
   await input(field('批注处理状态'), 'resolved'); await input(field('创作决定'), '合成决定：保留原文节奏');

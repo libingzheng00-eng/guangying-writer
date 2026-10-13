@@ -55,44 +55,24 @@ const edit = async (node, value) => { await act(async () => node.focus()); await
   const outline = () => q('[data-outline-scene="scene-a"]');
   const order = () => state().project.elements.filter(element => element.type === 'scene_heading').map(element => element.id);
   const before = clone(state().project);
-  const location = label(outline(), '第 1 场地点');
-  await act(async () => location.focus()); await input(location, '合成候车厅');
-  check('地点草稿尚未提交不改工程', state().project, before);
-  check('地点草稿标记关闭保护', location.dataset.projectDraftPending, 'true');
-  check('地点草稿拥有原生撤销', location.hasAttribute('data-native-edit-history'));
-  await act(async () => location.blur());
-  check('完成地点编辑独立提交', meta().location, '合成候车厅');
-  check('地点不改正文', state().project.elements, before.elements);
-  check('地点不改素材坐标与关系', [state().project.beats, state().project.boardLinks], [before.beats, before.boardLinks]);
-  check('同一地点同步所有视图', qa('[aria-label="第 1 场地点"]').map(node => node.value), ['合成候车厅', '合成候车厅', '合成候车厅']);
-  const afterLocation = state().past.length;
+  // 地点、故事时间已写在场次标题里：界面不再提供这两个输入，只保留修改状态。
+  check('不再出现地点 / 故事时间输入', [qa('[aria-label="第 1 场地点"]').length, qa('[aria-label="第 1 场故事时间"]').length], [0, 0]);
   await input(label(outline(), '第 1 场修改状态'), 'revising');
-  check('状态与地点不合并', state().past.length, afterLocation + 1);
-  check('状态同步故事板', label(q('.card[data-scene-id="scene-a"]'), '第 1 场修改状态').value, 'revising');
+  check('状态是一次独立提交', [meta().revisionStatus, state().past.length], ['revising', 1]);
+  check('状态不改正文与素材', [state().project.elements, state().project.beats, state().project.boardLinks], [before.elements, before.beats, before.boardLinks]);
+  check('状态同步故事板卡片标记', q('.card[data-scene-id="scene-a"] .card__status').textContent, '修改中');
   await act(async () => state().undo());
-  check('撤销状态保留地点', [meta().revisionStatus, meta().location], [undefined, '合成候车厅']);
+  check('撤销状态', meta().revisionStatus, undefined);
   await act(async () => state().redo());
   check('重做状态', meta().revisionStatus, 'revising');
-  await edit(label(outline(), '第 1 场故事时间'), '第三天傍晚');
-  check('故事时间为自由文字', meta().storyTime, '第三天傍晚');
-  check('信息保存重开', deriveScenes(parseProject(serializeProject(state().project)))[0].storyTime, '第三天傍晚');
-
-  const cancel = label(outline(), '第 1 场地点');
-  const history = state().past.length;
-  await act(async () => cancel.focus()); await input(cancel, '取消草稿');
-  await act(async () => cancel.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
-  check('Esc取消不改地点与历史', [meta().location, state().past.length], ['合成候车厅', history]);
-  check('Esc清除未提交标记', cancel.dataset.projectDraftPending, undefined);
-  await act(async () => cancel.focus()); await input(cancel, '过期草稿');
-  await act(async () => state().commitReviewSceneMeta('scene-a', { location: '另一处已提交值' }));
-  await act(async () => cancel.blur());
-  check('过期字段草稿不覆盖新值', meta().location, '另一处已提交值');
+  const legacy = clone(p); legacy.sceneMeta[0].location = '旧地点'; legacy.sceneMeta[0].storyTime = '旧时间';
+  check('旧工程里的地点与时间仍随工程保存', (({ location, storyTime }) => ({ location, storyTime }))(parseProject(serializeProject(legacy)).sceneMeta[0]), { location: '旧地点', storyTime: '旧时间' });
 
   const projectBeforeMode = clone(state().project);
   await input(label(document, '故事板排列'), 'script');
   check('切换正文顺序不改工程', state().project, projectBeforeMode);
   check('线性展示使用正文顺序', qa('.scene-review__row').map(node => node.dataset.sceneId), order());
-  check('多行旧摘要不因一行展示而截断', label(q('.scene-review__row'), '第 1 场一行摘要').value, '第一行摘要\n保留第二行');
+  check('多行旧摘要完整显示在简介里', label(q('.scene-review__row'), '第 1 场简介').innerHTML, '第一行摘要<br>保留第二行');
   const materials = [clone(state().project.beats), clone(state().project.boardLinks)];
   await click(label(q('.scene-review__list'), '下移第 1 场'));
   check('首场下移仅越过相邻一场', order(), ['scene-b', 'scene-a', 'scene-c', 'scene-d']);
@@ -117,20 +97,16 @@ const edit = async (node, value) => { await act(async () => node.focus()); await
 
   await reset();
   await act(async () => state().setView('board'));
-  const boardLocation = label(q('.board__context'), '第 1 场地点');
+  const boardStatus = label(q('.board__selection-tools'), '第 1 场修改状态');
   const boardBefore = clone(state().project);
-  await act(async () => boardLocation.focus());
+  await act(async () => boardStatus.focus());
   for (const key of ['L', 'Delete', 'Backspace', ' ']) {
-    await act(async () => boardLocation.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })));
-    check(`自由板字段内${key}不触发画布命令`, state().project, boardBefore);
+    await act(async () => boardStatus.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })));
+    check(`自由板顶栏状态框内${key}不触发画布命令`, state().project, boardBefore);
   }
-  await edit(boardLocation, '自由板地点');
-  check('自由板字段反向同步大纲', label(outline(), '第 1 场地点').value, '自由板地点');
-  check('自由板信息编辑保持已存尺寸位置', state().project.sceneMeta.map(({ x, y, w, h }) => ({ x, y, w, h })), p.sceneMeta.map(({ x, y, w, h }) => ({ x, y, w, h })));
-  const stale = label(outline(), '第 1 场故事时间');
-  await act(async () => stale.focus()); await input(stale, '跨工程草稿');
-  await reset();
-  check('相同ID切稿清除场景草稿', label(outline(), '第 1 场故事时间').value, '');
-  check('相同ID切稿不提交旧草稿', meta().storyTime, undefined);
+  await input(boardStatus, 'done');
+  check('自由板顶栏改状态同步大纲', label(outline(), '第 1 场修改状态').value, 'done');
+  check('自由板改状态保持已存尺寸位置', state().project.sceneMeta.map(({ x, y, w, h }) => ({ x, y, w, h })), p.sceneMeta.map(({ x, y, w, h }) => ({ x, y, w, h })));
+  check('自由板卡片显示状态标记', q('.bcard--scene[data-id="scene-a"] .bcard__status').textContent, '已确认');
   console.log(`Scene review UI: ${checks}/${checks} passed (synthetic React/jsdom; native and visual QA separate).`);
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { if (root) await act(async () => root.unmount()); dom.window.close(); });

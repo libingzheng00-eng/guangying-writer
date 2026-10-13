@@ -5,7 +5,8 @@ import { CARD_COLORS } from '../model/elements';
 import { storyboardPageCounts, type StoryboardPlacement } from '../model/storyboard';
 import { usePagination } from '../hooks/PaginationProvider';
 import { safeDisplayColor } from '../utils/displayValues';
-import { SceneReviewFields, SceneReviewText } from './SceneReviewFields';
+import { SCENE_REVIEW_LABELS } from './SceneReviewFields';
+import { RichNoteField } from './RichNoteField';
 
 type DragState = { elementId: string; ids: string[] } | null;
 
@@ -188,13 +189,21 @@ export function CardsView() {
             <option value="acts">按幕分组</option><option value="script">正文顺序</option>
           </select>
         </label>
-        <span className="hint">{displayOrder === 'acts' ? '拖动场号归幕 · Shift 连选 · ⌘/Ctrl 多选' : '上下移动整场 · Shift 连选'}</span>
+        {!selectedIds.length && <span className="hint">{displayOrder === 'acts' ? '拖动场号归幕 · Shift 连选 · ⌘/Ctrl 多选' : '上下移动整场 · Shift 连选'}</span>}
         <label className="cards__bulk-move">已选 {selectedIds.length} 场
           <select aria-label="移动选中的场景" disabled={!selectedIds.length} value="" onChange={e => {
             if (e.target.value) move(selectedIds, e.target.value === '__ungrouped__' ? null : e.target.value);
           }}>{moveOptions}</select>
         </label>
-        {!!selectedIds.length && <button className="btn btn--ghost" onClick={() => { setSelected([]); anchor.current = null; }}>取消选择</button>}
+        {!!selectedIds.length && <div className="cards__selection-tools" role="group" aria-label="所选场景设置">
+          <div className="cards__colors" aria-label="所选场景颜色">{CARD_COLORS.map((color, index) => <button key={color} aria-label={`场景颜色 ${index + 1}`} style={{ background: color }}
+            onClick={() => useStore.getState().setBoardCardColors(selectedIds.map(id => `scene:${id}`), color)} />)}</div>
+          <select aria-label="所选场景修改状态" value={(() => { const states = new Set(selectedIds.map(id => scenes.find(scene => scene.elementId === id)?.revisionStatus || '')); return states.size === 1 ? [...states][0] : '__mixed__'; })()}
+            onChange={event => { if (event.target.value !== '__mixed__') useStore.getState().setScenesRevisionStatus(selectedIds, (event.target.value || null) as never); }}>
+            <option value="__mixed__" disabled hidden>修改状态…</option><option value="">未标记</option><option value="todo">待修改</option><option value="revising">修改中</option><option value="done">已确认</option>
+          </select>
+          <button className="btn btn--ghost" onClick={() => { setSelected([]); anchor.current = null; }}>取消选择</button>
+        </div>}
         <div className="spacer" />
         <button className="btn btn--ghost" onClick={addAct}>
           + 新增幕
@@ -228,8 +237,11 @@ export function CardsView() {
               <button className="scene-review__move" aria-label={`上移第 ${scene.number} 场`} disabled={index === 0} onClick={() => useStore.getState().moveReviewScene(scene.elementId, scenes[index - 1].elementId, 'before', documentEpoch)}>↑</button>
               <button className="scene-review__move" aria-label={`下移第 ${scene.number} 场`} disabled={index === scenes.length - 1} onClick={() => useStore.getState().moveReviewScene(scene.elementId, scenes[index + 1].elementId, 'after', documentEpoch)}>↓</button>
             </div>
-            <label className="scene-review__field"><span>摘要</span><SceneReviewText value={scene.synopsis} label={`第 ${scene.number} 场一行摘要`} placeholder="这一场发生了什么？" multiline onCommit={synopsis => useStore.getState().commitReviewSceneMeta(scene.elementId, { synopsis }, documentEpoch)} /></label>
-            <SceneReviewFields scene={scene} expanded />
+            <label className="scene-review__field"><span>简介</span><RichNoteField className="scene-review__summary-input" mode="commit" value={scene.synopsis} label={`第 ${scene.number} 场简介`} placeholder="这一场发生了什么？" onChange={synopsis => useStore.getState().commitReviewSceneMeta(scene.elementId, { synopsis }, documentEpoch)} /></label>
+            <label className="scene-review__field"><span>修改状态</span><select className="scene-review__input" aria-label={`第 ${scene.number} 场修改状态`} value={scene.revisionStatus || ''}
+              onChange={event => useStore.getState().commitReviewSceneMeta(scene.elementId, { revisionStatus: event.target.value ? event.target.value as NonNullable<typeof scene.revisionStatus> : undefined }, documentEpoch)}>
+              <option value="">未标记</option><option value="todo">待修改</option><option value="revising">修改中</option><option value="done">已确认</option>
+            </select></label>
           </article>)}
           {!scenes.length && <p className="scene-review__hint">还没有场景，可先新增场景。</p>}
         </div> : <>{renderSection(null, '未归幕', grouped.other)}
@@ -271,6 +283,7 @@ interface CardProps {
 function Card(p: CardProps) {
   const { scene } = p;
   const dragging = useRef(false);
+  const [noteHover, setNoteHover] = useState(false);
   const isDragging = p.drag?.elementId === scene.elementId;
   const edgeAt = (e: React.DragEvent<HTMLDivElement>) =>
     e.clientX < e.currentTarget.getBoundingClientRect().left + e.currentTarget.getBoundingClientRect().width / 2 ? 'before' : 'after';
@@ -281,7 +294,7 @@ function Card(p: CardProps) {
       }`}
       data-scene-id={scene.elementId}
       style={{ backgroundColor: safeDisplayColor(scene.color) }}
-      draggable
+      draggable={!noteHover}
       onDragStart={(e) => {
         if ((e.target as HTMLElement).closest('button, select, .scene-review')) { e.preventDefault(); return; }
         dragging.current = true;
@@ -319,41 +332,24 @@ function Card(p: CardProps) {
         <input type="checkbox" className="card__select" aria-label={`选择第 ${scene.number} 场`} checked={p.selected}
           onClick={e => { e.stopPropagation(); p.onSelect(e.shiftKey); }} onChange={() => {}} />
         <span className="card__no" draggable title="拖动整场：可移入任意幕或未归幕">{scene.number}</span>
-        <div className="card__colors">
-          {CARD_COLORS.map((c) => (
-            <button
-              key={c}
-              className="card__dot"
-              style={{ background: c }}
-              onClick={(e) => {
-                e.stopPropagation();
-                p.onColor(c);
-              }}
-            />
-          ))}
-        </div>
-      </div>
-      <input
-        className="card__title"
-        value={scene.title}
-        placeholder={scene.heading || '场景标题'}
-        onChange={(e) => p.onTitle(e.target.value)}
-      />
-      {p.editing || scene.synopsis ? (
-        <textarea
-          className="card__synopsis"
-          value={scene.synopsis}
-          placeholder="这一场发生了什么？"
-          onChange={(e) => p.onSynopsis(e.target.value)}
+        <input
+          className="card__title"
+          value={scene.title}
+          placeholder={scene.heading || '场景标题'}
+          aria-label={`第 ${scene.number} 场卡片标题`}
+          onChange={(e) => p.onTitle(e.target.value)}
         />
-      ) : (
-        <div className="card__heading">{scene.heading}</div>
-      )}
+        {scene.revisionStatus && <span className={`card__status is-${scene.revisionStatus}`}>{SCENE_REVIEW_LABELS[scene.revisionStatus]}</span>}
+      </div>
+      {/* 在简介里选字时暂停整卡拖动，否则浏览器会把选字当成拖卡。 */}
+      <div className="card__synopsis-wrap" onMouseEnter={() => setNoteHover(true)} onMouseLeave={() => setNoteHover(false)}>
+        <RichNoteField className="card__synopsis" label={`第 ${scene.number} 场简介`} placeholder="这一场发生了什么？" value={scene.synopsis} onChange={p.onSynopsis} stopPointer />
+      </div>
       <div className="card__footer" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
+        <span className="card__heading" title={scene.heading}>{scene.heading || '未命名场景'}</span>
         <select aria-label={`移动第 ${scene.number} 场`} value="" onChange={e => { if (e.target.value) p.onMove(e.target.value); }}>{p.moveOptions}</select>
         <button className="btn btn--ghost" title="跳转到该场正文" onClick={p.onJump}>正文 ↗</button>
       </div>
-      <SceneReviewFields scene={scene} />
     </div>
   );
 }

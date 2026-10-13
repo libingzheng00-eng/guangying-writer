@@ -83,7 +83,7 @@ const check = (label, actual, expected = true) => {
   await click(title('插入新场景 ⌘/Ctrl+Enter'));
   await click(title('双列对白 ⌘/Ctrl+D'));
   check('恢复后的原命令回调不变', calls.slice(-2), [['insertScene'], ['makeDual']]);
-  await click(Array.from(document.querySelectorAll('.toolbar button')).find((b) => b.textContent === '文件 ▾'));
+  await click(Array.from(document.querySelectorAll('.toolbar button')).find((b) => b.textContent === '文件'));
   check('文件菜单仍保留两个独立 PDF 出口', Array.from(document.querySelectorAll('.menu__item')).filter((b) => b.textContent.includes('PDF')).length, 2);
   await click(Array.from(document.querySelectorAll('.menu__item')).find((b) => b.textContent.includes('创作版 PDF')));
   check('创作版 PDF 调用仍为 creative', calls.at(-1), ['exportPdf', 'creative']);

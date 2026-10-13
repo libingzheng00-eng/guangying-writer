@@ -5,63 +5,66 @@
  */
 @media screen {
   .app-shell[data-theme] {
-    --bg: #181d1b;
-    --panel: #222824;
-    --panel-2: #262d28;
-    --border: #39423b;
-    --border-strong: #525f54;
-    --text: #e1e7df;
-    --muted: #a2afa4;
-    --accent: #b4cbb3;
+    /* 现代工具 · 夜间：中性锌灰，靛蓝强调。 */
+    --bg: #111113;
+    --panel: #18181b;
+    --panel-2: #141416;
+    --border: #27272a;
+    --border-strong: #3f3f46;
+    --text: #f4f4f5;
+    --muted: #a1a1aa;
+    --accent: #8b8cf8;
     --neon-yellow: var(--writing-font-color, #ffffff);
-    --danger: #f58a80;
-    --accent-soft: rgba(166, 195, 165, .12);
+    --danger: #f87171;
+    --accent-soft: rgba(139, 140, 248, .14);
     --accent-glow: transparent;
-    --control-bg: #1d231f;
-    --control-hover: #303b32;
+    --control-bg: #1c1c1f;
+    --control-hover: #27272a;
     --control-text: var(--text);
-    --warm: #cbb997;
-    --glass-bg: #252d27;
+    --warm: #e0a95b;
+    --glass-bg: #1c1c1f;
     --glass-border: var(--border);
-    --card-glow: 0 5px 18px rgba(0, 0, 0, .18);
+    --card-glow: 0 1px 2px rgba(0, 0, 0, .35);
     --glow-shadow: var(--card-glow);
     --glow-cyan: 0 0 0 transparent;
     --glow-cyan-strong: 0 0 0 transparent;
     --glow-warm: 0 0 0 transparent;
     --toolbar-glow: none;
-    --studio-paper: #222824;
-    --studio-paper-shadow: 0 8px 26px rgba(0, 0, 0, .16);
-    --studio-popover-shadow: 0 12px 32px rgba(0, 0, 0, .26);
-    --studio-ruler: #30382f;
-    --studio-tick: rgba(210, 223, 207, .14);
-    --studio-fill: #849a7c;
-    --studio-strong-ink: #1e2d20;
+    --studio-paper: #18181b;
+    --studio-paper-shadow: 0 0 0 1px #27272a, 0 8px 24px rgba(0, 0, 0, .35);
+    --studio-popover-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+    --studio-ruler: #1f1f23;
+    --studio-tick: rgba(244, 244, 245, .10);
+    --studio-fill: #4c4ca8;
+    --studio-strong-ink: #111113;
+    --ui-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
     color-scheme: dark;
   }
   .app-shell[data-theme='day'] {
-    --bg: #eeede8;
-    --panel: #f8f7f3;
-    --panel-2: #efeee8;
-    --border: #dadcd2;
-    --border-strong: #b9c2b5;
-    --text: #303b32;
-    --muted: #677365;
-    --accent: #496a4c;
+    /* 现代工具 · 日间：冷静中性灰，靛蓝强调，发丝线边框。 */
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --panel-2: #fbfbfc;
+    --border: #e6e6ea;
+    --border-strong: #d4d4da;
+    --text: #18181b;
+    --muted: #71717a;
+    --accent: #5b5bd6;
     --neon-yellow: var(--writing-font-color, #000000);
-    --danger: #ad3833;
-    --accent-soft: rgba(84, 117, 83, .09);
-    --control-bg: #fdfcf9;
-    --control-hover: #e6eade;
-    --warm: #806845;
-    --glass-bg: #faf9f5;
-    --card-glow: 0 5px 18px rgba(47, 58, 43, .07);
-    --studio-paper: #fffefb;
-    --studio-paper-shadow: 0 8px 26px rgba(47, 58, 43, .07);
-    --studio-popover-shadow: 0 12px 32px rgba(47, 58, 43, .13);
-    --studio-ruler: #edece4;
-    --studio-tick: rgba(67, 83, 58, .15);
-    --studio-fill: #b1c0a5;
-    --studio-strong-ink: #fffefb;
+    --danger: #b91c1c;
+    --accent-soft: rgba(91, 91, 214, .08);
+    --control-bg: #ffffff;
+    --control-hover: #f1f1f4;
+    --warm: #a16207;
+    --glass-bg: #ffffff;
+    --card-glow: 0 1px 2px rgba(24, 24, 27, .05);
+    --studio-paper: #ffffff;
+    --studio-paper-shadow: 0 0 0 1px #ececf0, 0 4px 14px rgba(24, 24, 27, .05);
+    --studio-popover-shadow: 0 12px 32px rgba(24, 24, 27, .12);
+    --studio-ruler: #f0f0f3;
+    --studio-tick: rgba(24, 24, 27, .10);
+    --studio-fill: #c7c7f0;
+    --studio-strong-ink: #ffffff;
     color-scheme: light;
   }
   .app-shell[data-theme] :is(.toolbar, .statusbar, .board__bar, .cards__bar, .reports__bar, .preview__bar) {
@@ -82,7 +85,7 @@
   .app-shell[data-theme] .editor .sc-el--character.has-contd::after { color: var(--muted); }
   .app-shell[data-theme] .sidebar__tab.is-active { box-shadow: inset 0 -2px var(--accent); }
   .app-shell[data-theme] :is(.nav-item__main, .nav-item__heading, .outline-item__title, .doc-title) { color: var(--text); }
-  .app-shell[data-theme] .outline-item__drag { color: #263328; }
+  .app-shell[data-theme] .outline-item__drag { color: var(--muted); }
   .app-shell[data-theme] .outline-item__synopsis { color: var(--text); background: var(--control-bg); }
   .app-shell[data-theme] .outline-item__synopsis::placeholder { color: var(--muted); }
   .app-shell[data-theme] .toolbar .doc-title { background: transparent; border: 0; border-radius: 6px; font-size: 13px; text-align: left; cursor: pointer; }
@@ -164,13 +167,106 @@
   .app-shell[data-theme] .bcard__connect { color: var(--muted); }
   .app-shell[data-theme] .bcard__connect.is-active { color: var(--accent); background: var(--accent-soft); }
   .app-shell[data-theme] :is(.cards__label, .reports__label, .preview__label, .cards__act-title) { color: var(--text); }
-  /* 故事卡保留作者选择的浅色卡面；文字必须始终用深色，不能继承夜间浅字。 */
-  .app-shell[data-theme] .cards .card { border-color: var(--border); box-shadow: var(--card-glow); backdrop-filter: none; }
-  .app-shell[data-theme] .cards :is(.card__title, .card__synopsis) { color: #263328; background: rgba(255,255,255,.55); }
-  .app-shell[data-theme] .cards .card__heading { color: #465448; }
-  .app-shell[data-theme] .cards .card__no { color: #263328; background: rgba(255,255,255,.5); }
-  .app-shell[data-theme] .cards .card__dot { border-color: rgba(38,51,40,.18); }
+  /* 故事卡：中性卡面，作者选择的场景色只留在左侧 4px 色条（卡片内联底色从卡面左缘露出）。 */
+  .app-shell[data-theme] .cards .card {
+    border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--card-glow); backdrop-filter: none; color: var(--text);
+    background-image: linear-gradient(var(--panel), var(--panel)); background-size: calc(100% - 4px) 100%; background-position: right; background-repeat: no-repeat;
+  }
+  .app-shell[data-theme] .cards .card:hover { border-color: var(--border-strong); }
+  .app-shell[data-theme] .cards .card.is-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--card-glow); }
+  .app-shell[data-theme] .cards :is(.card__title, .card__synopsis) { color: var(--text); background: transparent; border-color: transparent; }
+  .app-shell[data-theme] .cards :is(.card__title, .card__synopsis):is(:hover, :focus) { background: var(--control-hover); }
+  .app-shell[data-theme] .cards .card__synopsis::placeholder { color: var(--muted); }
+  .app-shell[data-theme] .cards .card__heading { color: var(--muted); }
+  .app-shell[data-theme] .cards .card__no { color: var(--muted); background: var(--panel-2); }
+  .app-shell[data-theme] .cards .card__dot { border-color: var(--border-strong); }
+  /* 色块、移至菜单只在悬停、键盘聚焦或选中时出现；控件仍可用 Tab 到达。 */
+  .app-shell[data-theme] .cards .card .card__footer > :is(select, .btn) { opacity: 0; transition: opacity .12s ease; }
+  .app-shell[data-theme] .cards .card:is(:hover, :focus-within, .is-selected) .card__footer > :is(select, .btn) { opacity: 1; }
+  .app-shell[data-theme] .cards .card__select { opacity: .45; }
+  .app-shell[data-theme] .cards .card:is(:hover, :focus-within, .is-selected) .card__select { opacity: 1; }
+  .app-shell[data-theme] .cards .card__footer select { background: var(--control-bg); color: var(--text); border-color: var(--border); }
+  .app-shell[data-theme] .cards .card__footer .btn { color: var(--text); background: var(--control-bg); }
+  /* 故事板与自由板顶栏里的下拉框，与设置窗口同一种细线圆角样式。 */
+  .app-shell[data-theme] :is(.cards__bar, .board__bar) select {
+    height: 30px; padding: 0 26px 0 9px; border: 1px solid var(--border); border-radius: 6px; background-color: var(--control-bg); color: var(--text); font: inherit; font-size: 13px;
+  }
+  .app-shell[data-theme] :is(.cards__bar, .board__bar) select:hover { border-color: var(--border-strong); }
+  .app-shell[data-theme] :is(.cards__bar, .board__bar) select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+  .app-shell[data-theme] .cards__selection-tools { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .app-shell[data-theme] .cards__selection-tools select { width: 108px; }
+  .app-shell[data-theme] .cards__bulk-move select { max-width: 150px; }
+  .app-shell[data-theme] .cards__colors { display: flex; gap: 5px; }
+  .app-shell[data-theme] .cards__colors button { width: 18px; height: 18px; min-width: 18px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%; cursor: pointer; }
+  .app-shell[data-theme] .cards__colors button:hover { transform: scale(1.12); }
   .app-shell[data-theme] :is(.stat__value, .report-block h3, .character-name-edit, .table td) { color: var(--text); }
   .app-shell[data-theme] :is(.stat__label, .table th, .report-block__title span) { color: var(--muted); }
   .app-shell[data-theme] .stat, .app-shell[data-theme] .report-block { background: var(--panel); border-color: var(--border); box-shadow: none; }
+
+  /* ---- 现代工具 · 结构细节（2026-10-13）：只改外观，工具栏高度与正文/素材几何不变 ---- */
+  .ui-icon { flex: none; display: block; }
+  .app-shell[data-theme] .toolbar { gap: 6px; }
+  .app-shell[data-theme] .toolbar :is(.icon-btn, .btn) { font-size: 13px; font-weight: 500; }
+  .app-shell[data-theme] .toolbar .icon-btn { display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+  .app-shell[data-theme] .toolbar :is(.toolbar__labeled, .menu-wrap > .btn, .writing-select-toolbar--toggle button) { display: inline-flex; align-items: center; gap: 5px; }
+  .app-shell[data-theme] .toolbar .icon-btn:disabled { opacity: .35; background: transparent; }
+  .app-shell[data-theme] .toolbar__sep { width: 1px; height: 18px; background: var(--border); flex: none; margin: 0 2px; }
+  .app-shell[data-theme] .toolbar .toolbar__save { color: var(--text); font-weight: 600; }
+  .app-shell[data-theme] .toolbar .segmented.toolbar__views { background: transparent; border-color: transparent; padding: 0; gap: 2px; }
+  .app-shell[data-theme] .toolbar .segmented.toolbar__views button { border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--muted); }
+  .app-shell[data-theme] .toolbar .segmented.toolbar__views button:hover { color: var(--text); background: var(--control-hover); }
+  .app-shell[data-theme] .toolbar .segmented.toolbar__views button.is-active { color: var(--accent); background: var(--accent-soft); box-shadow: none; font-weight: 600; }
+  .app-shell[data-theme] .toolbar .type-select { font-size: 13px; border-radius: 6px; }
+  .app-shell[data-theme] .board__bar .segmented { background: var(--panel-2); }
+  .app-shell[data-theme] :is(.btn, .type-select, .panel__search) { border-radius: 6px; }
+  .app-shell[data-theme] .modal { border-radius: 12px; }
+  .app-shell[data-theme] .statusbar { color: var(--muted); font-size: 12px; }
+  .app-shell[data-theme] .sidebar__tab { color: var(--muted); font-weight: 500; }
+  .app-shell[data-theme] .sidebar__tab.is-active { color: var(--text); }
+  /* 进度栏：打字机指针、刻度与圆手体页数原样保留，只调整配色。 */
+  .app-shell[data-theme] .editor > .write-progress :is(.write-progress__divider, .write-progress__target) { color: var(--muted); }
+  /* 查找面板：结果列表用浅底细线，当前项用强调色描边。 */
+  .app-shell[data-theme] .find-panel { border-radius: 10px; box-shadow: var(--studio-popover-shadow); }
+  .app-shell[data-theme] .find-panel__results > button { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
+  .app-shell[data-theme] .find-panel__results > button:hover { background: var(--control-hover); }
+  .app-shell[data-theme] .find-panel__results > button.is-current { outline: 0; border-color: var(--accent); background: var(--accent-soft); }
+  .app-shell[data-theme] .find-panel__results small { color: var(--muted); opacity: 1; }
+  .app-shell[data-theme] .find-panel :is(input:not([type='checkbox'])) { background: var(--control-bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
+  .app-shell[data-theme] :is(.find-panel__query, .find-panel__heading) > button { border: 1px solid var(--border); border-radius: 6px; background: var(--control-bg); color: var(--text); }
+  .app-shell[data-theme] :is(.find-panel__query, .find-panel__heading) > button:hover:not(:disabled) { background: var(--control-hover); }
+  .app-shell[data-theme] :is(.find-panel__query, .find-panel__heading) > button:disabled { opacity: .4; }
+  .app-shell[data-theme] .find-panel__heading > button[aria-label='关闭查找'] { border-color: transparent; background: transparent; }
+  .app-shell[data-theme] .find-panel__heading > .find-panel__toggle[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  /* 设置与标题页：所有输入框、下拉框、颜色框统一为细线圆角，不再出现浏览器默认黑框。 */
+  .app-shell[data-theme] .modal :is(input:not([type='checkbox']):not([type='radio']):not([type='color']), select, textarea) {
+    box-sizing: border-box; min-height: 32px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--control-bg); color: var(--text); font: inherit; font-size: 13px; box-shadow: none; outline-offset: 0;
+  }
+  .app-shell[data-theme] .modal :is(input:not([type='checkbox']):not([type='radio']):not([type='color']), select, textarea):hover { border-color: var(--border-strong); }
+  .app-shell[data-theme] .modal :is(input:not([type='checkbox']):not([type='radio']):not([type='color']), select, textarea):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+  .app-shell[data-theme] .modal :is(input, textarea)::placeholder { color: var(--muted); }
+  .app-shell[data-theme] .modal .table :is(input, select) { width: 100%; }
+  .app-shell[data-theme] .modal .table select { padding-right: 4px; }
+  .app-shell[data-theme] .modal :is(.table th, .table td) { border-color: var(--border); }
+  .app-shell[data-theme] .modal .table th { font-weight: 500; font-size: 12px; }
+  .app-shell[data-theme] .modal input[type='color'] { min-height: 32px; padding: 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--control-bg); cursor: pointer; }
+  .app-shell[data-theme] .modal .segmented.appearance-theme-switch { display: inline-flex; width: fit-content; max-width: 100%; padding: 3px; gap: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+  .app-shell[data-theme] .modal .segmented.appearance-theme-switch button { height: 26px; padding: 0 16px; border-radius: 6px; color: var(--muted); }
+  .app-shell[data-theme] .modal .segmented.appearance-theme-switch button.is-active { color: var(--accent); background: var(--control-bg); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+  .app-shell[data-theme] .modal .tabs button { border-radius: 6px 6px 0 0; }
+
+  /* 侧栏里的简介编辑区：与输入框同一外观。 */
+  .app-shell[data-theme] :is(.insp__synopsis, .outline-item__synopsis).rich-note {
+    display: block; min-height: 64px; max-height: 220px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--control-bg); color: var(--text); font-size: 13px; line-height: 1.6;
+  }
+  .app-shell[data-theme] .outline-item__synopsis.rich-note { min-height: 40px; font-size: 12px; }
+  .app-shell[data-theme] :is(.insp__synopsis, .outline-item__synopsis).rich-note:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .app-shell[data-theme] .scene-review__summary-input.rich-note { min-height: 36px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control-bg); color: var(--text); }
+
+  /* 窄窗口：带图标的按钮只留图标，文字转为读屏可读的隐藏文本，工具栏不溢出。 */
+  @media (max-width: 1279px) {
+    .app-shell[data-theme] .toolbar .toolbar__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .app-shell[data-theme] .toolbar .toolbar__labeled { gap: 0; }
+  }
 }

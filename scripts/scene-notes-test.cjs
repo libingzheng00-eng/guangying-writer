@@ -95,13 +95,19 @@ const check = (label, actual, expected = true) => {
   }, React.createElement(Sidebar), React.createElement(BoardView), React.createElement(CardsView))));
   const q = (selector) => document.querySelector(selector);
   const card = (id = 'notes-s1') => q(`.bcard--scene[data-id="${id}"]`);
-  const notes = (id = 'notes-s1') => card(id)?.querySelector('textarea.bcard__scene-notes');
+  const notes = (id = 'notes-s1') => card(id)?.querySelector('[data-rich-note].bcard__scene-notes');
   const meta = () => state().project.sceneMeta.find((s) => s.elementId === 'notes-s1');
   const dispatch = async (target, event) => act(async () => { target.dispatchEvent(event); });
-  const input = async (textarea, value) => act(async () => {
+  // 简介编辑区是 contenteditable：写入 HTML（换行为 <br>）后发出 input 事件；读取时还原为纯文字。
+  const esc = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const val = (node) => node.hasAttribute('data-rich-note')
+    ? node.innerHTML.replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    : node.value;
+  const input = async (node, value) => act(async () => {
+    if (node.hasAttribute('data-rich-note')) node.innerHTML = esc(value).replace(/\n/g, '<br>');
     // 原生 setter 绕过 React 的 value tracker，触发实际受控输入 onChange。
-    Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, 'value').set.call(textarea, value);
-    textarea.dispatchEvent(new w.Event('input', { bubbles: true }));
+    else Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, 'value').set.call(node, value);
+    node.dispatchEvent(new w.Event('input', { bubbles: true }));
   });
   const unchangedExceptSynopsis = (before, after, synopsis) => {
     const expected = clone(before);
@@ -112,9 +118,9 @@ const check = (label, actual, expected = true) => {
 
   console.log('\n== 自由板场景信息 ==');
   check('每张场景卡有可编辑信息框', document.querySelectorAll('.bcard__scene-notes').length, 2);
-  check('信息框具有可访问的场号标签', notes()?.getAttribute('aria-label'), '第 1 场故事信息');
-  check('空摘要使用提示语而非重复场景标题', notes()?.placeholder, '这一场发生了什么？');
-  check('空摘要的真实值为空', notes()?.value, '');
+  check('信息框具有可访问的场号标签', notes()?.getAttribute('aria-label'), '第 1 场简介');
+  check('空摘要使用提示语而非重复场景标题', notes()?.dataset.placeholder, '这一场发生了什么？');
+  check('空摘要的真实值为空', val(notes()), '');
   check('第一行保留独立卡片标题', card().querySelector('.bcard__title').textContent, p.sceneMeta[0].title);
   check('无独立标题时保留正文场次标题', card('notes-s2').querySelector('.bcard__title').textContent, p.elements[2].text);
   check('旧重复摘要节点已移除', card('notes-s2').querySelector('.bcard__synopsis'), null);
@@ -125,9 +131,9 @@ const check = (label, actual, expected = true) => {
   await input(notes(), text);
   check('真实输入事件更新 sceneMeta.synopsis', meta().synopsis, text);
   check('编辑只改摘要和更新时间，不改正文/标题/坐标/尺寸/关系线', unchangedExceptSynopsis(before, state().project, text));
-  check('自由板显示完整多行输入', notes().value, text);
-  check('左侧大纲即时显示同一信息', q('.outline-item__synopsis').value, text);
-  check('故事板即时显示同一信息', q('.card__synopsis').value, text);
+  check('自由板显示完整多行输入', val(notes()), text);
+  check('左侧大纲即时显示同一信息', val(q('.outline-item__synopsis')), text);
+  check('故事板即时显示同一信息', val(q('.card[data-scene-id="notes-s1"] .card__synopsis')), text);
   check('一次输入产生一个撤销记录', state().past.length, 1);
 
   const continued = `${text}\n继续补充。`;
@@ -135,10 +141,10 @@ const check = (label, actual, expected = true) => {
   check('连续输入合并为一个撤销点', state().past.length, 1);
   await act(async () => state().undo());
   check('一次撤销完整恢复编辑前工程', state().project, before);
-  check('撤销同步清空自由板和大纲', [notes().value, q('.outline-item__synopsis').value], ['', '']);
+  check('撤销同步清空自由板和大纲', [val(notes()), val(q('.outline-item__synopsis'))], ['', '']);
   await act(async () => state().redo());
-  check('重做恢复完整多行摘要', notes().value, continued);
-  check('重做同步恢复大纲和故事板', [q('.outline-item__synopsis').value, q('.card__synopsis').value], [continued, continued]);
+  check('重做恢复完整多行摘要', val(notes()), continued);
+  check('重做同步恢复大纲和故事板', [val(q('.outline-item__synopsis')), val(q('.card[data-scene-id="notes-s1"] .card__synopsis'))], [continued, continued]);
   check('.zhsp 保存重开保持整个工程', parseProject(serializeProject(state().project)), state().project);
 
   const eventBefore = clone(state().project);
@@ -167,12 +173,12 @@ const check = (label, actual, expected = true) => {
 
   const sidebarText = '从大纲更新的合成故事点。';
   await input(q('.outline-item__synopsis'), sidebarText);
-  check('大纲编辑反向同步自由板和故事板', [notes().value, q('.card__synopsis').value], [sidebarText, sidebarText]);
+  check('大纲编辑反向同步自由板和故事板', [val(notes()), val(q('.card[data-scene-id="notes-s1"] .card__synopsis'))], [sidebarText, sidebarText]);
   const cardsText = '从故事板更新的合成故事点。';
-  await input(q('.card__synopsis'), cardsText);
-  check('故事板编辑反向同步自由板和大纲', [notes().value, q('.outline-item__synopsis').value], [cardsText, cardsText]);
+  await input(q('.card[data-scene-id="notes-s1"] .card__synopsis'), cardsText);
+  check('故事板编辑反向同步自由板和大纲', [val(notes()), val(q('.outline-item__synopsis'))], [cardsText, cardsText]);
   await input(notes(), '');
-  check('删除摘要后不退回重复标题', notes().value, '');
+  check('删除摘要后不退回重复标题', val(notes()), '');
   check('清空摘要仍保留独立标题与关系', [meta().title, state().project.boardLinks], [p.sceneMeta[0].title, p.boardLinks]);
 
   // 文本与 resize 各用独立 coalesce key，互不吞掉撤销边界。
@@ -182,16 +188,16 @@ const check = (label, actual, expected = true) => {
   await input(notes(), '缩放后的合成摘要。');
   check('信息编辑/缩放/再编辑形成三个撤销点', state().past.length, 3);
   await act(async () => state().undo());
-  check('撤销末次摘要编辑保留 resize 结果', [notes().value, meta().w, meta().h], ['缩放前的合成摘要。', 320, 220]);
+  check('撤销末次摘要编辑保留 resize 结果', [val(notes()), meta().w, meta().h], ['缩放前的合成摘要。', 320, 220]);
   await act(async () => state().undo());
-  check('撤销 resize 保留前次摘要', [notes().value, meta().w, meta().h], ['缩放前的合成摘要。', 280, 180]);
+  check('撤销 resize 保留前次摘要', [val(notes()), meta().w, meta().h], ['缩放前的合成摘要。', 280, 180]);
   await act(async () => state().undo());
   check('多步撤销完整恢复原工程', state().project, p);
 
   const legacy = clone(p);
   legacy.sceneMeta = [];
   await reset(legacy);
-  check('旧工程没有元数据时显示空信息框', notes().value, '');
+  check('旧工程没有元数据时显示空信息框', val(notes()), '');
   await input(notes(), '为旧工程补充的合成故事点。');
   check('旧工程首次编辑创建正确元数据', [state().project.sceneMeta.length, meta().elementId, meta().synopsis], [1, 'notes-s1', '为旧工程补充的合成故事点。']);
   check('补充旧工程摘要不改变正文和关系线', [state().project.elements, state().project.boardLinks], [legacy.elements, legacy.boardLinks]);

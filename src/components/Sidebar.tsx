@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { RichNoteField } from './RichNoteField';
 import { useStore, type SidebarMode } from '../store/store';
 import { deriveScenes } from '../model/project';
 import { reorderOutlineScene } from '../model/outline';
@@ -217,11 +218,12 @@ function OutlinePanel() {
                 onChange={(e) => updateSceneMeta(s.elementId, { title: e.target.value })}
               />
             </div>
-            <textarea
+            <RichNoteField
               className="outline-item__synopsis"
               value={s.synopsis}
+              label={`第 ${s.number} 场简介`}
               placeholder="这一场发生了什么？"
-              onChange={(e) => updateSceneMeta(s.elementId, { synopsis: e.target.value })}
+              onChange={(synopsis) => updateSceneMeta(s.elementId, { synopsis })}
             />
             <SceneReviewFields scene={s} />
           </div>
@@ -311,9 +313,10 @@ function InspectorPanel() {
                   className={`rev-chip ${el.rev === r.id ? 'is-active' : ''}`}
                   style={{ backgroundColor: safeDisplayColor(r.color) }}
                   title={r.label}
+                  aria-label={`修订稿：${r.label}`}
                   onClick={() => setRevision(el.id, r.id)}
                 >
-                  {r.label}
+                  {revisionChipLabel(r.label)}
                 </button>
               ))}
             </div>
@@ -331,12 +334,9 @@ function InspectorPanel() {
             <input value={scene.title} placeholder={scene.heading} onChange={(e) => updateSceneMeta(scene.elementId, { title: e.target.value })} />
           </div>
           <div className="field">
-            <label>摘要</label>
-            <textarea
-              value={scene.synopsis}
-              rows={4}
-              onChange={(e) => updateSceneMeta(scene.elementId, { synopsis: e.target.value })}
-            />
+            <label>简介</label>
+            <RichNoteField className="insp__synopsis" value={scene.synopsis} label="场景简介" placeholder="这一场发生了什么？"
+              onChange={(synopsis) => updateSceneMeta(scene.elementId, { synopsis })} />
           </div>
           <SceneReviewFields scene={scene} expanded />
           <div className="field">
@@ -390,4 +390,11 @@ function InspectorPanel() {
       </section>
     </div>
   );
+}
+
+/** 修订色块只有一个字宽：初稿显示为 1，其余取首字（完整名称在悬停提示中）。 */
+export function revisionChipLabel(label: string) {
+  const text = label.trim();
+  if (text === '初稿') return '1';
+  return Array.from(text)[0] || '·';
 }

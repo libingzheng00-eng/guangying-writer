@@ -78,4 +78,20 @@
   .scene-review__board-tools > .scene-review { flex: 1 0 100%; }
   .scene-review__board-tools .scene-review__fields { padding-bottom: 0; }
   @media (max-width: 1000px) { .scene-review__row .scene-review__fields { grid-template-columns: 1fr; } }
+
+  /* ---- 2026-10-13 故事板卡片：简介为主体；场景标题在底部、不加灰底；颜色与状态移到顶栏 ---- */
+  .cards .card { display: flex; flex-direction: column; gap: 8px; min-height: 232px; padding: 12px 14px 10px; }
+  .cards .card__head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .cards .card__head .card__title { flex: 1 1 auto; min-width: 0; padding: 2px 4px; border: 0; border-radius: 5px; background: transparent; font-size: 14px; font-weight: 600; }
+  .cards .card__status { flex: none; padding: 0 7px; border-radius: 999px; font-size: 11px; line-height: 18px; background: var(--panel-2, #f1f1f4); color: var(--muted); }
+  .cards .card__status.is-todo { background: rgba(217, 119, 6, .12); color: #b45309; }
+  .cards .card__status.is-revising { background: var(--accent-soft); color: var(--accent); }
+  .cards .card__status.is-done { background: rgba(22, 163, 74, .12); color: #15803d; }
+  .cards .card__synopsis-wrap { flex: 1 1 auto; display: flex; min-height: 112px; }
+  .cards .card .card__synopsis { flex: 1 1 auto; min-height: 112px; max-height: 260px; margin: 0; padding: 6px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; font-size: 13.5px; line-height: 1.65; resize: none; }
+  .cards .card .card__synopsis:hover { background: var(--control-hover); }
+  .cards .card .card__synopsis:focus { border-color: var(--accent); background: var(--control-bg); }
+  .cards .card__footer { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); }
+  .cards .card__footer .card__heading { flex: 1 1 auto; min-width: 0; margin: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: transparent; color: var(--muted); font-size: 12px; }
+  .cards .card__footer select { flex: 0 1 110px; width: auto; min-width: 0; height: 26px; padding: 0 6px; font-size: 12px; }
 }

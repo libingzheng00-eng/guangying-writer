@@ -1,6 +1,6 @@
 /**
- * Real BoardView handlers mounted with synthetic data in jsdom. Covers mode,
- * editing, selection, link transactions and drag/release state contracts.
+ * Real BoardView handlers mounted with synthetic data in jsdom. Covers editing,
+ * selection, connector-drag / L / toolbar link transactions and drag/release state contracts.
  * Layout APIs are stubbed by the harness: this is not real pointer/visual QA.
  */
 const assert = require('node:assert/strict');
@@ -11,11 +11,16 @@ let h;
 (async () => {
   h = await makeBoardHarness('board-workspace-ui');
   const { act, state, clone, q, qa, card, hit, label, byName, mouse, click, key, press, pressCard, input, mount, history, selectedLink } = h;
-  const mode = () => q('.board--workspace').dataset.mode;
+  const linking = () => q('.board--workspace').dataset.linking;
+  // 卡片文字是 contenteditable：写入后发出 input 事件；读取用纯文字。
+  const richInput = (node, value) => act(async () => { node.innerHTML = value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>'); node.dispatchEvent(new h.w.Event('input', { bubbles: true })); });
+  const richText = (node) => node.innerHTML.replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+  // jsdom 没有布局：连线松手时由测试指定指针下的卡片。
+  const pointerOver = (node) => { document.elementFromPoint = () => node; };
+  const connector = (id) => card(id).querySelector('.bcard__connector');
+  const linkBetween = (a, b) => state().project.boardLinks.find((link) => (link.from === a && link.to === b) || (link.from === b && link.to === a));
   const pos = (id) => [parseFloat(card(id).style.left), parseFloat(card(id).style.top)];
   const canvas = () => q('.board__canvas');
-  const selectTool = () => q('.board__dock button[aria-label="选择卡片"]');
-  const linkTool = () => q('.board__dock button[aria-label="连接两张卡片"]');
   const relationInput = () => q('.board-link__input[aria-label="关系说明"]');
   const title = (id) => card(id).querySelector('span.bcard__media-title[role="button"]');
   const titleInput = (id) => card(id).querySelector('input.bcard__media-title');
@@ -28,81 +33,85 @@ let h;
   await mount();
   const original = clone(state().project);
   const initialHistory = history();
-  check('工作区默认选择模式', mode(), 'select');
-  check('两个互斥工具具有可访问名称', !!selectTool() && !!linkTool());
+  check('默认不处于连线拖动状态', linking(), 'off');
+  check('每张卡片都有连线圆点，旧的选择/连线模式按钮已移除', [qa('.bcard__connector').length, qa('.board__dock button[aria-label="连接两张卡片"]').length], [4, 0]);
   check('新增和视图设置收拢为可访问下拉入口', qa('.board__dropdown summary').map((node) => node.getAttribute('aria-label')).sort(), ['新增卡片', '视图设置']);
   check('卡片均具有统一身份与类型', qa('[data-card]').map((node) => [node.dataset.id, node.dataset.kind]), [['s1', 'scene'], ['s2', 'scene'], ['b1', 'beat'], ['b2', 'sound']]);
-  check('空选区不显示条件上下文条', q('.board__context'), null);
+  check('空选区不显示顶栏卡片工具', q('.board__selection-tools'), null);
   await pressCard('b1');
   check('普通卡片点击选中统一ID', state().selectedIds, ['beat:b1']);
-  check('选择卡片后显示颜色和场景关联上下文', !!q('.board__context [aria-label="卡片颜色 1"]') && !!q('.board__context select[aria-label="关联到场景"]'));
+  check('选择卡片后顶栏显示颜色和场景关联', !!q('.board__selection-tools [aria-label="卡片颜色 1"]') && !!q('.board__selection-tools select[aria-label="关联到场景"]'));
+  check('选中卡片不弹出浮动窗口', q('.board__context'), null);
   check('原常驻逐卡连接/删除/关联入口已收拢', qa('[data-card] .bcard__connect, [data-card] .bcard__del, [data-card] select').length, 0);
   check('点击选择不产生工程变更/历史', [state().project, history()], [original, initialHistory]);
 
-  // L只在画布非编辑状态且无修饰键/组合输入时启用。
+  // L 只在恰好选中两张卡片、画布非编辑状态且无修饰键/组合输入时连线。
   await mouse(title('b2'), 'dblclick');
   check('声音标题双击后才显示可编辑输入框', !!titleInput('b2'));
+  await act(async () => state().setSelectedIds(['scene:s2', 'beat:b2']));
   const contentEditable = document.createElement('div');
   contentEditable.contentEditable = 'true';
   contentEditable.setAttribute('contenteditable', 'true');
   contentEditable.innerHTML = '<span>合成可编辑内容</span>';
   canvas().append(contentEditable);
-  const editTargets = [card('s1').querySelector('.bcard__scene-notes'), card('b1').querySelector('textarea.bcard__edit'), titleInput('b2'), q('select[aria-label="关联到场景"]'), contentEditable.querySelector('span')];
+  const editTargets = [card('s1').querySelector('.bcard__scene-notes'), card('b1').querySelector('[data-rich-note].bcard__edit'), titleInput('b2'), contentEditable.querySelector('span')];
   for (const target of editTargets) {
     const event = await key(target, 'l');
-    check(`L在${target.tagName}编辑区域不切模式`, [mode(), event.defaultPrevented], ['select', false]);
+    check(`L在${target.tagName}编辑区域不连线`, [state().project.boardLinks.length, event.defaultPrevented], [3, false]);
   }
   for (const modifier of ['ctrlKey', 'metaKey', 'altKey', 'shiftKey']) {
     const event = await key(document.body, 'l', { [modifier]: true });
-    check(`L带${modifier}不切模式`, [mode(), event.defaultPrevented], ['select', false]);
+    check(`L带${modifier}不连线`, [state().project.boardLinks.length, event.defaultPrevented], [3, false]);
   }
   const composingL = await key(document.body, 'l', { isComposing: true });
-  check('L组合期间不切模式', [mode(), composingL.defaultPrevented], ['select', false]);
+  check('L组合期间不连线', [state().project.boardLinks.length, composingL.defaultPrevented], [3, false]);
   const imeL = await key(document.body, 'l', { keyCode: 229 });
-  check('L的229组合占位键不切模式', [mode(), imeL.defaultPrevented], ['select', false]);
+  check('L的229组合占位键不连线', [state().project.boardLinks.length, imeL.defaultPrevented], [3, false]);
   contentEditable.remove();
   await key(titleInput('b2'), 'Escape');
+  await act(async () => state().setSelectedIds(['scene:s2', 'beat:b2']));
   const lKey = await key(document.body, 'l');
-  check('普通L进入连接模式并接管按键', [mode(), lKey.defaultPrevented], ['link', true]);
-  await key(document.body, 'Escape');
-  check('Esc退出连接模式且不改变工程', [mode(), state().project, history()], ['select', original, initialHistory]);
-  await click(linkTool());
-  check('连接工具可进入连接模式', mode(), 'link');
-  await click(selectTool());
-  check('选择工具可恢复选择模式', mode(), 'select');
-
-  await click(linkTool());
-  const beforeConnect = clone(state().project);
-  const beforeConnectHistory = history();
-  await pressCard('s2');
-  check('点击A只记录连接起点，不写工程/历史', [state().project, history()], [beforeConnect, beforeConnectHistory]);
-  await pressCard('b2');
-  const created = state().project.boardLinks.find((link) => link.from === 'scene:s2' && link.to === 'beat:b2' || link.from === 'beat:b2' && link.to === 'scene:s2');
-  check('点A/B复用既有关系模型建立一条连接', !!created && state().project.boardLinks.length === 4);
-  check('连接操作只产生一个历史', state().past.length, 1);
-  check('点连接两端不改正文/卡片/坐标', [state().project.elements, state().project.sceneMeta, state().project.beats], [original.elements, original.sceneMeta, original.beats]);
+  const created = linkBetween('scene:s2', 'beat:b2');
+  check('选中两张卡片按 L 直接连线', [!!created, lKey.defaultPrevented, state().project.boardLinks.length], [true, true, 4]);
+  check('连线只产生一个历史并选中新关系', [state().past.length, selectedLink()], [1, created.id]);
+  check('连线不改正文/卡片/坐标', [state().project.elements, state().project.sceneMeta, state().project.beats], [original.elements, original.sceneMeta, original.beats]);
   await act(async () => state().undo());
   check('一次撤销完整移除新关系', state().project, original);
   await act(async () => state().redo());
-  check('重做恢复同一关系ID', state().project.boardLinks.find((link) => link.id === created.id)?.id, created.id);
+  check('重做恢复同一关系ID', linkBetween('scene:s2', 'beat:b2')?.id, created.id);
+
+  // 拖动卡片右侧圆点到另一张卡片即可连线。
   await mount();
-  for (const ids of [['s1', 'b1'], ['b1', 's1'], ['s1', 's1']]) {
-    await click(linkTool());
-    await pressCard(ids[0]);
-    await pressCard(ids[1]);
-    check(`连接${ids.join(' → ')}不制造重复或自连`, [state().project, state().past.length], [original, 0]);
-    await key(document.body, 'Escape');
+  pointerOver(card('b2'));
+  await drag(connector('s2'), 140, 60);
+  check('拖圆点到另一张卡片建立一条连线', [!!linkBetween('scene:s2', 'beat:b2'), state().project.boardLinks.length, state().past.length], [true, 4, 1]);
+  check('拖圆点连线不移动卡片', [pos('s2'), state().project.sceneMeta, state().project.beats], [[parseFloat(card('s2').style.left), parseFloat(card('s2').style.top)], original.sceneMeta, original.beats]);
+  await mount();
+  for (const [from, over] of [['s1', 'b1'], ['b1', 's1'], ['s1', 's1']]) {
+    pointerOver(card(over));
+    await drag(connector(from), 120, 40);
+    check(`拖圆点 ${from} → ${over} 不制造重复或自连`, [state().project, state().past.length], [original, 0]);
   }
-  await click(linkTool());
-  await pressCard('s2');
+  pointerOver(canvas());
+  await drag(connector('s2'), 200, 80);
+  check('拖到空白处松开不建立连线', [state().project, state().past.length, linking()], [original, 0, 'off']);
+  pointerOver(card('b2'));
+  await mouse(connector('s2'), 'mousedown', { clientX: 100, clientY: 100 });
+  await mouse(h.w, 'mousemove', { clientX: 220, clientY: 160 });
+  check('拖动中显示连线预览', [linking(), !!q('.board-link__draft')], ['on', true]);
   await key(document.body, 'Escape');
-  await pressCard('b2');
-  check('Esc取消已选A，之后点击B仅选择卡片', [mode(), state().project, state().selectedIds, state().past.length], ['select', original, ['beat:b2'], 0]);
+  await mouse(h.w, 'mouseup', { clientX: 220, clientY: 160 });
+  check('Esc 取消拖动中的连线', [state().project, state().past.length, linking()], [original, 0, 'off']);
+  await pressCard('s2');
+  await pressCard('b2', { ctrlKey: true });
+  await click(q('.board__selection-tools .board__connect'));
+  check('选中两张卡片后顶栏「连线」按钮也能连线', [!!linkBetween('scene:s2', 'beat:b2'), state().past.length], [true, 1]);
+  delete document.elementFromPoint;
 
   // 普通标题保留选择、Shift和组拖动；只有显式编辑才创建输入框。
   await mount();
   check('灵感/声音标题初始为可聚焦文字而非常驻输入框', [qa('span.bcard__media-title[role="button"]').length, qa('input.bcard__media-title').length], [2, 0]);
-  check('声音标题初始文字与说明分别保留', [title('b2').textContent, card('b2').querySelector('textarea.bcard__edit').value], ['合成声音', '合成声音']);
+  check('声音标题初始文字与说明分别保留', [title('b2').textContent, richText(card('b2').querySelector('[data-rich-note].bcard__edit'))], ['合成声音', '合成声音']);
   await press(title('b1'));
   check('普通标题点击选择卡片并保留非编辑状态', [state().selectedIds, titleInput('b1'), state().past.length], [['beat:b1'], null, 0]);
   await press(title('b2'), { shiftKey: true });
@@ -113,11 +122,10 @@ let h;
   await act(async () => state().undo());
   check('标题区组拖动一次撤销完整恢复', state().project, original);
   await mount();
-  await click(linkTool());
-  await press(title('b2'));
-  check('连接模式点击普通标题可选择连接起点', [mode(), card('b2').classList.contains('is-linking')], ['link', true]);
-  await pressCard('s2');
-  check('普通标题连接与另一张卡片完成既有关系事务', [state().project.boardLinks.length, state().past.length], [4, 1]);
+  pointerOver(title('s2') || card('s2').querySelector('.bcard__title'));
+  await drag(connector('b2'), 150, 30);
+  check('拖圆点松开在另一张卡片的标题上也能连线', [state().project.boardLinks.length, state().past.length], [4, 1]);
+  delete document.elementFromPoint;
 
   await mount();
   const beforeTitle = clone(state().project);
@@ -132,7 +140,7 @@ let h;
     const event = await key(titleInput('b2'), value);
     check(`正在编辑标题时${value}保留普通文字输入`, event.defaultPrevented, false);
   }
-  check('标题编辑手势不拖卡、连线、删除或缩放', [state().project, state().past.length, mode(), q('.board__world').style.transform], [beforeTitle, 0, 'select', 'translate(0px, 0px) scale(1)']);
+  check('标题编辑手势不拖卡、连线、删除或缩放', [state().project, state().past.length, linking(), q('.board__world').style.transform], [beforeTitle, 0, 'off', 'translate(0px, 0px) scale(1)']);
   const composingTitleEnter = await key(titleInput('b2'), 'Enter', { isComposing: true });
   const imeTitleEnter = await key(titleInput('b2'), 'Enter', { keyCode: 229 });
   check('组合期间Enter与229不提交标题', [!!titleInput('b2'), state().project, composingTitleEnter.defaultPrevented, imeTitleEnter.defaultPrevented], [true, beforeTitle, false, false]);
@@ -155,14 +163,14 @@ let h;
   await key(titleInput('b1'), 'Escape');
   await mouse(title('b2'), 'dblclick');
   await input(titleInput('b2'), '失焦提交的合成标题');
-  await click(linkTool());
-  check('切入连接模式先按失焦语义提交并关闭标题编辑', [mode(), titleInput('b2'), state().project.beats[1].title, state().past.length], ['link', null, '失焦提交的合成标题', 1]);
+  await pressCard('s1');
+  check('点别的卡片先按失焦语义提交并关闭标题编辑', [titleInput('b2'), state().project.beats[1].title, state().past.length], [null, '失焦提交的合成标题', 1]);
 
   // 文本输入在连接/选择模式都保持普通编辑边界。
   await mount();
   await act(async () => state().setSelectedIds(['beat:b1']));
   const notes = card('s1').querySelector('.bcard__scene-notes');
-  const beatEdit = card('b1').querySelector('textarea.bcard__edit');
+  const beatEdit = card('b1').querySelector('[data-rich-note].bcard__edit');
   const assoc = q('select[aria-label="关联到场景"]');
   const beforeAssociationGesture = clone(state().project);
   const associationHistory = history();
@@ -174,11 +182,10 @@ let h;
   }
   await h.dispatch(assoc, new h.w.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 200 }));
   check('选择模式的上下文关联手势不拖卡、不删卡、不缩放', [state().project, history(), q('.board__world').style.transform], [beforeAssociationGesture, associationHistory, 'translate(0px, 0px) scale(1)']);
-  await click(linkTool());
   const beforeEditingGestures = clone(state().project);
   const beforeEditingHistory = history();
   const transform = q('.board__world').style.transform;
-  for (const target of [notes, beatEdit, card('b2').querySelector('textarea.bcard__edit')]) {
+  for (const target of [notes, beatEdit, card('b2').querySelector('[data-rich-note].bcard__edit')]) {
     await drag(target, 130, 90);
     await mouse(target, 'dblclick');
     for (const value of ['Delete', 'Backspace']) {
@@ -186,16 +193,15 @@ let h;
       check(`${target.tagName}内${value}保留原生编辑`, event.defaultPrevented, false);
     }
     await h.dispatch(target, new h.w.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 200 }));
-    check(`${target.tagName}编辑手势不选连接起点或切连接模式`, [mode(), qa('[data-card].is-linking').length], ['link', 0]);
+    check(`${target.tagName}编辑手势不开始连线`, [linking(), qa('[data-card].is-linking').length], ['off', 0]);
   }
   check('摘要/灵感/关联/声音编辑手势不拖卡、不连线、不删卡', [state().project, history()], [beforeEditingGestures, beforeEditingHistory]);
   check('编辑区域双击不跳正文，滚轮不缩放画布', [state().view, state().focus, q('.board__world').style.transform], ['board', null, transform]);
-  await input(notes, '更新的合成摘要。\n第二行。');
-  check('连接模式中摘要仍直接更新共用synopsis', state().project.sceneMeta[0].synopsis, '更新的合成摘要。\n第二行。');
+  await richInput(notes, '更新的合成摘要。\n第二行。');
+  check('摘要直接更新共用synopsis', state().project.sceneMeta[0].synopsis, '更新的合成摘要。\n第二行。');
   check('摘要输入不改正文/坐标/尺寸/关系', [state().project.elements, state().project.sceneMeta.map(({ synopsis, ...meta }) => meta), state().project.boardLinks], [original.elements, original.sceneMeta.map(({ synopsis, ...meta }) => meta), original.boardLinks]);
-  await input(beatEdit, '更新的合成灵感');
-  check('连接模式中灵感仍可正常输入', state().project.beats[0].text, '更新的合成灵感');
-  await click(selectTool());
+  await richInput(beatEdit, '更新的合成灵感');
+  check('灵感可正常输入', state().project.beats[0].text, '更新的合成灵感');
   await pressCard('b1');
   await input(q('select[aria-label="关联到场景"]'), 'm2');
   check('上下文关联保留SceneMeta.id语义且只改变关联场景', [state().project.beats[0].sceneId, state().project.elements, state().project.boardLinks], ['m2', original.elements, original.boardLinks]);
@@ -207,7 +213,7 @@ let h;
   await pressCard('b1');
   await press(hit('l1'));
   check('点击关系线清空卡片选区并选中关系', [state().selectedIds, selectedLink()], [[], 'l1']);
-  check('选中关系线不显示卡片颜色/关联上下文', q('.board__context'), null);
+  check('选中关系线不显示顶栏卡片工具', q('.board__selection-tools'), null);
   await pressCard('s2');
   check('选卡清空关系选择', [state().selectedIds, selectedLink()], [['scene:s2'], '']);
   await press(hit('l2'));
@@ -230,7 +236,7 @@ let h;
   check('关系输入暂存期间不制造工程历史', [state().project, state().past.length], [beforeLabelEdit, 0]);
   const noteDelete = await key(relationInput(), 'Delete');
   const noteL = await key(relationInput(), 'l');
-  check('关系说明的Delete/L保留文本编辑，不删线或切模式', [noteDelete.defaultPrevented, noteL.defaultPrevented, mode(), state().project.boardLinks.length], [false, false, 'select', 3]);
+  check('关系说明的Delete/L保留文本编辑，不删线或连线', [noteDelete.defaultPrevented, noteL.defaultPrevented, linking(), state().project.boardLinks.length], [false, false, 'off', 3]);
   const composingEnter = await key(relationInput(), 'Enter', { isComposing: true });
   check('组合期间Enter不提交关系说明', [!!relationInput(), state().project, composingEnter.defaultPrevented], [true, beforeLabelEdit, false]);
   await key(relationInput(), 'Enter');
@@ -259,11 +265,13 @@ let h;
   check('关系端点被过滤时清除关系选择', selectedLink(), '');
   check('过滤只改视图，不改工程/历史', [state().project, state().past.length], [original, 0]);
   await click(byName('总览'));
-  await click(linkTool());
-  await pressCard('s2');
+  pointerOver(card('b2'));
+  await mouse(connector('s2'), 'mousedown', { clientX: 100, clientY: 100 });
+  await mouse(h.w, 'mousemove', { clientX: 200, clientY: 140 });
   await click(byName('灵感板'));
-  await pressCard('b2');
-  check('过滤会取消不可见的连接起点', [state().project, state().past.length], [original, 0]);
+  await mouse(h.w, 'mouseup', { clientX: 200, clientY: 140 });
+  check('切换显示范围会取消拖动中的连线', [state().project, state().past.length, linking()], [original, 0, 'off']);
+  delete document.elementFromPoint;
 
   // 开关和世界变换都必须留在工作区状态；保存数据不受影响。
   await mount();
@@ -348,8 +356,8 @@ let h;
   nestedEditor.setAttribute('contenteditable', 'true');
   nestedEditor.innerHTML = '<span><em>合成嵌套编辑文字</em></span>';
   canvas().appendChild(nestedEditor);
-  const nativeWheelTargets = [card('s1').querySelector('textarea'), titleInput('b2'),
-    q('.board__context select'), nestedEditor.querySelector('em'), q('.board__dock button')];
+  const nativeWheelTargets = [card('s1').querySelector('[data-rich-note]'), titleInput('b2'),
+    nestedEditor.querySelector('em'), q('.board__dock button')];
   for (const target of nativeWheelTargets) {
     const beforeWheel = state().writingContext, beforeTransform = q('.board__world').style.transform;
     const result = await sendWheel(target);
