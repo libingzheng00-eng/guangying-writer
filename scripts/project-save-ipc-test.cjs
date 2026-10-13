@@ -150,6 +150,7 @@ async function main() {
   const h = harness();
   const { state: s } = h;
   const content = '{"title":"合成IPC保存","elements":[{"text":"<b>合成文字</b>"}]}';
+  const printHTML = '<!doctype html><section class="print-sheet">synthetic A4 snapshot</section>';
   const file = '/synthetic-qa/工程.zhsp';
   const recentPath = '/synthetic-qa-userData/recent.json';
   eq(s.windows.length, 1, 'VM created only a fake window');
@@ -290,8 +291,14 @@ async function main() {
     eq(s.writes.at(-1).encoding, 'utf8');
   }
 
+  const invalidPdfBefore = [s.dialogs.length, s.pdfCalls.length, s.helperCalls.length, s.writes.length];
+  for (const opts of [{}, { mode: 'print' }, { mode: 'print', html: '' }, { html: printHTML }]) {
+    await assert.rejects(() => h.invoke('pdf:export', opts), /ESECURITY/); checks++;
+  }
+  deep([s.dialogs.length, s.pdfCalls.length, s.helperCalls.length, s.writes.length], invalidPdfBefore,
+    'missing mode or A4 snapshots cannot open a dialog, print the live window or touch project/export files');
   for (const mode of ['creative', 'print']) {
-    const opts = { mode, name: '合成PDF.pdf', pageSize: { width: 210000, height: 297000 }, html: mode === 'creative' ? '<section class="export-sheet">synthetic canvas</section>' : undefined };
+    const opts = { mode, name: '合成PDF.pdf', pageSize: { width: 210000, height: 297000 }, html: mode === 'creative' ? '<section class="export-sheet">synthetic canvas</section>' : printHTML };
     const helperBefore = s.helperCalls.length;
     const picked = `/synthetic-${mode}.pdf`;
     s.saves.push({ canceled: false, filePath: picked });
@@ -342,7 +349,7 @@ async function main() {
     ['dialog:save', { content, name: '合成:第一稿?.zhsp' }, '合成_第一稿_.zhsp'],
     ['dialog:saveAs', { content, name: 'CON', ext: 'zhsp' }, '_CON.zhsp'],
     ['dialog:saveAs', { content, name: '合成/稿件', ext: 'txt' }, '合成_稿件.txt'],
-    ['pdf:export', { mode: 'print', name: '合成<稿件>.pdf' }, '合成_稿件_.pdf'],
+    ['pdf:export', { mode: 'print', name: '合成<稿件>.pdf', html: printHTML }, '合成_稿件_.pdf'],
   ]) {
     const selectedPath = windowsPath.replace(/\.zhsp$/, `.${route === 'pdf:export' ? 'pdf' : payload.ext || 'zhsp'}`);
     ws.saves.push({ canceled: false, filePath: selectedPath });

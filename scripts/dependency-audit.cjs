@@ -21,7 +21,7 @@ assert.ok(!report.error && report.metadata?.vulnerabilities && report.vulnerabil
 fs.mkdirSync(path.dirname(destination), { recursive: true });
 fs.writeFileSync(destination, JSON.stringify(report, null, 2) + '\n', { flag: 'wx' });
 // These development-server advisories are explicitly reviewed in
-// SECURITY_UPGRADE.md. A new advisory, including one in the same package,
+// docs/features/SECURITY_UPGRADE.md. A new advisory, including one in the same package,
 // requires fresh review rather than silently inheriting this exception.
 const reviewed = new Map([
   ['https://github.com/advisories/GHSA-67mh-4wv8-2f99', ['esbuild', 'moderate']],

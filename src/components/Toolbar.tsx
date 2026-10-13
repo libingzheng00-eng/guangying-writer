@@ -10,6 +10,7 @@ const VIEWS: { key: ViewMode; label: string }[] = [
   { key: 'write', label: '写作' },
   { key: 'cards', label: '故事板' },
   { key: 'board', label: '自由板' },
+  { key: 'character-lines', label: '人物线' },
   { key: 'preview', label: '预览' },
   { key: 'reports', label: '统计' },
 ];
@@ -161,7 +162,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
       {/* 写作红线：多选只替换同宽工具区，不增加顶栏高度、不动正文或 Tab 逻辑。
           完成多选后恢复全部原格式入口，避免展开操作挤压文件菜单及视图按钮。 */}
       <div className="toolbar__group toolbar__context">
-      {selecting ? (
+      {view === 'character-lines' ? <span className="toolbar__reader-hint">只读人物线 · 定位正文后编辑</span> : selecting ? (
         <div className="toolbar__group writing-select-toolbar writing-select-toolbar--actions" role="group" aria-label="段落多选操作">
           <span className="writing-select-toolbar__count" title={`已选 ${writingSelectedIds.length} 段`} aria-live="polite">已选 {writingSelectedIds.length} 段</span>
           <button title="选择全部正文段落" onClick={() => setWritingSelectedIds(project.elements.map((el) => el.id))}>全选</button>
@@ -206,7 +207,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
       </>}
       </div>
 
-      {project.settings.revisionMode ? (
+      {view !== 'character-lines' && project.settings.revisionMode ? (
         <div className="toolbar__group toolbar__revisions" title="修订稿颜色（可横向滚动）">
           <span className="rev-label">修订</span>
           {project.revisions.slice(1).map((r) => (

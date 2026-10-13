@@ -24,10 +24,11 @@ const entries = Object.freeze({
   search: 'search-electron.cjs',
   image: 'image-drop-electron.cjs',
   review: 'review-electron.cjs',
+  characters: 'character-lines-electron.cjs',
 });
 const mode = process.env.GUANGYING_QA_MODE || 'manual';
 if (!Object.prototype.hasOwnProperty.call(entries, mode)) {
-  throw new Error('Unknown native QA mode. Allowed: manual, editing, smarttype, input, pdf, search, image, review.');
+  throw new Error('Unknown native QA mode. Allowed: manual, editing, smarttype, input, pdf, search, image, review, characters.');
 }
 
 // Do not trust external path overrides; all modes test the candidate built from

@@ -85,10 +85,11 @@ function savePayload(payload, saveAs = false) {
 }
 function pdfPayload(opts) {
   record(opts); text(opts.name, 4096, true);
-  if (opts.mode !== undefined && opts.mode !== 'creative' && opts.mode !== 'print') rejectRequest();
+  if (opts.mode !== 'creative' && opts.mode !== 'print') rejectRequest();
   if (opts.landscape !== undefined && typeof opts.landscape !== 'boolean') rejectRequest();
+  content(opts.html);
+  if (opts.mode === 'print' && !/<section\b[^>]*\sclass\s*=\s*(?:"(?:[^"]*\s)?print-sheet(?:\s[^"]*)?"|'(?:[^']*\s)?print-sheet(?:\s[^']*)?')/i.test(opts.html)) rejectRequest();
   if (opts.mode === 'creative') {
-    content(opts.html);
     if (!/<section\b[^>]*\bclass\s*=\s*["'][^"']*\bexport-sheet\b[^"']*["']/i.test(opts.html)) rejectRequest();
     record(opts.pageSize);
     // Existing creative canvas is bounded to 18,000 CSS pixels per page.

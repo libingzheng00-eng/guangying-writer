@@ -13,6 +13,7 @@ const suites = [
   'clipboard-ui-test.cjs',
   'writing-range-integrity-test.cjs',
   'file-commands-test.cjs',
+  'choice-dialog-ui-test.cjs',
   'recent-projects-test.cjs',
   'writing-context-test.cjs',
   'startup-ui-test.cjs',
@@ -34,7 +35,9 @@ const suites = [
   'smarttype-ui-test.cjs',
   'search-test.cjs',
   'search-ui-test.cjs',
+  'find-replace-test.cjs',
   'zhsp-compat-test.cjs',
+  'forward-compat-test.cjs',
   'history-test.cjs',
   'input-performance-test.cjs',
   'pagination-safety-test.cjs',
@@ -57,6 +60,11 @@ const suites = [
   'review-store-test.cjs',
   'scene-review-ui-test.cjs',
   'revision-workspace-ui-test.cjs',
+  'character-lines-model-test.cjs',
+  'character-lines-store-test.cjs',
+  'character-lines-ui-test.cjs',
+  'character-navigation-test.cjs',
+  'export-command-races-test.cjs',
 ];
 
 for (const [index, suite] of suites.entries()) {

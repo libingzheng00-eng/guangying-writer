@@ -1,14 +1,15 @@
 import { useCallback, useRef, useState } from 'react';
 import { useStore } from '../store/store';
 import { bridge } from '../io/native';
-import { parseProject, serializeProject } from '../io/zhsp';
+import { parseProject, projectFileNotice, serializeProject } from '../io/zhsp';
 import { fromFdx, toFdx } from '../io/fdx';
 import { fromPlainText, toHtml, toMarkdown, toPlainText } from '../io/textscript';
 import { createProject, newElement, sceneHeadings } from '../model/project';
-import { PAPER_MM } from '../model/stats';
 import type { ElementType } from '../model/types';
 import { buildCreativePdf } from '../io/creativePdf';
+import { buildPrintPdf } from '../io/printPdf';
 import { loadStoredWritingContext } from './writingContext';
+import { askChoice } from './choiceDialog';
 
 /** 等待图片解码完成，避免 printToPDF 在图片卡尚未绘制时抢先输出。 */
 async function waitForPrintableAssets() {
@@ -34,6 +35,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   const isSaving = useCallback(() => saving.current, []);
   const openingRequest = useRef(0);
   const opening = useRef(false);
+  const pdfRequest = useRef(0);
   const [isOpening, setIsOpening] = useState(false);
 
   const save = useCallback(
@@ -102,6 +104,17 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
       } else {
         project = parseProject(res.content);
         filePath = res.path;
+        const notice = projectFileNotice(res.content, project);
+        if (notice.newerFormat || notice.preservedFields.length) {
+          const choice = await askChoice({
+            title: '这个工程来自更新的版本',
+            message: '它由较新版本的光影写手保存，含有本版不认识的内容。\n可以照常打开和编辑；这些内容会原样保留，保存时一并写回，但在本版中看不到、也不会导出。',
+            warning: '建议先保留一份原文件副本，或改用新版编辑。',
+            options: [{ value: 'open', label: '打开并保留新版内容', tone: 'primary' }, { value: 'cancel', label: '不打开' }],
+            cancelValue: 'cancel',
+          });
+          if (choice !== 'open' || store.getState().documentEpoch !== epochAtOpen) return false;
+        }
       }
       const hasDraft = !!document.querySelector('[data-project-draft-pending="true"]');
       if ((store.getState().dirty || hasDraft) && !window.confirm('当前剧本有未保存的修改或未确认的文字，打开其他剧本将放弃这些内容。确定继续吗？')) return false;
@@ -148,16 +161,27 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
         notify('没有识别到内容', 'error');
         return false;
       }
-      const append = window.confirm(`识别到 ${elements.length} 个元素。\n\n「确定」= 追加到当前剧本末尾\n「取消」= 替换整个剧本`);
-      if (append) {
+      const current = store.getState();
+      const hasDraft = !!document.querySelector('[data-project-draft-pending="true"]');
+      const choice = await askChoice({
+        title: '导入文本 / FDX',
+        message: `识别到 ${elements.length} 个元素。要怎样放进当前剧本？`,
+        warning: current.dirty || hasDraft ? '当前剧本有未保存的修改。选择「替换整个剧本」会放弃这些修改。' : undefined,
+        options: [
+          { value: 'append', label: '追加到剧本末尾', tone: 'primary' },
+          { value: 'replace', label: '替换整个剧本', tone: 'danger' },
+          { value: 'cancel', label: '不导入' },
+        ],
+        cancelValue: 'cancel',
+      });
+      // The document may have changed while the dialog was open.
+      if (choice === 'cancel' || store.getState().documentEpoch !== documentEpoch) return false;
+      if (choice === 'append') {
         mutate((p) => {
           p.elements.push(...elements);
         });
       } else {
-        const current = store.getState();
-        const hasDraft = !!document.querySelector('[data-project-draft-pending="true"]');
-        if ((current.dirty || hasDraft) && !window.confirm('当前剧本有未保存的修改或未确认的文字，导入并替换将放弃这些内容。确定继续吗？')) return false;
-        const p = createProject(current.project.name);
+        const p = createProject(store.getState().project.name);
         p.elements = elements;
         beforeReplace.current?.();
         loadProject(p, null);
@@ -176,42 +200,82 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   }, [store]);
 
   const exportPdf = useCallback(async (mode: 'creative' | 'print' = 'creative') => {
-    const { project, setView, notify, view, pdfExportMode, setPdfExportMode } = store.getState();
+    const { project, documentEpoch, version, setView, notify, view, pdfExportMode, setPdfExportMode } = store.getState();
     if (pdfExportMode) return;
+    const request = ++pdfRequest.current;
+    const exportView = mode === 'creative' ? 'write' : 'preview';
     const scrollTop = document.querySelector('.editor')?.scrollTop || 0;
     setPdfExportMode(mode);
-    setView(mode === 'creative' ? 'write' : 'preview');
+    setView(exportView);
+    let invalidated = false;
+    let interruptWait!: () => void;
+    const interrupted = new Promise<void>(resolve => { interruptWait = resolve; });
+    const isCurrent = () => {
+      const state = store.getState();
+      return request === pdfRequest.current && state.documentEpoch === documentEpoch &&
+        state.project === project && state.version === version && state.view === exportView && state.pdfExportMode === mode;
+    };
+    const unsubscribe = store.subscribe(() => {
+      if (!isCurrent()) { invalidated = true; interruptWait(); }
+    });
+    const assertCurrent = () => {
+      if (invalidated || !isCurrent()) throw new Error('剧本、内容或视图已改变，请重新导出。');
+    };
+    // A document/view change also releases a font/image wait that belongs to a
+    // detached old view. The losing promise cannot later continue this export.
+    const waitFor = async (promise: PromiseLike<unknown> | undefined) => {
+      await Promise.race([Promise.resolve(promise), interrupted]);
+      assertCurrent();
+    };
     try {
       const selector = mode === 'creative' ? '.editor__scroll[data-ready="true"]' : '.preview[data-ready="true"]';
+      const paginationKey = `${version}:${mode === 'creative' ? project.settings.paper : 'A4'}`;
       let ready: HTMLElement | null = null;
       for (let i = 0; i < 160; i++) {
+        assertCurrent();
         ready = document.querySelector<HTMLElement>(selector);
-        if (ready) break;
-        await new Promise(r => setTimeout(r, 50));
+        if (ready?.dataset.paginationKey === paginationKey) break;
+        ready = null;
+        await waitFor(new Promise(r => setTimeout(r, 50)));
       }
       if (!ready) throw new Error('排版尚未就绪，请稍后重试。');
-      await document.fonts?.ready;
-      await waitForPrintableAssets();
-      if (store.getState().project.id !== project.id) throw new Error('工程已切换，请重新导出。');
-      const opts = mode === 'creative' ? buildCreativePdf(ready) : {
-        mode: 'print' as const,
-        pageSize: { width: PAPER_MM.A4.w * 1000, height: PAPER_MM.A4.h * 1000 },
-      };
+      await waitFor(document.fonts?.ready);
+      await waitFor(waitForPrintableAssets());
+      if (document.querySelector(selector) !== ready || ready.dataset.paginationKey !== paginationKey) {
+        throw new Error('排版已经改变，请重新导出。');
+      }
+      // Both modes hand native code a frozen display snapshot before any Save
+      // dialog opens. A4 must never print the later live main-window document.
+      const opts = mode === 'creative' ? buildCreativePdf(ready) : buildPrintPdf(ready);
       const file = await bridge.exportPdf({ ...opts, name: `${project.name}-${mode === 'creative' ? '创作版' : 'A4纯文本'}.pdf` });
       if (file) {
-        notify(`已导出 PDF：${file}`, 'ok');
+        notify(`已导出${isCurrent() ? '' : '先前版本'} PDF：${file}`, 'ok');
         bridge.showInFolder(file);
       }
     } catch (err) {
       notify(`导出失败：${(err as Error).message}`, 'error');
     } finally {
-      setPdfExportMode(null);
-      // 取消/完成均回到原视图与滚动位置，导出不会改工程或撤销栈。
-      setView(view);
-      if (view === 'write') requestAnimationFrame(() => {
-        const editor = document.querySelector('.editor');
-        if (editor) editor.scrollTop = scrollTop;
-      });
+      unsubscribe();
+      if (request === pdfRequest.current) {
+        const restoreView = !invalidated && isCurrent();
+        // Keep context persistence suppressed while undoing our temporary view.
+        // A later document or an explicit user view choice owns its own position.
+        if (restoreView) setView(view);
+        if (store.getState().pdfExportMode === mode) setPdfExportMode(null);
+        if (!restoreView && store.getState().documentEpoch === documentEpoch) {
+          setView(store.getState().view);
+        }
+        if (restoreView && view === 'write' && exportView !== 'write') {
+          const focus = store.getState().focus;
+          requestAnimationFrame(() => {
+            const current = store.getState();
+            if (request !== pdfRequest.current || current.documentEpoch !== documentEpoch ||
+                current.view !== 'write' || current.pdfExportMode || current.focus !== focus) return;
+            const editor = document.querySelector('.editor');
+            if (editor) editor.scrollTop = scrollTop;
+          });
+        }
+      }
     }
   }, [store]);
 
@@ -224,9 +288,13 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
         md: toMarkdown,
         html: toHtml,
       } as const;
-      const content = map[kind](project);
-      const file = await bridge.saveProjectAs({ content, name: project.name, ext: kind });
-      if (file) notify(`已导出：${file}`, 'ok');
+      try {
+        const content = map[kind](project);
+        const file = await bridge.saveProjectAs({ content, name: project.name, ext: kind });
+        if (file) notify(`已导出：${file}`, 'ok');
+      } catch (err) {
+        notify(`导出失败：${(err as Error).message}`, 'error');
+      }
     },
     [store],
   );
@@ -246,6 +314,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
 
   const setElementType = useCallback(
     (type: ElementType) => {
+      if (store.getState().view === 'character-lines') { store.getState().notify('请先定位到正文，再编辑段落。'); return; }
       const { activeId, setType, requestFocus, project } = store.getState();
       if (!activeId) return;
       setType(activeId, type);
@@ -256,6 +325,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   );
 
   const insertScene = useCallback(() => {
+    if (store.getState().view === 'character-lines') { store.getState().notify('请先定位到正文，再编辑段落。'); return; }
     const { activeId, project, insertAfter, requestFocus } = store.getState();
     if (!activeId) return;
     const idx = project.elements.findIndex((e) => e.id === activeId);
@@ -269,6 +339,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   }, [store]);
 
   const makeDual = useCallback(() => {
+    if (store.getState().view === 'character-lines') { store.getState().notify('请先定位到正文，再编辑段落。'); return; }
     const { activeId, project, mutate, requestFocus } = store.getState();
     if (!activeId) return;
     const idx = project.elements.findIndex((e) => e.id === activeId);
@@ -300,6 +371,10 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
 
   const openFind = useCallback(() => {
     if (store.getState().pdfExportMode) return;
+    if (store.getState().view === 'character-lines') {
+      window.dispatchEvent(new Event('guangying:character-lines-find'));
+      return;
+    }
     store.getState().setView('write');
     window.dispatchEvent(new Event('guangying:find'));
   }, [store]);

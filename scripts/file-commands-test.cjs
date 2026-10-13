@@ -41,6 +41,7 @@ const deferred = () => {
     stdin: { contents: `
       export {useCommands} from './src/app/useCommands';
       export {useStore} from './src/store/store';
+      export {setChoiceHost} from './src/app/choiceDialog';
       export {createProject} from './src/model/project';
       export {serializeProject} from './src/io/zhsp';
       export {toFdx} from './src/io/fdx';
@@ -66,7 +67,10 @@ const deferred = () => {
   bundle.filename = filename;
   bundle.paths = Module._nodeModulePaths(repo);
   bundle._compile(built.outputFiles[0].text, filename);
-  const { useCommands, useStore, createProject, serializeProject, toFdx, toPlainText, toMarkdown, toHtml } = bundle.exports;
+  const { useCommands, useStore, setChoiceHost, createProject, serializeProject, toFdx, toPlainText, toMarkdown, toHtml } = bundle.exports;
+  const choices = [];
+  let choiceResult = 'cancel';
+  setChoiceHost((request, resolve) => { choices.push(request); resolve(choiceResult); });
   const state = () => useStore.getState();
   const calls = [];
   let openResult = null;
@@ -327,14 +331,27 @@ const deferred = () => {
   waitingImport.resolve({ path: '/synthetic/import.txt', content: '过期导入文字' });
   await pendingImport;
   check('stale import cannot append into a later document or ask for replacement', [state().project, confirms], [switched, 0]);
-  reset();
-  openResult = { path: '/synthetic/import.txt', content: '合成替换内容' };
-  confirmResult = false;
-  const retainedImport = state();
-  await commands.importAny();
-  check('import replacement separately protects dirty document when discard is declined',
-    [confirms, state().project, state().filePath, state().past],
-    [2, retainedImport.project, retainedImport.filePath, retainedImport.past]);
+  check('stale import never shows the import choice', choices.length, 0);
+  const importText = { path: '/synthetic/import.txt', content: '合成导入内容' };
+  reset(); openResult = importText; choiceResult = 'cancel';
+  const beforeCancel = state();
+  check('choosing 不导入 returns false', await commands.importAny(), false);
+  check('cancel leaves project, path and history untouched',
+    [state().project, state().filePath, state().past], [beforeCancel.project, beforeCancel.filePath, beforeCancel.past]);
+  const asked = choices.at(-1);
+  check('every import option is named by its effect', asked.options.map(option => option.label), ['追加到剧本末尾', '替换整个剧本', '不导入']);
+  check('Esc/close maps to the safe option', asked.cancelValue, 'cancel');
+  check('dirty document is warned about inside the same choice', !!asked.warning, true);
+  check('no browser confirm is used for import', confirms, 0);
+  reset(); openResult = importText; choiceResult = 'append';
+  const beforeAppend = state();
+  check('append choice imports', await commands.importAny(), true);
+  check('append keeps existing text and adds imported elements in one undo step',
+    [state().project.elements[0].text, state().project.elements.length > 1, state().past.length, state().filePath],
+    ['合成正文', true, beforeAppend.past.length + 1, beforeAppend.filePath]);
+  reset(); openResult = importText; choiceResult = 'replace';
+  check('replace choice imports', await commands.importAny(), true);
+  check('replace starts an unsaved project without a file binding', [state().project.elements.some(e => e.text === '合成正文'), state().filePath, state().dirty], [false, null, true]);
   reset();
   openResult = new Error('合成导入对话框失败');
   check('import bridge rejection is caught and releases shared open lock', await commands.importAny(), false);

@@ -7,6 +7,7 @@ import { CardsView } from './components/CardsView';
 import { BoardView } from './components/BoardView';
 import { PreviewView } from './components/PreviewView';
 import { ReportsView } from './components/ReportsView';
+import { CharacterLinesView } from './components/CharacterLinesView';
 import { Sidebar } from './components/Sidebar';
 import { StatusBar } from './components/StatusBar';
 import { Toolbar } from './components/Toolbar';
@@ -23,6 +24,7 @@ import { useRecoveryStatus } from './app/recoveryStatus';
 import { ownsNativeHistory, runEditHistory } from './utils/editHistory';
 import { createModalSession, type ModalSession } from './app/modalFocus';
 import { StartupPage } from './components/StartupPage';
+import { ChoiceDialogHost } from './components/ChoiceDialog';
 import { bridge, type RecentProject } from './io/native';
 import { readStartupPreference, writeStartupPreference, type StartupPreference } from './app/startupPreference';
 import { subscribeWritingContextPersistence } from './app/writingContext';
@@ -256,11 +258,16 @@ export default function App() {
         if (action === 'edit:undo' || action === 'edit:redo') {
           if (document.querySelector('.revision-workspace [data-project-draft-pending="true"]') && !ownsNativeHistory(document.activeElement)) {
             useStore.getState().notify('请先确认或取消工作台里的文字草稿。');
-          } else modalSession.current?.history(action === 'edit:undo' ? 'undo' : 'redo');
+          } else if (ownsNativeHistory(document.activeElement)) runEditHistory(action === 'edit:undo' ? 'undo' : 'redo');
+          else modalSession.current?.history(action === 'edit:undo' ? 'undo' : 'redo');
         }
         return;
       }
       const st = useStore.getState();
+      if (st.view === 'character-lines' && action.startsWith('element:')) {
+        st.notify('人物线为只读阅读，请先定位正文后编辑。');
+        return;
+      }
       if (action === 'file:home') { showHome(); return; }
       if (homeOpen && action !== 'file:new' && action !== 'file:open') return;
       switch (action) {
@@ -324,6 +331,7 @@ export default function App() {
         case 'view:board':
         case 'view:preview':
         case 'view:reports':
+        case 'view:character-lines':
           st.setView(action.split(':')[1] as 'write');
           break;
         case 'view:sidebar':
@@ -392,13 +400,14 @@ export default function App() {
           onContinue={activated || hasRecovery ? activateProject : undefined} /> : <>
         <Toolbar commands={commands} modalOpen={dialog !== null} onOpenHome={showHome} onOpenSettings={() => openDialog('settings')} onOpenTitle={() => openDialog('title')} onOpenReview={() => openDialog('review')} />
         <div className="app-body">
-          <Sidebar />
+          {view !== 'character-lines' ? <Sidebar /> : null}
           <main className="app-main">
             {view === 'write' ? <Editor /> : null}
             {view === 'cards' ? <CardsView /> : null}
             {view === 'board' ? <BoardView /> : null}
             {view === 'preview' ? <PreviewView onExportPdf={commands.exportPdf} /> : null}
             {view === 'reports' ? <ReportsView /> : null}
+            {view === 'character-lines' ? <CharacterLinesView onLocate={target => useStore.getState().requestCharacterSource(target)} onReturnToWriting={() => useStore.getState().setView('write')} /> : null}
           </main>
         </div>
         <StatusBar />
@@ -407,6 +416,7 @@ export default function App() {
         {dialog === 'settings' ? <SettingsDialog onClose={closeDialog} session={modalSession.current!} /> : null}
         {dialog === 'title' ? <TitlePageDialog onClose={closeDialog} session={modalSession.current!} /> : null}
         {dialog === 'review' && reviewContext ? <RevisionWorkspaceDialog onClose={closeDialog} session={modalSession.current!} context={reviewContext} /> : null}
+        <ChoiceDialogHost />
         {toast ? <Toast text={toast.text} kind={toast.kind} ts={toast.ts} /> : null}
       </div>
     </PaginationProvider>

@@ -1104,6 +1104,8 @@ textarea {
   background: #fff;
   color: #14181f; /* 白纸上用深色字（预览与打印一致） */
   box-sizing: border-box;
+  /* 纵向 flex 容器里不能被压扁：矮窗口下页面会被裁掉下半页，A4 快照也会继承这个高度。 */
+  flex: none;
   position: relative;
   box-shadow:
     0 0 0 1px rgba(88, 166, 255, 0.06),
@@ -2657,3 +2659,9 @@ textarea {
 .doc-title { -webkit-app-region: no-drag; cursor: pointer; }
 .statusbar__recovery { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .statusbar__recovery.is-error { color: #b54432; }
+
+/* 具名选项对话框：每个按钮都写明后果，不再依赖「确定 / 取消」的隐含意思。 */
+.choice-dialog { width: min(460px, calc(100vw - 32px)); }
+.choice-dialog__message { margin: 0 0 12px; line-height: 1.7; white-space: pre-line; }
+.choice-dialog__warning { margin: 0 0 12px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--danger, #d9534f); line-height: 1.6; }
+.choice-dialog__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
