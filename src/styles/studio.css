@@ -262,6 +262,13 @@
   .app-shell[data-theme] :is(.insp__synopsis, .outline-item__synopsis).rich-note:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .app-shell[data-theme] .scene-review__summary-input.rich-note { min-height: 36px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control-bg); color: var(--text); }
 
+  /* 侧栏标签栏与各视图顶栏同高（44px），两边的分隔线连成一条。 */
+  .app-shell[data-theme] :is(.sidebar__tabs, .cards__bar, .board__bar, .reports__bar, .preview__bar) {
+    box-sizing: border-box; height: 44px; min-height: 44px; flex: 0 0 44px; padding-top: 0; padding-bottom: 0; align-items: center; border-bottom: 1px solid var(--border);
+  }
+  .app-shell[data-theme] .sidebar__tabs { align-items: stretch; }
+  .app-shell[data-theme] .sidebar__tab { display: inline-flex; align-items: center; justify-content: center; }
+
   /* 窄窗口：带图标的按钮只留图标，文字转为读屏可读的隐藏文本，工具栏不溢出。 */
   @media (max-width: 1279px) {
     .app-shell[data-theme] .toolbar .toolbar__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

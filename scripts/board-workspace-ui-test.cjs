@@ -80,7 +80,7 @@ let h;
   await act(async () => state().redo());
   check('重做恢复同一关系ID', linkBetween('scene:s2', 'beat:b2')?.id, created.id);
 
-  // 拖动卡片右侧圆点到另一张卡片即可连线。
+  // 拖动卡片右上角的连线钮到另一张卡片即可连线。
   await mount();
   pointerOver(card('b2'));
   await drag(connector('s2'), 140, 60);
@@ -340,15 +340,41 @@ let h;
   check('画布wheel确实取消原生滚动默认行为', firstWheel.event.defaultPrevented, true);
   check('画布wheel只在自己的原生监听器取消默认，绝不在React passive根监听器取消', firstWheel.cancelledAt, [canvas()]);
   const firstBoard = state().writingContext.board;
-  check('wheel缩放保持既有0.9倍率及鼠标世界坐标锚点', [firstBoard.zoom,
-    (300 - firstBoard.panX) / firstBoard.zoom, (200 - firstBoard.panY) / firstBoard.zoom], [.9, 300, 200]);
+  // 按滚动量连续缩放：滚轮一格（deltaY 120）约缩小 13%，而不是每个事件固定跳 10%。
+  check('wheel按滚动量连续缩放并保持鼠标世界坐标锚点', [Math.abs(firstBoard.zoom - Math.exp(-120 * .0012)) < 1e-12,
+    Math.round((300 - firstBoard.panX) / firstBoard.zoom * 1e9) / 1e9, Math.round((200 - firstBoard.panY) / firstBoard.zoom * 1e9) / 1e9], [true, 300, 200]);
   check('wheel后画布不以原生scroll偏移且不修改工程历史',
     [canvas().scrollLeft, canvas().scrollTop, state().project, history()], [0, 0, wheelProject, wheelHistory]);
   await sendWheel(canvas(), -120, 300, 200);
-  check('连续wheel使用当前缩放，保留原世界坐标锚点',
-    Math.abs(state().writingContext.board.zoom - .99) < 1e-12 &&
+  check('反向滚动同样幅度回到原比例，保留原世界坐标锚点',
+    Math.abs(state().writingContext.board.zoom - 1) < 1e-12 &&
     Math.abs((300 - state().writingContext.board.panX) / state().writingContext.board.zoom - 300) < 1e-10 &&
     Math.abs((200 - state().writingContext.board.panY) / state().writingContext.board.zoom - 200) < 1e-10);
+
+  // 触控板捏合（ctrlKey）一次只给几个像素的 delta，每个事件只缩放几个百分点。
+  for (let i = 0; i < 5; i++) await h.dispatch(canvas(), new h.w.WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 4, ctrlKey: true, clientX: 300, clientY: 200 }));
+  check('触控板捏合5次细小缩放共约18%，不再一下跳到最小', Math.round(state().writingContext.board.zoom * 1000) / 1000, Math.round(Math.exp(-20 * .01) * 1000) / 1000);
+  const zoomField = () => q('input[aria-label="自由板缩放比例"]');
+  const typeZoom = async (value, finish) => {
+    await act(async () => { zoomField().focus(); });
+    await input(zoomField(), value);
+    await key(zoomField(), finish);
+  };
+  check('缩放比例显示为可输入的百分数', zoomField().value, String(Math.round(state().writingContext.board.zoom * 100)));
+  const zoomProject = state().project, zoomHistory = history();
+  await typeZoom('150', 'Enter');
+  check('输入150回车后缩放到150%', [state().writingContext.board.zoom, zoomField().value], [1.5, '150']);
+  await typeZoom('80%', 'Enter');
+  check('带百分号输入也能识别', [state().writingContext.board.zoom, zoomField().value], [.8, '80']);
+  await typeZoom('999', 'Enter');
+  check('超出范围的比例自动限制在40%–200%', [state().writingContext.board.zoom, zoomField().value], [2, '200']);
+  await typeZoom('55', 'Escape');
+  check('Esc放弃输入，保持原比例', [state().writingContext.board.zoom, zoomField().value], [2, '200']);
+  await typeZoom('abc', 'Enter');
+  check('无效输入不改变比例并恢复显示', [state().writingContext.board.zoom, zoomField().value], [2, '200']);
+  check('改缩放比例不写工程、不进撤销历史', [state().project, history()], [zoomProject, zoomHistory]);
+  await click(q('button[aria-label="缩小自由板"]'));
+  check('−按钮后输入框同步显示新比例', zoomField().value, '190');
 
   await pressCard('b1');
   await mouse(title('b2'), 'dblclick');

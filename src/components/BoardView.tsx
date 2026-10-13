@@ -29,6 +29,9 @@ const autoPos = (index: number) => ({ x: 48 + (index % 3) * 364, y: 48 + Math.fl
 const dimension = (value: number | undefined, fallback: number) => Number.isFinite(value) && value! > 0 ? value! : fallback;
 const isTextTarget = (target: EventTarget | null) => target instanceof Element &&
   (!!target.closest('input,textarea,select') || (target instanceof HTMLElement && target.isContentEditable));
+const WHEEL_SCROLL_RATE = .0012;
+const WHEEL_PINCH_RATE = .01;
+const clampZoom = (value: number) => Math.max(.4, Math.min(2, Number.isFinite(value) ? value : 1));
 const keepsNativeWheel = (target: EventTarget | null) => isTextTarget(target) ||
   (target instanceof Element && !!target.closest('.board__dock, .board__context-menu'));
 
@@ -307,9 +310,17 @@ export function BoardView() {
   const onWheel = (event: React.WheelEvent) => {
     if (keepsNativeWheel(event.target) || gesture.current || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const next = Math.max(.4, Math.min(2, zoom * (event.deltaY > 0 ? .9 : 1.1)));
+    // 按滚动量连续缩放：触控板一次只给很小的 delta，不再每个事件跳 10%。
+    // 触控板捏合（ctrlKey）比普通滚轮灵敏一些；鼠标滚轮一格约为 ±11%。
+    const next = clampZoom(zoom * Math.exp(-event.deltaY * (event.ctrlKey ? WHEEL_PINCH_RATE : WHEEL_SCROLL_RATE)));
     const x = event.clientX - rect.left, y = event.clientY - rect.top;
     setPan({ x: x - (x - pan.x) * next / zoom, y: y - (y - pan.y) * next / zoom }); setZoom(next);
+  };
+  // 输入的比例以画布中心为锚点，画面不跳走。
+  const zoomTo = (next: number) => {
+    const target = clampZoom(next);
+    const x = canvasSize.width / 2, y = canvasSize.height / 2;
+    setPan({ x: x - (x - pan.x) * target / zoom, y: y - (y - pan.y) * target / zoom }); setZoom(target);
   };
   const closeAddMenu = () => { if (addMenuRef.current) addMenuRef.current.open = false; };
   const addCard = (kind: 'beat' | 'sound') => {
@@ -419,11 +430,37 @@ export function BoardView() {
         {!contextMenu.linkId && contextMenu.ids.length === 2 && <button role="menuitem" onClick={() => { connectCards(contextMenu.ids[0], contextMenu.ids[1]); setContextMenu(null); }}>连接这两张卡片</button>}
         <button role="menuitem" className="is-danger" onClick={() => { if (contextMenu.linkId) { useStore.getState().deleteBoardLink(contextMenu.linkId); setSelectedLink(null); } else deleteCards(contextMenu.ids); setContextMenu(null); }}>{menuDeleteLabel}</button>
       </div>}
-      <div className="board__hint">拖动卡片右侧的圆点到另一张卡片即可连线 · Shift 多选 · Delete 删除 · 空格拖动画布</div>
+      <div className="board__hint">拖动卡片右上角的连线钮到另一张卡片即可连线 · Shift 多选 · Delete 删除 · 空格拖动画布</div>
       <div className="board__dock" role="toolbar" aria-label="自由板工具" onMouseDown={stopMouse} onDoubleClick={stopMouse}>
         <div className="zoom-ctl"><button className="icon-btn" aria-label="缩小自由板" onClick={() => setZoom((value) => Math.max(.4, Math.round((value - .1) * 10) / 10))}>−</button>
-          <span className="zoom-val">{Math.round(zoom * 100)}%</span><button className="icon-btn" aria-label="放大自由板" onClick={() => setZoom((value) => Math.min(2, Math.round((value + .1) * 10) / 10))}>+</button></div>
+          <ZoomInput zoom={zoom} onCommit={zoomTo} /><button className="icon-btn" aria-label="放大自由板" onClick={() => setZoom((value) => Math.min(2, Math.round((value + .1) * 10) / 10))}>+</button></div>
       </div>
     </div>
   </div>;
+}
+
+/** 可直接输入的缩放比例（40%–200%）；Enter 或失焦生效，Esc 还原。 */
+function ZoomInput({ zoom, onCommit }: { zoom: number; onCommit: (zoom: number) => void }) {
+  const shown = String(Math.round(zoom * 100));
+  const [draft, setDraft] = useState(shown);
+  const editing = useRef(false);
+  const cancelled = useRef(false);
+  useEffect(() => { if (!editing.current) setDraft(shown); }, [shown]);
+  const commit = () => {
+    editing.current = false;
+    if (cancelled.current) { cancelled.current = false; setDraft(shown); return; }
+    const value = parseFloat(draft.replace(/[^\d.]/g, ''));
+    if (Number.isFinite(value) && value > 0) onCommit(value / 100);
+    setDraft(String(Math.round(clampZoom(Number.isFinite(value) && value > 0 ? value / 100 : zoom) * 100)));
+  };
+  return <label className="zoom-val zoom-input" title="输入缩放比例，Enter 确认">
+    <input aria-label="自由板缩放比例" inputMode="numeric" value={draft} onFocus={(event) => { editing.current = true; event.currentTarget.select(); }}
+      onChange={(event) => setDraft(event.target.value)} onBlur={commit}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.nativeEvent.isComposing) return;
+        if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
+        if (event.key === 'Escape') { event.preventDefault(); cancelled.current = true; event.currentTarget.blur(); }
+      }} />%
+  </label>;
 }
