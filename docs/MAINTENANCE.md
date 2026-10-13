@@ -1,8 +1,6 @@
 # 光影写手源码维护手册
 
-更新：2026-10-08。适用于当前 `1.3.0-alpha.18.13` 安全候选源码；安全边界见 [SECURITY_UPGRADE.md](SECURITY_UPGRADE.md)。版本号不代表推送、main合并或公开发布已经完成；实际安装附件以对应 GitHub Release 为准。
-
-这是当前维护入口；历史版本记录保留在 `CHANGELOG.md` / `DEVELOPER_HANDOFF.md`，不要把旧日志中的状态当作当前交付事实。行为契约以 [CORE_FEATURES.md](CORE_FEATURES.md) 为准，本轮SmartType与交付证据见 [SMARTTYPE_QA_20261008.md](SMARTTYPE_QA_20261008.md) / [RELEASE_ALPHA_18_12.md](RELEASE_ALPHA_18_12.md)，历史/剪贴板及智能引号边界见 [EDITING_QA_20261007.md](EDITING_QA_20261007.md) / [SMART_QUOTES_QA_20261007.md](SMART_QUOTES_QA_20261007.md)。
+更新：2026-10-13，适用于 `1.3.0-alpha.18.17`。行为契约以 [CORE_FEATURES.md](../CORE_FEATURES.md) 为准，当前状态见 [DEVELOPER_HANDOFF.md](../DEVELOPER_HANDOFF.md)。历次验收记录在 [archive/](archive/)，只做追溯。
 
 ## 1. 开工与交付规则
 
@@ -25,7 +23,7 @@ npm run build
 npm run test:core
 ```
 
-`test:core` 当前顺序执行44套源码专项，包含恢复、工程落盘、保存 IPC、写作派生、模态/菜单、设置读写一致性与工程/显示/IPC安全检查；任一异常退出、被信号终止或超时立即失败。它不包含原生 Electron 或系统剪贴板实测。两条 CI 也列出这些检查。新增核心测试时同步维护 runner 和两条 CI，不只写在文档里。
+`test:core` 依次执行 `scripts/core-regression.cjs` 中列出的 61 套源码专项，任一失败立即停止。它不启动原生 Electron，也不碰系统剪贴板。CI 调用同一个 runner；新增核心测试时只需登记到 runner。
 
 快速定位可分别运行：
 
@@ -179,23 +177,25 @@ Editor接受前核对DOM/光标、原HTML/类型、documentEpoch和候选目录�
 | 文字/历史/快捷键 | editing、smartquotes、history、input、clipboard-format、clipboard-ui、writing-range-integrity、native-draft-history | 连续 Undo/Redo、段中 Enter、剪贴板、中文 IME、原生菜单 |
 | 保存/打开/异步素材 | file-commands、autosave-path、autosave-recovery、project-save、project-save-ipc、zhsp-compat | 独立用户目录保存、取消/失败、保存中编辑/切稿、恢复点失败、关闭提示、重启恢复 |
 | 自动补全 | smarttype、smarttype-ui、writing、smarttype-electron | 空段跨类型/两次Enter、9 次以上 Tab 正反循环、候选/Esc/IME/光标非段尾、目录变化与单次撤销 |
-| 查找 | search、search-ui | 格式/软换行/emoji 命中、定位、高亮不入导出 |
+| 查找/替换 | search、search-ui、find-replace | 格式/软换行/emoji 命中、定位、高亮不入导出；替换保留格式、一步撤销 |
+| 导入/兼容 | file-commands、choice-dialog-ui、forward-compat、zhsp-compat | 导入三选项与 Esc；新版字段保存往返；打开新版文件的提示 |
+| 人物线 | character-lines-model/store/ui、character-navigation | `character-lines-native.cjs`：保存、重开、两种 PDF 不泄漏私密记录 |
 | 自由板 | board-workspace-model/UI、board-polish、scene-notes | 拖动、缩放、磁吸、连线备注、多选、Delete、撤销 |
 | 大纲/故事板/幕 | outline-reorder、storyboard-drop、storyboard-acts | 多场双向排序、归幕/未归幕、折叠/空幕、多选和撤销 |
-| 分页/PDF | pagination-safety、pdf-transport | 真 PDF 大图与长稿、图文原位、A4、双列、续页 |
+| 分页/PDF | pagination-safety、pdf-transport、export-command-races | 真 PDF 大图与长稿、图文原位、A4、双列、续页 |
 | 派生/统计/外观 | writing-derivation、source-integrity、reports、appearance、studio-theme、progress-bands | 长稿、改名/撤销/切稿缓存失效、日夜、长标题、目标比例/跳转、统计同步 |
 
-`smoke` 使用唯一临时壳 manifest 与临时 userData，不改仓库 `package.json.main`。本轮分层结果见 [RELIABILITY_QA_20261007.md](RELIABILITY_QA_20261007.md)；脚本存在、语法/VM检查或源码37套检查本身不能证明实机通过，真实输入法/文件对话框等待验边界单独列出。
+原生验收：先 `npm run build`，再建一个临时外壳目录，里面只放 `package.json`（`name` 必须是 `guangying-native-acceptance-qa`，`main` 指向本仓库的 `scripts/native-acceptance-launcher.cjs`），然后运行：
 
-`native-acceptance-launcher.cjs` 只接受固定 QA manifest 和 manual/editing/smarttype/input/pdf/search/image 白名单模式；新增 `smarttype` 固定映射到 `scripts/smarttype-electron.cjs`，不允许外部任意入口/renderer路径。manual壳加载当前候选主进程，使用独立临时userData和合成工程。其余夹具由 `native-fixture-window.cjs` 在React挂载前加载合成种子；恢复检查使用同入口/partition且不重新种子化。销毁测试自有窗口只用于夹具清理，不能冒充真实关闭确认验收。CDP输入法事件、内存DataTransfer复制/粘贴和自动文件drop，分别不能代替原生中文输入法、系统剪贴板和Finder手势。不要直接运行旧安装包测试用户窗口；老 `capture/integration` 仍须逐项审查入口/目录。
+```bash
+GUANGYING_QA_MODE=pdf GUANGYING_QA_HIDDEN=1 node_modules/electron/dist/Electron.app/Contents/MacOS/Electron <外壳目录>
+```
 
-2026-10-08本轮最终37套源码退出0（SmartType模型132、UI511），675项发布安全断言单独通过；六组真实Electron SmartType/editing/input/search/image/PDF退出0。图片实际保存模型和可见正文快照严格等值；PDF原位图/声卡、A4及长段250/双列170标签完整各一次。包白名单、独立空白启动、DMG与桌面包全树核验通过；逐页目视范围、真实IME/跨机等未验收边界见 `SMARTTYPE_QA_20261008.md`，不以旧绿灯代替本轮结果。
+可选的模式有 editing / smarttype / input / pdf / search / image / review / characters，人物线和改稿另有 `character-lines-native.cjs` / `review-native.cjs` 包装脚本。launcher 只接受这些固定模式，不接受外部入口或 renderer 路径。manual壳加载当前候选主进程，使用独立临时userData和合成工程。其余夹具由 `native-fixture-window.cjs` 在React挂载前加载合成种子；恢复检查使用同入口/partition且不重新种子化。销毁测试自有窗口只用于夹具清理，不能冒充真实关闭确认验收。CDP输入法事件、内存DataTransfer复制/粘贴和自动文件drop，分别不能代替原生中文输入法、系统剪贴板和Finder手势。不要直接运行旧安装包测试用户窗口；老 `capture/integration` 仍须逐项审查入口/目录。
 
 ## 8. 构建、打包与发布
 
-开发HMR设followSymlinks:false，并用lstat忽略函数剪掉符号链接入口，避免macOS初扫仍递归进入链接后代；本仓库顶层release、release-*、tmp及.app根和后代在更早阶段忽略，Vite默认的.git/node_modules/构建输出忽略保留。过滤前底层可能解析链接目标元数据，不能声称完全不访问target；保证的是不递归扫描其后代。禁止用全局 `**/tmp/**`，否则临时测试仓库源码也会被吞掉。`node scripts/dev-watch-test.cjs` 用独立合成目录验证源码真实HMR、产物剪枝及外部链接后代无登记/事件；这不属于37套正文回归。未来外部symlink源码的HMR需单独设计受控监听，不能恢复任意链接遍历。
-
-alpha.18.12公开tag固定于 `775acd8fa5e144944670c76551ac94ca474d0edf`，两个附件SHA见 `RELEASE_ALPHA_18_12.md`。此后的开发监听/文档维护不重打或覆盖这些附件；构建产物须仍逐字节相同，不伪称新生产版本。
+开发HMR设followSymlinks:false，并用lstat忽略函数剪掉符号链接入口，避免macOS初扫仍递归进入链接后代；本仓库顶层release、release-*、tmp及.app根和后代在更早阶段忽略，Vite默认的.git/node_modules/构建输出忽略保留。过滤前底层可能解析链接目标元数据，不能声称完全不访问target；保证的是不递归扫描其后代。禁止用全局 `**/tmp/**`，否则临时测试仓库源码也会被吞掉。`node scripts/dev-watch-test.cjs` 用独立合成目录验证源码真实HMR、产物剪枝及外部链接后代无登记/事件；它不属于 test:core。未来外部symlink源码的HMR需单独设计受控监听，不能恢复任意链接遍历。
 
 `npm run build` 仅构建 renderer。`bash package.sh` 在完整、可信的 Electron 运行时下生成应用/ZIP；现有 macOS CI 另生成 DMG 并上传 Release。三个步骤都不应自动替换现用应用。
 
@@ -209,9 +209,7 @@ ad-hoc 本机签名不等于 Apple Developer ID 签名/公证；本机能打开�
 
 新草稿上传前验证全部本地附件，每件上传前重新检查草稿ID与状态，结束核对远端大小及digest；不使用`--clobber`。同标签concurrency只串行此工作流，不能锁住外部CLI/网页操作，不能声称GitHub多次接口调用具有原子性。
 
-两条CI均运行独立离线专项 `node scripts/release-assets-test.cjs`（675项断言），与37套应用源码回归分开计数。工作流的手动`workflow_dispatch`只接受已存在tag的只读核验，跳过依赖安装、打包及上传。旧tag绑定旧workflow的失败记录保留，不移动tag来改变历史；修复合并后可从默认分支触发新的只读核验。
-
-alpha.18.11的安装包与tag固定来自`7d92d5953c4e2463f21430651d060409564c9e39`；后续发布流程/文档维护不替换这组已验收附件。合并PR更新默认分支与公开Release是两项独立操作，完成后分别核对，不以发布安装包冒充已经合并。
+两条CI均运行独立离线专项 `node scripts/release-assets-test.cjs`（675项断言），不计入 test:core。工作流的手动`workflow_dispatch`只接受已存在tag的只读核验，跳过依赖安装、打包及上传。旧tag绑定旧workflow的失败记录保留，不移动tag来改变历史；修复合并后可从默认分支触发新的只读核验。
 
 ## 9. 已知后续工作（不要混进小修）
 

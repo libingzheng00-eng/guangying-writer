@@ -2,7 +2,7 @@
 
 当前候选为 **`1.3.0-alpha.18.16` / Electron `44.7.0`**，目标为 **Windows 10 及以上、x64**。交付形式是免安装便携 ZIP，未做 Authenticode 签名。改稿工作台的功能与旧版回存限制见 [REVISION_WORKSPACE.md](REVISION_WORKSPACE.md)。
 
-[Windows 工作流](.github/workflows/windows.yml)按目标提交构建并验收，在 Actions 中保留候选包和证据，不创建 GitHub Release。本文说明当前配置与验收范围；本轮 Windows CI 是否通过，须核对最终提交对应的运行结果，不能沿用较早提交或 macOS 本地结果。
+[Windows 工作流](../../.github/workflows/windows.yml)按目标提交构建并验收，在 Actions 中保留候选包和证据，不创建 GitHub Release。本文说明当前配置与验收范围；本轮 Windows CI 是否通过，须核对最终提交对应的运行结果，不能沿用较早提交或 macOS 本地结果。
 
 ## 获取与使用
 
@@ -67,4 +67,4 @@ Electron 44 的 npm 包不会在 `npm ci` 时自动准备原生二进制。`prep
 
 - **alpha.18.12（2026-10-08）**：从 `main` 的 `dcc097bc324dc081a68c5120a9260530e2278a33` 开始 Windows x64 适配，沿用当时 Electron 31.7.7，包含 PR #11 SmartType 和 PR #12 watcher 隔离。随后加入模态与菜单专项，当时源码基线增至 39 套。该阶段没有重打、替换或移动已有 macOS Release 附件。
 - **alpha.18.13**：独立安全升级将 Electron 固定到 44.7.0，并补充工程输入、主进程导航、IPC/文件授权和两平台候选校验；详见 [安全升级记录](SECURITY_UPGRADE.md)。
-- 旧 [Windows 依赖审计](DEPENDENCY_AUDIT_WINDOWS.md)记录的是升级前 10 个受影响包，不代表当前依赖状态。旧版本、套件数量和当时交付状态仅用于追溯；当前构建及验证入口以上文和 [Windows 工作流](.github/workflows/windows.yml)为准。
+- 旧 [Windows 依赖审计](../archive/DEPENDENCY_AUDIT_WINDOWS.md)记录的是升级前 10 个受影响包，不代表当前依赖状态。旧版本、套件数量和当时交付状态仅用于追溯；当前构建及验证入口以上文和 [Windows 工作流](../../.github/workflows/windows.yml)为准。

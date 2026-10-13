@@ -50,7 +50,7 @@
 
 运行代码仅涉及 `src/utils/smartQuotes.ts`、Editor 的输入事件/组合快照接入及 ScriptBlock 的原生事件透传；不新增工程字段或另一套历史栈。专项加入本地 core runner、package scripts 与两条 GitHub workflow。
 
-后续改输入功能，必须保留 [CORE_FEATURES.md](CORE_FEATURES.md) 中的智能引号红线，并运行：
+后续改输入功能，必须保留 [CORE_FEATURES.md](../../CORE_FEATURES.md) 中的智能引号红线，并运行：
 
 ```bash
 npm run typecheck

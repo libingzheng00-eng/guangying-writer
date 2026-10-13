@@ -6,7 +6,7 @@
 
 类型检查、生产 renderer 构建及完整 **32/32 套自动回归通过**。本轮使用合成工程，没有读取/修改用户剧本，没有替换现用应用，没有 commit、push、打包或发布。
 
-已修复反复撤销的历史分组/入口问题，强化剪切粘贴原子事务、内部格式与安全边界，并补文件保存/打开/恢复的关联保护。完整维护说明见 [MAINTENANCE.md](MAINTENANCE.md)，核心契约见 [CORE_FEATURES.md](CORE_FEATURES.md)。
+已修复反复撤销的历史分组/入口问题，强化剪切粘贴原子事务、内部格式与安全边界，并补文件保存/打开/恢复的关联保护。完整维护说明见 [MAINTENANCE.md](../MAINTENANCE.md)，核心契约见 [CORE_FEATURES.md](../../CORE_FEATURES.md)。
 
 ## 1. 对照依据与保留差异
 
