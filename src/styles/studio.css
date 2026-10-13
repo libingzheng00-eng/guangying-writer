@@ -266,8 +266,11 @@
   .app-shell[data-theme] :is(.sidebar__tabs, .cards__bar, .board__bar, .reports__bar, .preview__bar) {
     box-sizing: border-box; height: 44px; min-height: 44px; flex: 0 0 44px; padding-top: 0; padding-bottom: 0; align-items: center; border-bottom: 1px solid var(--border);
   }
-  .app-shell[data-theme] .sidebar__tabs { align-items: stretch; }
-  .app-shell[data-theme] .sidebar__tab { display: inline-flex; align-items: center; justify-content: center; }
+  /* 标签文字在 44px 栏内上下居中；选中用浅色底（与顶部视图切换一致），不再画一条强调色下划线。 */
+  .app-shell[data-theme] .sidebar__tabs { align-items: center; padding: 0 8px; gap: 4px; }
+  .app-shell[data-theme] .sidebar__tab { display: inline-flex; align-items: center; justify-content: center; height: 30px; border-radius: 6px; line-height: 1; }
+  .app-shell[data-theme] .sidebar__tab:hover { color: var(--text); background: var(--control-hover); }
+  .app-shell[data-theme] .sidebar__tab.is-active { color: var(--accent); background: var(--accent-soft); box-shadow: none; font-weight: 600; }
 
   /* 窄窗口：带图标的按钮只留图标，文字转为读屏可读的隐藏文本，工具栏不溢出。 */
   @media (max-width: 1279px) {

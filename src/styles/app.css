@@ -2482,6 +2482,12 @@ textarea {
 .writing-material-card__head button:hover { background: var(--danger-soft); color: var(--danger); }
 .writing-material-card textarea { display: block; width: 100%; min-height: 76px; padding: 7px 8px; resize: vertical; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; outline: none; background: rgba(0,0,0,.28); color: #f2f2f7; font: 12px/1.6 -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; }
 .writing-material-card--image { width: 290px; }
+/* 横坐标来自 --material-x；屏幕上收进写作区可见宽度内，窗口变窄或打开侧栏也不会撑出横向滚动条。 */
+.writing-material-card { left: var(--material-x, 16px); }
+@media screen {
+  .writing-material-layer > .writing-material-card { left: clamp(16px, var(--material-x, 16px), calc(100% - 274px)); }
+  .writing-material-layer > .writing-material-card--image { left: clamp(16px, var(--material-x, 16px), calc(100% - 306px)); }
+}
 .writing-material-card__image { display: block; width: 100%; max-height: 236px; margin-bottom: 7px; border-radius: 8px; object-fit: cover; background: rgba(0,0,0,.22); user-select: none; -webkit-user-drag: none; }
 .writing-material-card--image textarea { min-height: 56px; }
 

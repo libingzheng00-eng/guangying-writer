@@ -47,7 +47,12 @@ function check(name, run) { run(); passed += 1; console.log(`  ✓ ${name}`); }
         assert.equal(resolveFontColor(color, 'night'), resolved);
       });
     }
-    for (const [theme, color] of [['day', '#000000'], ['night', '#ffffff']]) {
+    check('以前选的暖白归为随主题（夜间仍是暖白，日间回到黑色）', () => {
+      assert.equal(normalizeFontColor('#FFE9C4'), 'auto');
+      assert.equal(resolveFontColor('#ffe9c4', 'day'), '#000000');
+      assert.equal(resolveFontColor('#ffe9c4', 'night'), '#ffe9c4');
+    });
+    for (const [theme, color] of [['day', '#000000'], ['night', '#ffe9c4']]) {
       check(`默认/非法颜色在 ${theme} 解析为 ${color}`, () => {
         assert.equal(resolveFontColor('auto', theme), color);
         assert.equal(resolveFontColor('invalid', theme), color);
@@ -60,6 +65,7 @@ function check(name, run) { run(); passed += 1; console.log(`  ✓ ${name}`); }
       ['新键优先于旧键', { 'guangying:fontColor': '#112233', 'mojiang:fontColor': '#e9ff3a' }, '#112233'],
       ['恢复 auto 后不回退旧黄字', { 'guangying:fontColor': 'auto', 'mojiang:fontColor': '#e9ff3a' }, 'auto'],
       ['非法存储值回退 auto', { 'guangying:fontColor': 'invalid' }, 'auto'],
+      ['存过的暖白读成随主题', { 'guangying:fontColor': '#ffe9c4' }, 'auto'],
     ]) {
       check(name, () => assert.equal(fresh(initial).useStore.getState().fontColor, expected));
     }

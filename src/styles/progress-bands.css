@@ -32,8 +32,6 @@
     font-size: 20px;
     font-weight: 500;
   }
-  .app-shell[data-theme] .editor > .write-progress .write-progress__goal { padding-left: 0; gap: 6px; }
-  .app-shell[data-theme] .editor > .write-progress .write-progress__tools { gap: 4px; }
   /* 只收细可见轨道；鼠标仍可在整行点击、显示跳页提示。 */
   .app-shell[data-theme] .editor > .write-progress .write-progress__road {
     border: 0;
@@ -91,20 +89,38 @@
   .app-shell[data-theme] .editor > .write-progress .write-progress__scenes.is-over-target {
     border-color: var(--danger);
   }
+  /* 右侧两行：目标页数与声音卡按钮同宽、同高、左右对齐，样式和顶栏其他输入框一致。 */
+  .app-shell[data-theme] .editor > .write-progress .write-progress__tools { width: 128px; min-width: 128px; align-items: stretch; gap: 5px; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__goal {
+    display: flex; flex: none; align-items: center; gap: 4px; height: 28px; box-sizing: border-box; padding: 0 8px;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--control-bg); color: var(--muted); font-size: 12px; white-space: nowrap;
+  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__goal:focus-within { border-color: var(--accent); }
   .app-shell[data-theme] .editor > .write-progress .write-progress__goal input {
-    width: 64px;
-    min-width: 64px;
-    flex-basis: 64px;
-    padding-inline: 6px;
-    border-radius: 6px;
-    font-size: 12px;
+    flex: 1 1 auto; width: auto; min-width: 0; height: 24px; padding: 0 2px; border: 0; border-radius: 4px; background: transparent;
+    color: var(--text); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; box-shadow: none; outline: none;
+    -moz-appearance: textfield;
   }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__goal input::-webkit-inner-spin-button,
+  .app-shell[data-theme] .editor > .write-progress .write-progress__goal input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls { display: flex; flex: none; width: 100%; margin: 0; }
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls__group { display: flex; width: 100%; height: 28px; }
   .app-shell[data-theme] .editor > .write-progress .writing-material-controls button {
-    border-radius: 6px 0 0 6px;
+    display: inline-flex; align-items: center; gap: 5px; height: 28px; box-sizing: border-box; margin: 0; opacity: 1;
+    border: 1px solid var(--border); background: var(--control-bg); color: var(--text); font-size: 12px; line-height: 1; filter: none;
   }
-  .app-shell[data-theme] .editor > .write-progress .writing-material-controls button + button {
-    border-radius: 0 6px 6px 0;
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls button:hover { background: var(--control-hover); filter: none; }
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls__toggle { flex: 1 1 auto; min-width: 0; justify-content: flex-start; padding: 0 8px; border-radius: 6px 0 0 6px; }
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls__toggle b {
+    display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: auto; padding: 0 4px; box-sizing: border-box;
+    border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600;
   }
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls__toggle[aria-pressed='false'] { color: var(--muted); background: var(--panel-2); }
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls__toggle[aria-pressed='false'] b { background: var(--control-hover); color: var(--muted); }
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls__add {
+    flex: none; width: 28px; min-width: 28px; justify-content: center; margin-left: -1px; padding: 0; border-radius: 0 6px 6px 0; color: var(--muted);
+  }
+  .app-shell[data-theme] .editor > .write-progress .writing-material-controls__add:hover { color: var(--accent); }
   @media (max-width: 1100px) {
     .app-shell[data-theme] .editor > .write-progress { column-gap: 12px; padding-inline: 12px; }
   }
@@ -130,7 +146,9 @@
   .app-shell[data-theme] .editor > .write-progress:hover .write-progress__collapse,
   .app-shell[data-theme] .editor > .write-progress .write-progress__collapse:focus-visible { opacity: 1; }
   .app-shell[data-theme] .editor > .write-progress .write-progress__collapse:hover { color: var(--accent); }
-  .app-shell[data-theme] .editor > .write-progress-collapsed { position: sticky; top: 0; z-index: 12; height: 0; overflow: visible; }
+  .app-shell[data-theme] .editor > .write-progress-collapsed { position: sticky; top: 0; left: 0; z-index: 12; height: 0; overflow: visible; }
+  /* 页面放大后需要横向滚动时，进度栏留在原处，不跟着正文一起滑走。 */
+  .app-shell[data-theme] .editor > .write-progress { left: 0; }
   .app-shell[data-theme] .write-progress-collapsed__reveal {
     position: absolute; left: 50%; top: 0; transform: translateX(-50%);
     display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 18px; padding: 0;

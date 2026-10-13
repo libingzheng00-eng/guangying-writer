@@ -776,10 +776,19 @@ export function Editor() {
   const writingImages = project.beats.filter((b) => b.kind === 'image');
   // 声音开关只控制声音，不能把已拖入的图片一起隐藏。
   const writingMaterials = [...(showSoundCards || pdfExportMode === 'creative' ? writingSounds : []), ...writingImages];
+  // 新声音卡放在当前看到的那一页右侧、进度栏下方；连续新建时略微错开。
   const addWritingSound = () => {
-    const count = writingSounds.length;
-    const x = Math.max(24, (scrollRef.current?.clientWidth || 980) - 274);
-    const y = 84 + count * 24;
+    const scroller = scrollRef.current;
+    const layer = scroller?.querySelector<HTMLElement>('.editor__scroll');
+    const page = contentRef.current;
+    const stagger = (writingSounds.length % 5) * 24;
+    if (!scroller || !layer || !page) { addBeat(24, 84 + stagger, '', 'sound'); return; }
+    const origin = layer.getBoundingClientRect();
+    const view = scroller.getBoundingClientRect();
+    const bar = scroller.querySelector<HTMLElement>(':scope > .write-progress')?.offsetHeight || 0;
+    const pageRight = page.getBoundingClientRect().right - origin.left;
+    const x = Math.round(Math.max(16, Math.min(pageRight + 24, layer.clientWidth - 274)));
+    const y = Math.round(Math.max(16, view.top + bar + 24 - origin.top) + stagger);
     addBeat(x, y, '', 'sound');
   };
 
