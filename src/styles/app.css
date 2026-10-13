@@ -1035,19 +1035,7 @@ textarea {
   font-size: 12px;
   color: var(--accent);
 }
-.card__colors {
-  margin-left: auto;
-  display: flex;
-  gap: 3px;
-}
-.card__dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  cursor: pointer;
-  padding: 0;
-}
+
 .card__title,
 .card__synopsis {
   width: 100%;
@@ -1831,12 +1819,7 @@ textarea {
 }
 .board-links { position: absolute; inset: 0; width: 6000px; height: 4000px; overflow: visible; pointer-events: none; }
 .board-links line { stroke: rgba(164, 183, 199, .72); stroke-width: 2; stroke-dasharray: 5 5; }
-.board-link-note { display: flex; align-items: center; gap: 3px; width: 210px; pointer-events: auto; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.board-link-note input { min-width: 0; flex: 1; height: 22px; border: 0; outline: none; background: transparent; color: #dbe4eb; font-size: 12px; font-style: italic; padding: 0; text-shadow: 0 1px 3px rgba(0,0,0,.45); }
-.board-link-note input::placeholder { color: rgba(184,201,214,.72); }
-.board-link-note button { width: 19px; height: 19px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: #8595a3; cursor: pointer; opacity: 0; transition: opacity .15s ease, background .15s ease; }
-.board-link-note:hover button, .board-link-note input:focus + button { opacity: 1; }
-.board-link-note button:hover { background: var(--danger-soft); color: var(--danger); }
+
 .bcard {
   position: absolute;
   width: 220px;
@@ -1915,23 +1898,14 @@ textarea {
   justify-content: space-between;
   margin-bottom: 6px;
 }
-.bcard__actions { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
-.bcard__head .bcard__actions { position: absolute; top: -8px; right: -8px; margin-left: 0; }
-.bcard__connect { width: 19px; height: 19px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; }
-.bcard__connect:hover, .bcard__connect.is-active { color: #dce7ed; background: rgba(88,166,255,.18); box-shadow: inset 0 0 0 1px rgba(88,166,255,.35); }
+
 .board__link-state { color: #b9d9f6; }
 .bcard__no {
   font-weight: 600;
   font-size: 13px;
   color: var(--accent);
 }
-.bcard__tag {
-  font-size: 10px;
-  color: var(--muted);
-  background: rgba(88, 166, 255, 0.08);
-  border-radius: 4px;
-  padding: 1px 6px;
-}
+
 .bcard__tag--beat {
   background: var(--warm-soft);
   color: var(--warm);
@@ -2024,23 +1998,10 @@ textarea {
   outline: none;
   padding: 2px 4px;
 }
-.bcard__sound-icon {
-  font-size: 22px;
-  line-height: 1;
-  color: rgba(204, 184, 135, 0.95);
-  flex: 0 0 auto;
-}
+
 .bcard__tag--sound { background: rgba(204, 184, 135, 0.6); color: #2b2200; }
 .bcard__tag--image { background: rgba(120, 200, 255, 0.6); color: #04253f; }
-.bcard__foot {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-top: 8px;
-  width: 100%;
-}
+
 .bcard__dots {
   display: flex;
   gap: 4px;
@@ -2059,17 +2020,7 @@ textarea {
   opacity: 1;
   transform: scale(1.2);
 }
-.bcard__link {
-  font-size: 11px;
-  width: 100%;
-  max-width: none;
-  border: 0.5px solid var(--border);
-  border-radius: 5px;
-  background: rgba(0, 0, 0, 0.25);
-  padding: 2px 4px;
-  cursor: pointer;
-  color: #9ca3af;
-}
+
 .bcard__del {
   width: 18px;
   height: 18px;
@@ -2543,8 +2494,7 @@ textarea {
 .bcard, .bcard--beat { border-top-color: transparent; }
 .bcard--scene { box-shadow: inset 3px 0 0 var(--scene-color), var(--card-glow); }
 .bcard__head { margin-bottom: 3px; }
-.bcard__foot { justify-content: flex-end; margin-top: 5px; }
-.bcard__link { max-width: none; }
+
 .board__color-bar { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid rgba(88,166,255,.18); border-radius: 7px; background: rgba(7,12,18,.35); }
 .board__color-bar span { color: var(--muted); font-size: 11px; }
 .board__color-bar button { width: 14px; height: 14px; padding: 0; border: 1px solid rgba(255,255,255,.35); border-radius: 50%; cursor: pointer; transition: transform .14s ease; }
@@ -2618,10 +2568,6 @@ textarea {
 .app-shell[data-theme='day'] .board__bar .btn--primary { color: #fff; border-color: #2f78b7; background: #2f78b7; }
 .app-shell[data-theme='day'] .bcard, .app-shell[data-theme='day'] .writing-material-card { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .app-shell[data-theme='day'] .write-bg::before, .app-shell[data-theme='day'] .write-bg::after, .app-shell[data-theme='day'] .board__canvas::before, .app-shell[data-theme='day'] .board__canvas::after { animation: none; }
-.app-shell[data-theme='day'] .board-link-note { border-color: transparent; background: transparent; box-shadow: none; }
-.app-shell[data-theme='day'] .board-link-note input { color: #273640; }
-.app-shell[data-theme='day'] .board-link-note input::placeholder { color: #80909b; }
-.app-shell[data-theme='day'] .board-link-note button { color: #6d7e8a; }
 
 /* 设置弹窗也属于日间工作台，不能保留夜间的黑色表单。 */
 .app-shell[data-theme='day'] .modal-backdrop { background: rgba(44,59,69,.28); }

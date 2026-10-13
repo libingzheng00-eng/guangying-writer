@@ -149,22 +149,7 @@
   .app-shell[data-theme] .board--polished .board__canvas::after { content: none; }
 
   /* 浮动工具使用组件夹在可见画布内的屏幕坐标。 */
-  .app-shell[data-theme] .board--polished .board__context {
-    position: absolute;
-    z-index: 120;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    max-width: calc(100% - 20px);
-    min-height: 36px;
-    padding: 5px 8px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--board-floating);
-    color: var(--text);
-    box-shadow: var(--board-shadow);
-    cursor: default;
-  }
+
   .app-shell[data-theme] .board--polished .board__color-bar {
     display: inline-flex;
     align-items: center;
@@ -400,7 +385,7 @@
     cursor: text;
   }
   .app-shell[data-theme] .board--polished .bcard__image-notes { flex: 0 0 40px; height: 40px; max-height: 44px; color: var(--muted); font-size: 12px; line-height: 1.45; }
-  .app-shell[data-theme] .board--polished :is(.bcard__actions, .bcard__foot, .bcard__tag, .bcard__sound-icon) { display: none; }
+
   .app-shell[data-theme] .board--polished .bcard__resize { width: 18px; height: 18px; right: 2px; bottom: 2px; padding: 0; border: 0; background-color: transparent; color: var(--muted); box-shadow: none; opacity: 0; }
   .app-shell[data-theme] .board--polished .bcard:hover .bcard__resize,
   .app-shell[data-theme] .board--polished .bcard:focus-within .bcard__resize,
@@ -473,7 +458,7 @@
     .app-shell[data-theme] .board--polished .board__dock { bottom: 14px; gap: 3px; padding-inline: 5px; }
     .app-shell[data-theme] .board--polished .board__dock .btn { padding-inline: 8px; }
     .app-shell[data-theme] .board--polished .board__dock .zoom-ctl { gap: 1px; margin-left: 0; padding-left: 5px; }
-    .app-shell[data-theme] .board--polished .board__context { flex-wrap: wrap; gap: 5px 8px; }
+
     .app-shell[data-theme] .board--polished .board__association select { max-width: 126px; }
   }
   @media (max-width: 420px) {
@@ -503,7 +488,7 @@
   .app-shell[data-theme] .board--polished .bcard__status.is-done { background: rgba(22, 163, 74, .12); color: #15803d; }
   .app-shell[data-theme] .board--polished :is(.bcard__scene-notes, .bcard__edit) { font-size: 13.5px; line-height: 1.6; color: var(--text); }
   .app-shell[data-theme] .board--polished .bcard__image-notes { font-size: 12px; color: var(--muted); }
-  /* 连线圆点：悬停或选中时出现在卡片右缘，拖到另一张卡片松开即可。 */
+  /* 连线圆点（旧样式，下方已改为右上角连线钮）。 */
   .app-shell[data-theme] .board--polished .bcard__connector {
     position: absolute; z-index: 4; top: 50%; right: -9px; transform: translateY(-50%);
     display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0;
@@ -532,4 +517,29 @@
   .app-shell[data-theme] .board--polished .board-link__stroke { stroke: var(--border-strong); stroke-width: 1.6; }
   .app-shell[data-theme] .board--polished .board-link__label { min-height: 22px; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); font-size: 13px; line-height: 20px; box-shadow: var(--card-glow); }
   .app-shell[data-theme] .board--polished .board-link__label.is-empty { max-width: 120px; font-size: 12px; border-style: dashed; }
+  /* 连线把手：卡片右上角内侧的醒目圆钮（24px，命中区 30px）。卡片本身 overflow:hidden，所以放在卡内，不压到边框外。 */
+  .app-shell[data-theme] .board--polished .bcard__connector {
+    top: 6px; right: 6px; transform: none; width: 30px; height: 30px; margin: 0;
+    display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent;
+  }
+  .app-shell[data-theme] .board--polished .bcard__head { padding-right: 28px; }
+  .app-shell[data-theme] .board--polished .bcard__connector svg {
+    box-sizing: content-box; width: 13px; height: 13px; padding: 4.5px; border: 1.5px solid var(--panel); border-radius: 50%;
+    background: var(--accent); color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .25); transition: transform .12s ease;
+  }
+  .app-shell[data-theme] .board--polished .bcard__connector:hover svg { transform: scale(1.15); }
+  /* 平时也显示（白底蓝图标），悬停或选中卡片时变成实心，方便找到、方便点中。 */
+  .app-shell[data-theme] .board--polished .bcard__connector { opacity: 1; }
+  .app-shell[data-theme] .board--polished .bcard:not(:hover, .is-selected) .bcard__connector:not(:focus-visible) svg {
+    border-color: var(--border-strong); background: var(--panel); color: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .14);
+  }
+  .app-shell[data-theme] .board--polished .bcard__connector span { display: none; }
+  /* 缩放比例可直接输入 */
+  .app-shell[data-theme] .board--polished .zoom-input { display: inline-flex; align-items: center; gap: 1px; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .app-shell[data-theme] .board--polished .zoom-input input {
+    width: 40px; height: 24px; padding: 0 2px 0 4px; border: 1px solid transparent; border-radius: 5px; background: transparent;
+    color: var(--text); font: inherit; font-size: 13px; text-align: right;
+  }
+  .app-shell[data-theme] .board--polished .zoom-input input:hover { border-color: var(--border); }
+  .app-shell[data-theme] .board--polished .zoom-input input:focus { border-color: var(--accent); background: var(--control-bg); outline: none; }
 }

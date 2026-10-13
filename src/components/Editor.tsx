@@ -3,7 +3,11 @@ import { useStore } from '../store/store';
 import { usePagination } from '../hooks/PaginationProvider';
 import { EditableBlock } from './ScriptBlock';
 import { ProgressBar } from './ProgressBar';
-import { RichNoteField } from './RichNoteField';
+import { MaterialControls, WritingMaterialCards } from './writing/WritingMaterials';
+import { TitlePageCard } from './writing/TitlePageCard';
+import { useImageDrop } from './writing/useImageDrop';
+import { useProgressCollapsed } from './writing/useProgressCollapsed';
+import { SmartTypeMenu } from './writing/SmartTypeMenu';
 import { caretOffset, splitHtml, domLength, domText, makeTextRange, setCaret, offsetOf } from '../utils/dom';
 import { applySmartDoubleQuotes } from '../utils/smartQuotes';
 import { isBlank, plain, stripSceneNumber, escapeHtml } from '../utils/text';
@@ -17,7 +21,6 @@ import { searchText } from '../model/search';
 import type { ScriptElement, ElementType } from '../model/types';
 import { safeEmbeddedImageSource } from '../utils/displayValues';
 
-const PROGRESS_COLLAPSED_KEY = 'guangying:progress-collapsed';
 
 interface SuggestState {
   id: string;
@@ -97,15 +100,7 @@ export function Editor() {
     [readSmartTypeCatalog, project.elements, activeId, documentEpoch],
   );
   const [showSoundCards, setShowSoundCards] = useState(true);
-  // 进度栏可像侧栏一样收起；只是本机界面偏好，不写入工程。
-  const [progressCollapsed, setProgressCollapsed] = useState(() => {
-    try { return localStorage.getItem(PROGRESS_COLLAPSED_KEY) === '1'; } catch { return false; }
-  });
-  const toggleProgress = (collapsed: boolean) => {
-    setProgressCollapsed(collapsed);
-    try { localStorage.setItem(PROGRESS_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* 偏好未保存不影响写作 */ }
-  };
-  const [isImageDropTarget, setIsImageDropTarget] = useState(false);
+  const [progressCollapsed, toggleProgress] = useProgressCollapsed();
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   // One restoration per mount/document. Paging updates from later typing must
@@ -788,52 +783,7 @@ export function Editor() {
     addBeat(x, y, '', 'sound');
   };
 
-  // 核心红线：本地图片拖入由写作面板接管，不得落入 contentEditable 正文。
-  // .editor 才是滚动容器，内层 bounds.top 已包含滚动偏移，不能再加 scrollTop。
-  const handleImageDrop = async (event: React.DragEvent<HTMLDivElement>) => {
-    setIsImageDropTarget(false);
-    if (!Array.from(event.dataTransfer.types).includes('Files')) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const images = Array.from(event.dataTransfer.files).filter((file) =>
-      file.type.startsWith('image/') || (!file.type && /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i.test(file.name)),
-    );
-    if (!images.length) {
-      notify('请拖入本地图片文件（如 PNG、JPEG 或 WebP）。', 'error');
-      return;
-    }
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const maxX = Math.max(16, bounds.width - 290 - 16);
-    const x = Math.max(16, Math.min(maxX, Math.round(event.clientX - bounds.left - 145)));
-    const viewport = scrollRef.current!.getBoundingClientRect();
-    const y = Math.max(16, Math.min(viewport.bottom - bounds.top - 100, Math.round(event.clientY - bounds.top - 22)));
-    const documentAtDrop = useStore.getState().documentEpoch;
-    for (const [index, image] of images.entries()) {
-      try {
-        const img = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onerror = () => reject(new Error('读取失败'));
-          reader.onabort = () => reject(new Error('读取中断'));
-          reader.onload = () => {
-            const data = String(reader.result || '');
-            const decoded = new Image();
-            decoded.onload = () => resolve(data);
-            decoded.onerror = () => reject(new Error('图片无法解码'));
-            decoded.src = data;
-          };
-          reader.readAsDataURL(image);
-        });
-        // 读取期间切换工程时，不能把上一份工程的图片写进新工程。
-        if (useStore.getState().documentEpoch !== documentAtDrop) return;
-        addBeat(Math.min(maxX, x + index * 20), y, '', 'image', {
-          title: image.name.replace(/\.[^.]+$/, '') || '图片素材', img,
-        });
-      } catch {
-        if (useStore.getState().documentEpoch !== documentAtDrop) return;
-        notify(`无法读取图片“${image.name}”，请尝试有效的 PNG、JPEG 或 WebP 文件。`, 'error');
-      }
-    }
-  };
+  const imageDrop = useImageDrop(scrollRef);
 
   return (
     <div className="editor" ref={scrollRef} onScroll={(event) => {
@@ -861,20 +811,12 @@ export function Editor() {
         />
       </ProgressBar>}
       <div
-        className={`editor__scroll${isImageDropTarget ? ' is-image-drop-target' : ''}`}
+        className={`editor__scroll${imageDrop.active ? ' is-image-drop-target' : ''}`}
         data-ready={readyKey === `${version}:${project.settings.paper}` ? 'true' : 'false'}
         data-pagination-key={readyKey || ''}
-        onDragOverCapture={(event) => {
-          if (Array.from(event.dataTransfer.types).includes('Files')) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'copy';
-            setIsImageDropTarget(true);
-          }
-        }}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsImageDropTarget(false);
-        }}
-        onDropCapture={handleImageDrop}
+        onDragOverCapture={imageDrop.onDragOverCapture}
+        onDragLeave={imageDrop.onDragLeave}
+        onDropCapture={imageDrop.onDropCapture}
       >
         <WritingMaterialCards cards={writingMaterials} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
         {settings.indent && project.titlePage.show ? <TitlePageCard /> : null}
@@ -908,27 +850,7 @@ export function Editor() {
           <div className="script-flow__tail" onClick={() => insertAfter(null, 'action')} />
         </div>
       </div>
-      {suggest ? (
-        <div className="smarttype" style={{ top: suggest.top, left: suggest.left }} role="listbox" aria-label="快捷输入候选">
-          {suggest.items.map((s, i) => (
-            <button
-              type="button"
-              key={`${s.targetType || suggest.type}:${s.label}`}
-              className={`smarttype__item ${i === suggest.active ? 'is-active' : ''}`}
-              role="option"
-              aria-selected={i === suggest.active}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                acceptSuggest(true, i);
-              }}
-            >
-              <span className="smarttype__label">{s.label}</span>
-              {s.typeLabel ? <small className="smarttype__type"> · {s.typeLabel}</small> : null}
-            </button>
-          ))}
-          <div className="smarttype__hint">↑↓ 选择 · → / Enter 确认 · 再按 Enter 换段</div>
-        </div>
-      ) : null}
+      {suggest ? <SmartTypeMenu suggest={suggest} onAccept={(index) => acceptSuggest(true, index)} /> : null}
     </div>
   );
 
@@ -1029,75 +951,4 @@ export function Editor() {
       </div>
     );
   }
-}
-
-function MaterialControls({
-  soundCount, showSound, onToggleSound, onAddSound,
-}: {
-  soundCount: number; showSound: boolean;
-  onToggleSound: () => void; onAddSound: () => void;
-}) {
-  return (
-    <span className="writing-material-controls" aria-label="写作素材">
-      <span className="writing-material-controls__group">
-        <button type="button" aria-label="显示或隐藏声音卡" aria-pressed={showSound} title={showSound ? '暂时隐藏声音卡' : '显示声音卡'} onClick={onToggleSound}>◌ <b>{soundCount}</b></button>
-        <button type="button" aria-label="新建声音卡" title="新建声音卡" onClick={onAddSound}>＋</button>
-      </span>
-    </span>
-  );
-}
-
-function WritingMaterialCards({ cards, onUpdate, onMove, onDelete }: {
-  cards: Array<{ id: string; x: number; y: number; text: string; title?: string; img?: string; kind?: 'beat' | 'sound' | 'image' }>;
-  onUpdate: (id: string, patch: { title?: string; text?: string }) => void;
-  onMove: (id: string, x: number, y: number) => void;
-  onDelete: (id: string) => void;
-}) {
-  const dragRef = useRef<{ id: string; x: number; y: number; startX: number; startY: number } | null>(null);
-  const onPointerDown = (event: React.PointerEvent<HTMLElement>, card: { id: string; x: number; y: number }) => {
-    if ((event.target as HTMLElement).closest('input, textarea, button, [data-rich-note]')) return;
-    dragRef.current = { id: card.id, x: card.x, y: card.y, startX: event.clientX, startY: event.clientY };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-  const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    onMove(drag.id, Math.max(16, Math.round(drag.x + event.clientX - drag.startX)), Math.max(76, Math.round(drag.y + event.clientY - drag.startY)));
-  };
-  const stopDrag = () => { dragRef.current = null; };
-  return (
-    <div className="writing-material-layer">
-      {cards.map((card) => (
-        <article key={card.id} className={`writing-material-card${card.kind === 'image' ? ' writing-material-card--image' : ''}`} style={{ left: card.x, top: card.y }} onPointerDown={(e) => onPointerDown(e, card)} onPointerMove={onPointerMove} onPointerUp={stopDrag}>
-          <header className="writing-material-card__head">
-            <span className="writing-material-card__kind" aria-hidden>{card.kind === 'image' ? '▣' : '◌'}</span>
-            <input value={card.title || ''} placeholder={card.kind === 'image' ? '图片素材' : '声音设计'} aria-label={card.kind === 'image' ? '图片卡标题' : '声音卡标题'} onChange={(e) => onUpdate(card.id, { title: e.target.value })} />
-            <span className="writing-material-card__drag" title="拖动卡片" aria-hidden>⠿</span>
-            <button type="button" title={`删除这张${card.kind === 'image' ? '图片' : '声音'}卡`} aria-label={`删除这张${card.kind === 'image' ? '图片' : '声音'}卡`} onClick={() => onDelete(card.id)}>×</button>
-          </header>
-          {card.kind === 'image' && card.img ? (safeEmbeddedImageSource(card.img)
-            ? <img className="writing-material-card__image" src={safeEmbeddedImageSource(card.img)} alt={card.title || '图片素材'} draggable={false} />
-            : <div className="bcard__empty-media">图片来源已阻止，请重新导入本地图片</div>) : null}
-          <RichNoteField className="writing-material-card__note" value={card.text} placeholder={card.kind === 'image' ? '图片备注、画面灵感或场景提示…' : '声音、环境、节奏或情绪提示…'} label={card.kind === 'image' ? '图片卡备注' : '声音卡内容'} onChange={(text) => onUpdate(card.id, { text })} />
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function TitlePageCard() {
-  const tp = useStore((s) => s.project.titlePage);
-  const setView = useStore((s) => s.setView);
-  return (
-    <div className="titlepage-card" onDoubleClick={() => setView('preview')}>
-      <div className="titlepage-card__title">{tp.title || '（未命名）'}</div>
-      {tp.subtitle ? <div className="titlepage-card__sub">{tp.subtitle}</div> : null}
-      <div className="titlepage-card__meta">
-        {tp.author ? <span>编剧：{tp.author}</span> : null}
-        {tp.version ? <span>{tp.version}</span> : null}
-        {tp.date ? <span>{tp.date}</span> : null}
-      </div>
-      <div className="titlepage-card__hint">双击预览</div>
-    </div>
-  );
 }

@@ -32,14 +32,13 @@ export function CardsView() {
   const dragRef = useRef<DragState>(null);
   const [over, setOver] = useState<StoryboardPlacement | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [editing, setEditing] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const anchor = useRef<string | null>(null);
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [displayOrder, setDisplayOrder] = useState<'acts' | 'script'>('acts');
   useEffect(() => {
-    setSelected([]); setCollapsed([]); setDeleting(null); setEditing(null);
+    setSelected([]); setCollapsed([]); setDeleting(null);
     anchor.current = null; dragRef.current = null; setDrag(null); setOver(null); setDropTarget(null);
   }, [documentEpoch]);
 
@@ -152,12 +151,10 @@ export function CardsView() {
             scene={s}
             drag={drag}
             over={over}
-            editing={editing === s.id}
             selected={selectedIds.includes(s.elementId)}
             onSelect={(range) => select(s.elementId, range)}
             moveOptions={moveOptions}
             onMove={(value) => move([s.elementId], value === '__ungrouped__' ? null : value)}
-            onEdit={(v) => setEditing(v ? s.id : null)}
             onDragStart={() => {
               const next = { elementId: s.elementId, ids: selectedIds.includes(s.elementId) ? selectedIds : [s.elementId] };
               dragRef.current = next; setDrag(next);
@@ -170,7 +167,6 @@ export function CardsView() {
             }}
             onDropAt={(edge) => dropInSection(actId, actId ? { targetId: s.elementId, edge } : undefined)}
             onJump={() => jump(s.elementId)}
-            onColor={(c) => updateSceneMeta(s.elementId, { color: c })}
             onSynopsis={(v) => updateSceneMeta(s.elementId, { synopsis: v })}
             onTitle={(v) => updateSceneMeta(s.elementId, { title: v })}
           />
@@ -264,7 +260,6 @@ interface CardProps {
   scene: ReturnType<typeof deriveScenes>[number];
   drag: DragState;
   over: StoryboardPlacement | null;
-  editing: boolean;
   selected: boolean;
   onSelect: (range: boolean) => void;
   moveOptions: React.ReactNode;
@@ -274,10 +269,8 @@ interface CardProps {
   onDragOver: (edge: 'before' | 'after') => void;
   onDropAt: (edge: 'before' | 'after') => void;
   onJump: () => void;
-  onColor: (c: string) => void;
   onSynopsis: (v: string) => void;
   onTitle: (v: string) => void;
-  onEdit: (v: boolean) => void;
 }
 
 function Card(p: CardProps) {
@@ -318,15 +311,11 @@ function Card(p: CardProps) {
         e.stopPropagation();
         p.onDropAt(edgeAt(e));
       }}
-      onDoubleClick={() => p.onEdit(true)}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest('textarea, input, button, select')) return;
         if (e.shiftKey || e.metaKey || e.ctrlKey) { p.onSelect(e.shiftKey); return; }
         p.onJump();
       }}
-      // 核心拖放契约：原生拖动结束前保持源节点，尤其不能卸载空梗概输入框。
-      // 用同步 ref 避免 dragstart 后 React 尚未重绘时 mouseleave 读取旧状态。
-      onMouseLeave={() => { if (!dragging.current) p.onEdit(false); }}
     >
       <div className="card__head">
         <input type="checkbox" className="card__select" aria-label={`选择第 ${scene.number} 场`} checked={p.selected}

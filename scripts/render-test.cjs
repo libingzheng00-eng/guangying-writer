@@ -244,7 +244,7 @@ process.on('exit', cleanTemporaryBundle);
       board.colorControls = qa('.board__selection-tools .board__color-bar button[aria-label^="卡片颜色"]').length;
       board.linkSelects = qa('.board__selection-tools select[aria-label="关联到场景"]').length;
     }
-    // 新连线方式：选中两张卡片后点顶栏「连线」（也可拖动卡片右侧圆点）。
+    // 新连线方式：选中两张卡片后点顶栏「连线」（也可拖动卡片右上角的连线钮）。
     await pressBoardCard('qa-scene-1');
     await pressBoardCard('qa-beat-1', true);
     const connectTool = q('.board__selection-tools .board__connect');

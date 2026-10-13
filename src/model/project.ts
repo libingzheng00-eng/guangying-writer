@@ -195,10 +195,6 @@ export function deriveCharacters(project: ScriptProject): CharacterStat[] {
 }
 
 /** 全部人物名（用于自动续打） */
-export function characterNames(project: ScriptProject): string[] {
-  return deriveCharacters(project).map((c) => c.name).filter(Boolean);
-}
-
 /** 全部场次标题（用于自动续打） */
 export function sceneHeadings(project: ScriptProject): string[] {
   const set: string[] = [];

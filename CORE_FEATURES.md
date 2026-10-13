@@ -62,7 +62,7 @@
 - 自由板支持 ⌘/Ctrl 多选、Shift 范围选、框选、批量删除；删除需同时清理孤儿关系线，但不能误删未选卡片的关系。
 - 场景卡的“删除整场”必须存在，并在可撤销的单次操作中处理正文、场景元数据、关系线与关联卡的解除关联。
 - 自由板筛选后，连线须两端均可见；Shift 选区、批量改色与删除只影响当前可见卡片。删除涉及整场正文必须先确认，取消不能改选区或撤销栈。专项：`board-polish-test.cjs`。
-- **自由板交互红线（2026-10-13，第3稿，用户要求）**：普通点击仅选择/编辑，不弹出浮动窗口；所选卡片的颜色、修改状态、关联场景放在顶栏。连线方式：拖动卡片右缘圆点到另一张卡片松开；或选中恰好两张卡片后按 L / 点顶栏「连线」；Esc、切换显示范围或松在空白处都取消，不自连、不重复连接。点线仅选线并清空卡片选区，点卡清空线选区；Delete 只删除当前选中对象。关系说明居中加粗，双击/F2/Enter 编辑，Enter/失焦提交、Esc 回滚；组合输入期间不得提交。所有文字框、关联选择器和嵌套 contenteditable 中，L/空格/Delete 均不能触发画布命令。
+- **自由板交互红线（2026-10-13，第3稿，用户要求）**：普通点击仅选择/编辑，不弹出浮动窗口；所选卡片的颜色、修改状态、关联场景放在顶栏。连线方式：拖动卡片右上角的连线钮（常显，悬停或选中时变实心）到另一张卡片松开；或选中恰好两张卡片后按 L / 点顶栏「连线」；Esc、切换显示范围或松在空白处都取消，不自连、不重复连接。点线仅选线并清空卡片选区，点卡清空线选区；Delete 只删除当前选中对象。关系说明居中加粗，双击/F2/Enter 编辑，Enter/失焦提交、Esc 回滚；组合输入期间不得提交。所有文字框、关联选择器和嵌套 contenteditable 中，L/空格/Delete 均不能触发画布命令。
 - **板面与写作坐标隔离**：自由板素材只写可选 `Beat.boardX/boardY`；缺失时显示回退到原 `x/y`，打开/切板/开网格不能凭空补字段。写作素材和创作 PDF 继续用原 `x/y`，自由板移动不得牵动它们。整场删除须解除规范 `SceneMeta.id` 及旧场次元素 ID 两种素材关联，保留未选场景关联。
 - 标题/关系备注每次完成编辑用独立提交入口；不可与此前正文输入或另一次确认误合并撤销。自由板不能因焦点产生原生scrollLeft/scrollTop导航，pan/zoom是唯一画布位移；附近工具必须在窗口改变后仍留在可见画布内。
 - 网格显示和磁吸为独立开关，磁吸默认关闭；开启/关闭不得自动排布旧卡。磁吸仅在拖动时作用于28单位网格、按屏幕像素容差，Alt 暂停。组拖动保持相对位置；拖动/缩放过程中仅预览，释放后整组一次写入、一次完整撤销，连续两次独立手势不可误合并；Esc/窗口失焦取消不写工程。空白拖动框选，空格拖动/中键平移；缩放只改变视图。专项：`board-workspace-model-test.cjs` / `board-workspace-ui-test.cjs`，另需真实浏览器鼠标验收。
@@ -146,7 +146,7 @@ node scripts/progress-bands-test.cjs
 | 只读元素/续说派生与快捷输入目录复用 | `src/model/flow.ts`、`src/model/smarttype.ts`、`Editor.tsx`、`PaginationProvider.tsx` | writing-derivation / smarttype / writing / 长稿与原生输入 |
 | 场景进度与跳转、角色改名同步 | `ProgressBar.tsx`、`progress.ts`、`ReportsView.tsx`、`store.ts` | writing / render / history / 实机跳转 |
 
-表中未写完整路径的组件位于 `src/components/`，模型位于 `src/model/`，`store.ts` 位于 `src/store/`，`useCommands.ts` 位于 `src/app/`。测试入口名称对应 `scripts/` 中同名 `*-test.cjs` 或 `*-electron.cjs` 文件。
+表中未写完整路径的组件位于 `src/components/`，模型位于 `src/model/`，`useCommands.ts` 位于 `src/app/`。表中的 `store.ts` 指 `src/store/` 下的状态层：业务操作按功能分在 `src/store/slices/` 里，撤销与合并规则在 `src/store/history.ts`。测试入口名称对应 `scripts/` 中同名 `*-test.cjs` 或 `*-electron.cjs` 文件。
 
 这些代码不是只读文件，也不做哈希“锁死”：修复错误必须可以改。任何改变上述行为的设计决定，须先征得用户明确认可；维护者不得靠删断言或关 CI 来掩盖回归。`AGENTS.md` 给 AI 明确约束，`core-checks` CI 自动运行基线；必须由管理员另外设为受保护分支的必需检查，才能强制阻止未通过检查的合并。
 

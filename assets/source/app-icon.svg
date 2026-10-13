@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7474f2"/>
+      <stop offset="1" stop-color="#3d3db8"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="plate"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#14143c" flood-opacity=".32"/>
+    </filter>
+    <filter id="nibShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#1a1a55" flood-opacity=".35"/>
+    </filter>
+    <mask id="cut">
+      <rect width="1024" height="1024" fill="#fff"/>
+      <circle cx="512" cy="540" r="34" fill="#000"/>
+      <rect x="503" y="540" width="18" height="222" rx="9" fill="#000"/>
+    </mask>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)" filter="url(#shadow)"/>
+  <!-- 光影：一道斜光 -->
+  <g clip-path="url(#plate)">
+    <polygon points="100,330 330,100 640,100 100,640" fill="url(#beam)"/>
+  </g>
+  <g filter="url(#nibShadow)">
+    <rect x="426" y="226" width="172" height="52" rx="16" fill="#ffffff" opacity=".92"/>
+    <path mask="url(#cut)" fill="#ffffff" d="M 440 306 L 584 306 C 606 372, 640 436, 640 512 C 640 618, 566 716, 512 812 C 458 716, 384 618, 384 512 C 384 436, 418 372, 440 306 Z"/>
+  </g>
+</svg>

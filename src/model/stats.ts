@@ -98,35 +98,5 @@ export function computeStats(p: ScriptProject, pageCount?: number): ScriptStats 
   };
 }
 
-export interface SceneStatRow {
-  number: string;
-  heading: string;
-  words: number;
-  characters: string[];
-  start: number;
-  end: number;
-}
-
-export function sceneStats(p: ScriptProject): SceneStatRow[] {
-  const scenes = deriveScenes(p);
-  return scenes.map((s) => {
-    let words = 0;
-    const chars: string[] = [];
-    for (let i = s.start; i < s.end; i += 1) {
-      const el = p.elements[i];
-      if (el.type === 'note') continue;
-      words += countWords(el.text);
-      if (el.type === 'character') {
-        const n = plain(el.text).trim();
-        if (n && !chars.includes(n)) chars.push(n);
-      }
-    }
-    return { number: s.number, heading: s.heading, words, characters: chars, start: s.start, end: s.end };
-  });
-}
-
-export function characterStats(p: ScriptProject): CharacterStat[] {
-  return deriveCharacters(p);
-}
 
 export type { ElementType };
