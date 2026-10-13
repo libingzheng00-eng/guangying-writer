@@ -224,6 +224,24 @@
   .app-shell[data-theme] :is(.find-panel__query, .find-panel__heading) > button:disabled { opacity: .4; }
   .app-shell[data-theme] .find-panel__heading > button[aria-label='关闭查找'] { border-color: transparent; background: transparent; }
   .app-shell[data-theme] .find-panel__heading > .find-panel__toggle[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  /* 设置与标题页：所有输入框、下拉框、颜色框统一为细线圆角，不再出现浏览器默认黑框。 */
+  .app-shell[data-theme] .modal :is(input:not([type='checkbox']):not([type='radio']):not([type='color']), select, textarea) {
+    box-sizing: border-box; min-height: 32px; padding: 5px 9px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--control-bg); color: var(--text); font: inherit; font-size: 13px; box-shadow: none; outline-offset: 0;
+  }
+  .app-shell[data-theme] .modal :is(input:not([type='checkbox']):not([type='radio']):not([type='color']), select, textarea):hover { border-color: var(--border-strong); }
+  .app-shell[data-theme] .modal :is(input:not([type='checkbox']):not([type='radio']):not([type='color']), select, textarea):focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+  .app-shell[data-theme] .modal :is(input, textarea)::placeholder { color: var(--muted); }
+  .app-shell[data-theme] .modal .table :is(input, select) { width: 100%; }
+  .app-shell[data-theme] .modal .table select { padding-right: 4px; }
+  .app-shell[data-theme] .modal :is(.table th, .table td) { border-color: var(--border); }
+  .app-shell[data-theme] .modal .table th { font-weight: 500; font-size: 12px; }
+  .app-shell[data-theme] .modal input[type='color'] { min-height: 32px; padding: 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--control-bg); cursor: pointer; }
+  .app-shell[data-theme] .modal .segmented.appearance-theme-switch { display: inline-flex; width: fit-content; max-width: 100%; padding: 3px; gap: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+  .app-shell[data-theme] .modal .segmented.appearance-theme-switch button { height: 26px; padding: 0 16px; border-radius: 6px; color: var(--muted); }
+  .app-shell[data-theme] .modal .segmented.appearance-theme-switch button.is-active { color: var(--accent); background: var(--control-bg); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+  .app-shell[data-theme] .modal .tabs button { border-radius: 6px 6px 0 0; }
+
   /* 窄窗口：带图标的按钮只留图标，文字转为读屏可读的隐藏文本，工具栏不溢出。 */
   @media (max-width: 1279px) {
     .app-shell[data-theme] .toolbar .toolbar__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
