@@ -7,6 +7,7 @@ import { sanitizeProjectHtml } from '../utils/projectHtml';
 import { parseRevisionWorkspace } from '../model/revisionWorkspace';
 import { validateAnnotations, reconcileAnnotations } from '../model/annotations';
 import { normalizeDeliveryIgnored } from '../model/deliveryChecks';
+import { parseCharacterWorkspace, reconcileCharacterWorkspace } from '../model/characterLines';
 
 export interface ZhspFile {
   app: 'guangying-writer';
@@ -250,6 +251,8 @@ export function parseProjectValue(value: unknown): ScriptProject {
   // collection or folding it into the explicit new stash.
   const trash = source.trash === undefined ? undefined : list(source.trash).map(normalizeElement);
   const revisionWorkspace = parseRevisionWorkspace(source.revisionWorkspace);
+  const annotations = source.annotations === undefined ? undefined : reconcileAnnotations(elements, elements, validateAnnotations(source.annotations));
+  const characterWorkspace = reconcileCharacterWorkspace({ elements, annotations }, { elements, annotations }, parseCharacterWorkspace(source.characterWorkspace));
   return {
     id: p.id || 'p',
     name: p.name || '未命名剧本',
@@ -269,7 +272,8 @@ export function parseProjectValue(value: unknown): ScriptProject {
     settings,
     ...(trash === undefined ? {} : { trash }),
     ...(revisionWorkspace === undefined ? {} : { revisionWorkspace }),
-    ...(source.annotations === undefined ? {} : { annotations: reconcileAnnotations(elements, elements, validateAnnotations(source.annotations)) }),
+    ...(annotations === undefined ? {} : { annotations }),
     ...(source.deliveryIgnored === undefined ? {} : { deliveryIgnored: normalizeDeliveryIgnored(source.deliveryIgnored) }),
+    ...(characterWorkspace === undefined ? {} : { characterWorkspace }),
   };
 }

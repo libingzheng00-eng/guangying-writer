@@ -18,6 +18,7 @@ const ok = (value, label) => { assert.ok(value, label); checks++; };
 const denied = async (operation, label) => { await assert.rejects(operation, /请求未获授权或参数无效/, label); checks++; };
 const rejected = (operation, label) => { assert.throws(operation, /请求未获授权或参数无效/, label); checks++; };
 const body = '{"synthetic":"合成安全测试"}';
+const printOpts = { mode: 'print', html: '<!doctype html><section class="print-sheet">合成 A4 快照</section>', pageSize: { width: 210000, height: 297000 } };
 
 function entryURLTests() {
   const source = fs.readFileSync(path.join(__dirname, '../electron/security.js'), 'utf8');
@@ -126,13 +127,17 @@ async function ipcTests() {
     { token: 'x'.repeat(257) }, { token: 'synthetic-token', name: {} }]) {
     await denied(() => h.invoke('recent:commitOpen', payload), 'commit requires a bounded opaque token and valid optional display name');
   }
-  for (const opts of [undefined, {}, { mode: 'other' }, { mode: 'creative', html: '<script>bad</script>' },
+  for (const opts of [undefined, {}, { mode: 'other' }, { mode: 'print' }, { mode: 'print', html: '' },
+    { html: printOpts.html }, { mode: 'print', html: '<section class="export-sheet"></section>' },
+    { mode: 'print', html: '<section class="not-print-sheet"></section>' },
+    { mode: 'print', html: '<section data-class="print-sheet"></section>' }, { mode: 'creative', html: '<script>bad</script>' },
     { mode: 'creative', html: '<section class="export-sheet"></section>', pageSize: { width: Infinity, height: 200000 } },
     { mode: 'creative', html: '<section class="export-sheet"></section>', pageSize: { width: 210000, height: 5000001 } }]) {
-    if (opts && !Object.keys(opts).length) continue; // Empty options preserve the legacy A4 print route.
     await denied(() => h.invoke('pdf:export', opts), 'invalid PDF request rejected before native dialog');
   }
   eq(s.dialogs.length, 0, 'invalid inputs never show native dialogs');
+  eq([s.pdfCalls.length, s.writes.length], [0, 0], 'missing print snapshots cannot reach a live-renderer fallback or write an export');
+  eq(pdfPayload(printOpts), printOpts, 'A4 snapshot passes through without changing its HTML or supplied dimensions');
 
   const stale = '/synthetic/old-recovery.zhsp';
   s.disk.set('/synthetic-qa-userData/recent.json', JSON.stringify([{ path: stale, name: '旧记录', updatedAt: 1 }]));
@@ -177,7 +182,7 @@ async function ipcTests() {
   let finishPdf;
   s.nextPdf = new Promise(resolve => { finishPdf = resolve; });
   s.saves.push({ canceled: false, filePath: '/synthetic/stale.pdf' });
-  const pendingPdf = h.invoke('pdf:export', { mode: 'print' });
+  const pendingPdf = h.invoke('pdf:export', printOpts);
   await Promise.resolve(); await Promise.resolve();
   contents.mainFrame.url = 'https://attacker.invalid/';
   finishPdf(Buffer.from('synthetic PDF'));

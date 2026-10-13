@@ -2,7 +2,8 @@ import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ScriptElement, ScriptSettings } from '../model/types';
 import { ELEMENT_META } from '../model/elements';
 import { isBlank } from '../utils/text';
-import { setCaret, offsetOf, makeTextRange } from '../utils/dom';
+import { setCaret, offsetOf, makeTextRange, domText } from '../utils/dom';
+import { validateCharacterSourceTarget } from '../app/characterNavigation';
 import { useStore } from '../store/store';
 import { runEditHistory } from '../utils/editHistory';
 import { safeDisplayColor } from '../utils/displayValues';
@@ -177,7 +178,52 @@ export function EditableBlock(props: EditableBlockProps) {
     const node = localRef.current;
     if (!node || useStore.getState().pdfExportMode || useStore.getState().view !== 'write' ||
         node.closest('[inert], [hidden]') || document.querySelector('[aria-modal="true"]')) return;
+    if (focus.source && (!validateCharacterSourceTarget(focus.source, useStore.getState()).ok || domText(node) !== focus.source.sourceText)) {
+      useStore.getState().notify('原文已变化，已停止人物证据定位。', 'error');
+      return;
+    }
     node.focus({ preventScroll: true });
+    if (focus.source) {
+      const range = makeTextRange(node, focus.source.start, focus.source.end);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      node.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+      // A paragraph can be several screens long. Reveal the actual matched
+      // text range, not just the paragraph's outer rectangle.
+      const reveal = () => {
+        const editor = node.closest<HTMLElement>('.editor');
+        const rect = typeof range.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : null;
+        if (editor && rect && rect.height) {
+          const viewport = editor.getBoundingClientRect();
+          if (rect.top < viewport.top + 24 || rect.bottom > viewport.bottom - 24) {
+            editor.scrollTop += rect.top - viewport.top - Math.max(24, (viewport.height - Math.min(rect.height, viewport.height)) / 2);
+          }
+        }
+      };
+      reveal();
+      // Fonts can settle after mounting the writing view. A single deferred
+      // reveal follows that layout, but any new user gesture cancels it.
+      let cancelled = false;
+      let frame: number | undefined;
+      const cancel = () => { cancelled = true; };
+      const events = ['pointerdown', 'mousedown', 'keydown', 'wheel', 'beforeinput'];
+      events.forEach(event => document.addEventListener(event, cancel, true));
+      Promise.resolve(document.fonts?.ready).then(() => {
+        if (cancelled) return;
+        frame = requestAnimationFrame(() => {
+          const state = useStore.getState();
+          if (!cancelled && node.isConnected && state.focus === focus && state.view === 'write' && !state.pdfExportMode &&
+              !document.querySelector('[aria-modal="true"]') && validateCharacterSourceTarget(focus.source!, state).ok &&
+              document.activeElement === node) reveal();
+        });
+      });
+      return () => {
+        cancelled = true;
+        if (frame !== undefined) cancelAnimationFrame(frame);
+        events.forEach(event => document.removeEventListener(event, cancel, true));
+      };
+    }
     setCaret(node, focus.caret);
     node.scrollIntoView({ block: focus.scroll || 'nearest', behavior: focus.scroll === 'start' ? 'smooth' : 'auto' });
     // eslint-disable-next-line react-hooks/exhaustive-deps

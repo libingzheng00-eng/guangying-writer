@@ -848,6 +848,7 @@ export function Editor() {
       <div
         className={`editor__scroll${isImageDropTarget ? ' is-image-drop-target' : ''}`}
         data-ready={readyKey === `${version}:${project.settings.paper}` ? 'true' : 'false'}
+        data-pagination-key={readyKey || ''}
         onDragOverCapture={(event) => {
           if (Array.from(event.dataTransfer.types).includes('Files')) {
             event.preventDefault();

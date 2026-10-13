@@ -59,7 +59,9 @@ function copyStyle(source: Element, target: HTMLElement, pseudo?: string) {
   target.style.setProperty('print-color-adjust', 'exact');
 }
 
-function snapshot(source: Node): Node | null {
+/** Freeze safe display nodes only; optional style adjustments preserve the
+ * separate A4 print-media contract without changing the live writing canvas. */
+export function snapshotPrintableNode(source: Node, adjustStyle?: (source: HTMLElement, target: HTMLElement) => void): Node | null {
   if (source.nodeType === Node.TEXT_NODE) return source.cloneNode();
   if (!(source instanceof HTMLElement)) return null;
   // Workspace comments/history may contain private draft text: omit the entire
@@ -73,6 +75,7 @@ function snapshot(source: Node): Node | null {
   if (source.dataset.type) target.dataset.type = source.dataset.type;
   if (source.className) target.className = source.className;
   copyStyle(source, target);
+  adjustStyle?.(source, target);
   if (source.matches(HIDE_CONTROLS) || (source instanceof HTMLInputElement && source.type === 'checkbox')) {
     target.style.visibility = 'hidden';
   }
@@ -97,7 +100,7 @@ function snapshot(source: Node): Node | null {
     if (source.src.startsWith('data:') && source.naturalWidth > 0) image.src = source.src;
   } else {
     for (const child of Array.from(source.childNodes)) {
-      const copied = snapshot(child);
+      const copied = snapshotPrintableNode(child, adjustStyle);
       if (copied) target.appendChild(copied);
     }
     // CONT'D 是伪元素，只冻结其显示文字，不能写回工程正文。
@@ -153,7 +156,7 @@ export function buildCreativePdf(canvas: HTMLElement) {
     if (bottom - headings[i] < MAX_PAGE_PX) forbidden.push({ top: headings[i], bottom });
   }
   const cuts = creativePageCuts(height, forbidden);
-  const clone = snapshot(canvas) as HTMLElement;
+  const clone = snapshotPrintableNode(canvas) as HTMLElement;
   Object.assign(clone.style, { position: 'absolute', left: '0px', top: '0px', width: `${width}px`, height: `${height}px`, minHeight: '0', margin: '0', boxSizing: 'border-box', overflow: 'hidden' });
   // 写作画布背景来自外层，需一并冻结，避免深色文字/图片卡在导出中失去原背景。
   const background = document.querySelector('.write-bg');

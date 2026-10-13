@@ -17,7 +17,7 @@ import { sampleProject } from '../model/sample';
 import { dualAfterEnter } from '../model/flow';
 import { moveStoryboardScenes, type StoryboardPlacement } from '../model/storyboard';
 import { searchText } from '../model/search';
-import { plain, cnNum } from '../utils/text';
+import { plain, cnNum, escapeHtml } from '../utils/text';
 import { uid } from '../utils/id';
 import { DEFAULT_FONT_COLOR, normalizeFontColor } from '../model/appearance';
 import { clampTargetPages } from '../model/progress';
@@ -31,6 +31,10 @@ import {
 import { captureTextAnchor, captureSceneAnchor, reconcileAnnotations, validateAnnotations, reanchorAnnotation,
   type Annotation, type AnnotationAnchor } from '../model/annotations';
 import { buildDeliveryChecks, normalizeDeliveryIgnored } from '../model/deliveryChecks';
+import { reconcileCharacterWorkspace, type CharacterProfile, type CharacterOverride, type CharacterAssignment } from '../model/characterLines';
+import { emptyCharacterWorkspace, withCharacterWorkspace, saveCharacterProfile, removeCharacterProfile,
+  saveCharacterOverride, saveCharacterAssignment, removeCharacterRecord } from '../model/characterActions';
+import { validateCharacterSourceTarget, type CharacterSourceTarget } from '../app/characterNavigation';
 import {
   toggleSel,
   selRange,
@@ -39,7 +43,7 @@ import {
   splitBoardSelection,
 } from '../model/selection';
 
-export type ViewMode = 'write' | 'cards' | 'board' | 'preview' | 'reports';
+export type ViewMode = 'write' | 'cards' | 'board' | 'preview' | 'reports' | 'character-lines';
 export type SidebarMode = 'navigator' | 'outline' | 'inspector';
 export type AppTheme = 'night' | 'day';
 
@@ -49,6 +53,8 @@ export interface FocusRequest {
   /** 滚动定位策略；普通编辑保持 nearest，场景条跳转使用 start。 */
   scroll: 'nearest' | 'start' | 'center' | 'end';
   ts: number;
+  /** An explicit read-only evidence jump, revalidated after the editor mounts. */
+  source?: CharacterSourceTarget;
 }
 
 export interface Toast {
@@ -124,6 +130,7 @@ interface StoreState {
 
   setActive: (id: string | null) => void;
   requestFocus: (id: string, caret?: FocusRequest['caret'], scroll?: FocusRequest['scroll']) => void;
+  requestCharacterSource: (target: CharacterSourceTarget) => boolean;
 
   /* 元素操作 */
   insertAfter: (id: string | null, type?: ElementType, text?: string) => string;
@@ -218,6 +225,14 @@ interface StoreState {
   deleteStashEntry: (id: string, expectedEpoch?: number) => boolean;
   restoreWorkspaceContent: (source: WorkspaceSource, afterId: string | null, expectedEpoch?: number) => boolean;
   addAnnotation: (anchor: AnnotationAnchor, body: string, expectedEpoch?: number) => boolean;
+  upsertCharacterProfile: (profile: CharacterProfile, expectedEpoch: number) => boolean;
+  removeCharacterProfile: (id: string, expectedEpoch: number) => boolean;
+  setCharacterOverride: (record: CharacterOverride, expectedEpoch: number) => boolean;
+  deleteCharacterOverride: (id: string, expectedEpoch: number) => boolean;
+  setCharacterAssignment: (record: CharacterAssignment, expectedEpoch: number) => boolean;
+  deleteCharacterAssignment: (id: string, expectedEpoch: number) => boolean;
+  addCharacterNote: (characterId: string, anchor: AnnotationAnchor, body: string,
+    options: { topic: 'note' | 'relationship' | 'knowledge'; relatedCharacterId?: string; status: 'pending' | 'resolved' }, expectedEpoch: number) => boolean;
   updateAnnotation: (id: string, patch: Partial<Pick<Annotation, 'body' | 'status' | 'reason' | 'decision'>>, expectedEpoch?: number) => boolean;
   deleteAnnotation: (id: string, expectedEpoch?: number) => boolean;
   reanchorAnnotation: (id: string, anchor: AnnotationAnchor, expectedEpoch?: number) => boolean;
@@ -294,6 +309,9 @@ function projectChange(state: StoreState, next: ScriptProject, opts?: MutateOpti
   // original quote and mark it for review instead of searching for similar text.
   if (next.annotations?.length && next.elements !== state.project.elements) {
     next.annotations = reconcileAnnotations(state.project.elements, next.elements, next.annotations);
+  }
+  if (next.characterWorkspace && (next.elements !== state.project.elements || next.annotations !== state.project.annotations)) {
+    next.characterWorkspace = reconcileCharacterWorkspace(state.project, next, next.characterWorkspace);
   }
   const history = opts?.history !== false;
   const now = Date.now();
@@ -453,15 +471,16 @@ export const useStore = create<StoreState>((set, get) => ({
     const { project } = get();
     // Review libraries are immutable branches. Ordinary typing/structure edits
     // must not duplicate every saved version into every undo snapshot.
-    const { revisionWorkspace, annotations, ...body } = project;
+    const { revisionWorkspace, annotations, characterWorkspace, ...body } = project;
     const next = cloneProject(body as ScriptProject);
     if (revisionWorkspace) next.revisionWorkspace = revisionWorkspace;
     if (annotations) next.annotations = annotations;
+    if (characterWorkspace) next.characterWorkspace = characterWorkspace;
     fn(next);
     // 组件可能在每次输入事件都调用 mutate；没有实际数据变化时不应制造
     // 撤销点、清空重做栈或把 dirty 标成 true。
-    const { revisionWorkspace: nextWorkspace, annotations: nextAnnotations, ...nextBody } = next;
-    if (nextWorkspace === revisionWorkspace && nextAnnotations === annotations && JSON.stringify(nextBody) === JSON.stringify(body)) {
+    const { revisionWorkspace: nextWorkspace, annotations: nextAnnotations, characterWorkspace: nextCharacters, ...nextBody } = next;
+    if (nextWorkspace === revisionWorkspace && nextAnnotations === annotations && nextCharacters === characterWorkspace && JSON.stringify(nextBody) === JSON.stringify(body)) {
       lastCoalesce = null;
       return;
     }
@@ -516,6 +535,19 @@ export const useStore = create<StoreState>((set, get) => ({
   requestFocus: (id, caret = 'end', scroll = 'nearest') => {
     get().updateWritingContext({ activeId: id, caret: typeof caret === 'number' ? caret : caret === 'start' ? 0 : undefined });
     set({ focus: { id, caret, scroll, ts: Date.now() }, activeId: id });
+  },
+  requestCharacterSource: (target) => {
+    const state = get();
+    const checked = validateCharacterSourceTarget(target, state);
+    if (!checked.ok) {
+      state.notify(checked.reason === 'missing-element' ? '原文已不存在，人物记录仍保留。' : '原文或工程已变化，请重新选择当前证据。', 'error');
+      return false;
+    }
+    const source = checked.target;
+    state.setView('write');
+    get().updateWritingContext({ activeId: source.elementId, caret: source.start });
+    set({ activeId: source.elementId, focus: { id: source.elementId, caret: source.start, scroll: 'center', ts: Date.now(), source } });
+    return true;
   },
 
   insertAfter: (id, type = 'action', text = '') => {
@@ -1158,17 +1190,29 @@ export const useStore = create<StoreState>((set, get) => ({
       get().notify('已有同名人物，请先合并或使用其他名称', 'error');
       return false;
     }
-    let changed = 0;
-    get().mutate((p) => {
-      p.elements.forEach((el) => {
-        if (el.type === 'character' && plain(el.text).trim() === from) {
-          el.text = nextName;
-          changed += 1;
-        }
+    const changed = reviewChange(undefined, project => {
+      const sourceProfiles = project.characterWorkspace?.profiles.filter(profile => profile.canonicalName === from || profile.aliases.includes(from)) || [];
+      if (sourceProfiles.length && project.characterWorkspace?.profiles.some(profile =>
+        !sourceProfiles.some(source => source.id === profile.id) && (profile.canonicalName === nextName || profile.aliases.includes(nextName)))) {
+        throw new Error('新名称已属于另一个已登记人物，请先在人物线中核对身份。');
+      }
+      let count = 0;
+      const elements = project.elements.map(element => {
+        if (element.type !== 'character' || plain(element.text).trim() !== from) return element;
+        count++;
+        return { ...element, text: escapeHtml(nextName) };
       });
+      if (!count) return project;
+      let next = { ...project, elements };
+      for (const profile of sourceProfiles) {
+        if (profile.canonicalName !== nextName && !profile.aliases.includes(nextName)) {
+          next = saveCharacterProfile(next, { ...profile, aliases: [...profile.aliases, nextName] });
+        }
+      }
+      return next;
     });
     if (changed) get().notify(`已将 ${from} 改为 ${nextName}`, 'ok');
-    return changed > 0;
+    return changed;
   },
 
   setTargetPages: (pages) => {
@@ -1273,6 +1317,23 @@ export const useStore = create<StoreState>((set, get) => ({
     if (restored && warnings.length) get().notify(`已插入副本。${warnings.join('')}`);
     return restored;
   },
+  upsertCharacterProfile: (profile, epoch) => reviewChange(epoch, project => saveCharacterProfile(project, profile)),
+  removeCharacterProfile: (id, epoch) => reviewChange(epoch, project => removeCharacterProfile(project, id)),
+  setCharacterOverride: (record, epoch) => reviewChange(epoch, project => saveCharacterOverride(project, record)),
+  deleteCharacterOverride: (id, epoch) => reviewChange(epoch, project => removeCharacterRecord(project, 'overrides', id)),
+  setCharacterAssignment: (record, epoch) => reviewChange(epoch, project => saveCharacterAssignment(project, record)),
+  deleteCharacterAssignment: (id, epoch) => reviewChange(epoch, project => removeCharacterRecord(project, 'assignments', id)),
+  addCharacterNote: (characterId, anchor, body, options, epoch) => reviewChange(epoch, project => {
+    assertReviewAnchor(project, anchor);
+    if (!options || !['pending', 'resolved'].includes(options.status)) throw new Error('人物记录状态无效。');
+    const now = Date.now();
+    const annotation: Annotation = { id: uid('annotation'), createdAt: now, updatedAt: now, body: body.trim(), status: options.status, anchor, anchorState: 'current' };
+    const annotations = validateAnnotations([...(project.annotations || []), annotation]);
+    const workspace = project.characterWorkspace || emptyCharacterWorkspace();
+    return withCharacterWorkspace({ ...project, annotations }, { ...workspace, noteLinks: [...workspace.noteLinks,
+      { annotationId: annotation.id, characterId, topic: options.topic, ...(options.relatedCharacterId ? { relatedCharacterId: options.relatedCharacterId } : {}) },
+    ] });
+  }),
   addAnnotation: (anchor, body, epoch) => reviewChange(epoch, project => {
     assertReviewAnchor(project, anchor);
     const now = Date.now();

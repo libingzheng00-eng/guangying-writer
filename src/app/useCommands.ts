@@ -5,9 +5,9 @@ import { parseProject, serializeProject } from '../io/zhsp';
 import { fromFdx, toFdx } from '../io/fdx';
 import { fromPlainText, toHtml, toMarkdown, toPlainText } from '../io/textscript';
 import { createProject, newElement, sceneHeadings } from '../model/project';
-import { PAPER_MM } from '../model/stats';
 import type { ElementType } from '../model/types';
 import { buildCreativePdf } from '../io/creativePdf';
+import { buildPrintPdf } from '../io/printPdf';
 import { loadStoredWritingContext } from './writingContext';
 
 /** 等待图片解码完成，避免 printToPDF 在图片卡尚未绘制时抢先输出。 */
@@ -34,6 +34,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   const isSaving = useCallback(() => saving.current, []);
   const openingRequest = useRef(0);
   const opening = useRef(false);
+  const pdfRequest = useRef(0);
   const [isOpening, setIsOpening] = useState(false);
 
   const save = useCallback(
@@ -176,42 +177,82 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   }, [store]);
 
   const exportPdf = useCallback(async (mode: 'creative' | 'print' = 'creative') => {
-    const { project, setView, notify, view, pdfExportMode, setPdfExportMode } = store.getState();
+    const { project, documentEpoch, version, setView, notify, view, pdfExportMode, setPdfExportMode } = store.getState();
     if (pdfExportMode) return;
+    const request = ++pdfRequest.current;
+    const exportView = mode === 'creative' ? 'write' : 'preview';
     const scrollTop = document.querySelector('.editor')?.scrollTop || 0;
     setPdfExportMode(mode);
-    setView(mode === 'creative' ? 'write' : 'preview');
+    setView(exportView);
+    let invalidated = false;
+    let interruptWait!: () => void;
+    const interrupted = new Promise<void>(resolve => { interruptWait = resolve; });
+    const isCurrent = () => {
+      const state = store.getState();
+      return request === pdfRequest.current && state.documentEpoch === documentEpoch &&
+        state.project === project && state.version === version && state.view === exportView && state.pdfExportMode === mode;
+    };
+    const unsubscribe = store.subscribe(() => {
+      if (!isCurrent()) { invalidated = true; interruptWait(); }
+    });
+    const assertCurrent = () => {
+      if (invalidated || !isCurrent()) throw new Error('剧本、内容或视图已改变，请重新导出。');
+    };
+    // A document/view change also releases a font/image wait that belongs to a
+    // detached old view. The losing promise cannot later continue this export.
+    const waitFor = async (promise: PromiseLike<unknown> | undefined) => {
+      await Promise.race([Promise.resolve(promise), interrupted]);
+      assertCurrent();
+    };
     try {
       const selector = mode === 'creative' ? '.editor__scroll[data-ready="true"]' : '.preview[data-ready="true"]';
+      const paginationKey = `${version}:${mode === 'creative' ? project.settings.paper : 'A4'}`;
       let ready: HTMLElement | null = null;
       for (let i = 0; i < 160; i++) {
+        assertCurrent();
         ready = document.querySelector<HTMLElement>(selector);
-        if (ready) break;
-        await new Promise(r => setTimeout(r, 50));
+        if (ready?.dataset.paginationKey === paginationKey) break;
+        ready = null;
+        await waitFor(new Promise(r => setTimeout(r, 50)));
       }
       if (!ready) throw new Error('排版尚未就绪，请稍后重试。');
-      await document.fonts?.ready;
-      await waitForPrintableAssets();
-      if (store.getState().project.id !== project.id) throw new Error('工程已切换，请重新导出。');
-      const opts = mode === 'creative' ? buildCreativePdf(ready) : {
-        mode: 'print' as const,
-        pageSize: { width: PAPER_MM.A4.w * 1000, height: PAPER_MM.A4.h * 1000 },
-      };
+      await waitFor(document.fonts?.ready);
+      await waitFor(waitForPrintableAssets());
+      if (document.querySelector(selector) !== ready || ready.dataset.paginationKey !== paginationKey) {
+        throw new Error('排版已经改变，请重新导出。');
+      }
+      // Both modes hand native code a frozen display snapshot before any Save
+      // dialog opens. A4 must never print the later live main-window document.
+      const opts = mode === 'creative' ? buildCreativePdf(ready) : buildPrintPdf(ready);
       const file = await bridge.exportPdf({ ...opts, name: `${project.name}-${mode === 'creative' ? '创作版' : 'A4纯文本'}.pdf` });
       if (file) {
-        notify(`已导出 PDF：${file}`, 'ok');
+        notify(`已导出${isCurrent() ? '' : '先前版本'} PDF：${file}`, 'ok');
         bridge.showInFolder(file);
       }
     } catch (err) {
       notify(`导出失败：${(err as Error).message}`, 'error');
     } finally {
-      setPdfExportMode(null);
-      // 取消/完成均回到原视图与滚动位置，导出不会改工程或撤销栈。
-      setView(view);
-      if (view === 'write') requestAnimationFrame(() => {
-        const editor = document.querySelector('.editor');
-        if (editor) editor.scrollTop = scrollTop;
-      });
+      unsubscribe();
+      if (request === pdfRequest.current) {
+        const restoreView = !invalidated && isCurrent();
+        // Keep context persistence suppressed while undoing our temporary view.
+        // A later document or an explicit user view choice owns its own position.
+        if (restoreView) setView(view);
+        if (store.getState().pdfExportMode === mode) setPdfExportMode(null);
+        if (!restoreView && store.getState().documentEpoch === documentEpoch) {
+          setView(store.getState().view);
+        }
+        if (restoreView && view === 'write' && exportView !== 'write') {
+          const focus = store.getState().focus;
+          requestAnimationFrame(() => {
+            const current = store.getState();
+            if (request !== pdfRequest.current || current.documentEpoch !== documentEpoch ||
+                current.view !== 'write' || current.pdfExportMode || current.focus !== focus) return;
+            const editor = document.querySelector('.editor');
+            if (editor) editor.scrollTop = scrollTop;
+          });
+        }
+      }
     }
   }, [store]);
 
@@ -224,9 +265,13 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
         md: toMarkdown,
         html: toHtml,
       } as const;
-      const content = map[kind](project);
-      const file = await bridge.saveProjectAs({ content, name: project.name, ext: kind });
-      if (file) notify(`已导出：${file}`, 'ok');
+      try {
+        const content = map[kind](project);
+        const file = await bridge.saveProjectAs({ content, name: project.name, ext: kind });
+        if (file) notify(`已导出：${file}`, 'ok');
+      } catch (err) {
+        notify(`导出失败：${(err as Error).message}`, 'error');
+      }
     },
     [store],
   );
@@ -246,6 +291,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
 
   const setElementType = useCallback(
     (type: ElementType) => {
+      if (store.getState().view === 'character-lines') { store.getState().notify('请先定位到正文，再编辑段落。'); return; }
       const { activeId, setType, requestFocus, project } = store.getState();
       if (!activeId) return;
       setType(activeId, type);
@@ -256,6 +302,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   );
 
   const insertScene = useCallback(() => {
+    if (store.getState().view === 'character-lines') { store.getState().notify('请先定位到正文，再编辑段落。'); return; }
     const { activeId, project, insertAfter, requestFocus } = store.getState();
     if (!activeId) return;
     const idx = project.elements.findIndex((e) => e.id === activeId);
@@ -269,6 +316,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   }, [store]);
 
   const makeDual = useCallback(() => {
+    if (store.getState().view === 'character-lines') { store.getState().notify('请先定位到正文，再编辑段落。'); return; }
     const { activeId, project, mutate, requestFocus } = store.getState();
     if (!activeId) return;
     const idx = project.elements.findIndex((e) => e.id === activeId);
@@ -300,6 +348,10 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
 
   const openFind = useCallback(() => {
     if (store.getState().pdfExportMode) return;
+    if (store.getState().view === 'character-lines') {
+      window.dispatchEvent(new Event('guangying:character-lines-find'));
+      return;
+    }
     store.getState().setView('write');
     window.dispatchEvent(new Event('guangying:find'));
   }, [store]);

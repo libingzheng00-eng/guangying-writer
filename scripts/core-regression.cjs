@@ -57,6 +57,11 @@ const suites = [
   'review-store-test.cjs',
   'scene-review-ui-test.cjs',
   'revision-workspace-ui-test.cjs',
+  'character-lines-model-test.cjs',
+  'character-lines-store-test.cjs',
+  'character-lines-ui-test.cjs',
+  'character-navigation-test.cjs',
+  'export-command-races-test.cjs',
 ];
 
 for (const [index, suite] of suites.entries()) {

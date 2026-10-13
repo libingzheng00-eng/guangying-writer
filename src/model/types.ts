@@ -1,5 +1,6 @@
 import type { RevisionWorkspace } from './revisionWorkspace';
 import type { Annotation } from './annotations';
+import type { CharacterWorkspace } from './characterLines';
 
 /**
  * 中文剧本数据模型
@@ -237,6 +238,8 @@ export interface ScriptProject {
   /** Review records never become screenplay elements or formal export content. */
   annotations?: Annotation[];
   deliveryIgnored?: string[];
+  /** Author-owned character identities/corrections; excluded from screenplay exports. */
+  characterWorkspace?: CharacterWorkspace;
 }
 
 export interface RecentFile {

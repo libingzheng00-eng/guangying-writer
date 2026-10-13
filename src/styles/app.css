@@ -1104,6 +1104,8 @@ textarea {
   background: #fff;
   color: #14181f; /* 白纸上用深色字（预览与打印一致） */
   box-sizing: border-box;
+  /* 纵向 flex 容器里不能被压扁：矮窗口下页面会被裁掉下半页，A4 快照也会继承这个高度。 */
+  flex: none;
   position: relative;
   box-shadow:
     0 0 0 1px rgba(88, 166, 255, 0.06),
