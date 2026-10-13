@@ -32,8 +32,11 @@ const isTextTarget = (target: EventTarget | null) => target instanceof Element &
 const WHEEL_SCROLL_RATE = .0012;
 const WHEEL_PINCH_RATE = .01;
 const clampZoom = (value: number) => Math.max(.4, Math.min(2, Number.isFinite(value) ? value : 1));
+const SNAP_KEY = 'guangying:boardSnap';
+const loadBoardSnap = () => { try { return localStorage.getItem(SNAP_KEY) !== 'off'; } catch { return true; } };
+const saveBoardSnap = (on: boolean) => { try { localStorage.setItem(SNAP_KEY, on ? 'on' : 'off'); } catch { /* 本机偏好写不进去时只影响这一次 */ } };
 const keepsNativeWheel = (target: EventTarget | null) => isTextTarget(target) ||
-  (target instanceof Element && !!target.closest('.board__dock, .board__context-menu'));
+  (target instanceof Element && !!target.closest('.board__context-menu'));
 
 export function BoardView() {
   const project = useStore((s) => s.project);
@@ -59,7 +62,9 @@ export function BoardView() {
   const [linkDraft, setLinkDraft] = useState<{ from: string; x: number; y: number; target: string | null } | null>(null);
   const [selectedLink, setSelectedLink] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(true);
-  const [snap, setSnap] = useState(false);
+  // 磁吸默认开启（本机偏好，不写工程）；关掉后下次打开仍保持关闭。
+  const [snap, setSnapState] = useState(loadBoardSnap);
+  const setSnap = (value: boolean) => { setSnapState(value); saveBoardSnap(value); };
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [preview, setPreview] = useState<Preview>({});
   const [snapping, setSnapping] = useState(false);
@@ -253,7 +258,7 @@ export function BoardView() {
       if (data.mode === 'pan') setPan({ x: data.pan.x + dx, y: data.pan.y + dy });
       if (data.mode === 'move' && data.anchor) {
         const raw = { x: data.anchor.x + dx / data.zoom, y: data.anchor.y + dy / data.zoom };
-        const next = snapBoardPosition(raw, data.zoom, snap, event.altKey);
+        const next = snapBoardPosition(raw, snap, event.altKey);
         const mx = next.x - data.anchor.x, my = next.y - data.anchor.y;
         data.final = data.members.map((card) => ({ id: card.id, x: Math.round((card.x + mx) * 100) / 100, y: Math.round((card.y + my) * 100) / 100 }));
         setPreview(Object.fromEntries(data.final.map((card) => [card.id, { x: card.x, y: card.y }])));
@@ -320,7 +325,8 @@ export function BoardView() {
   const zoomTo = (next: number) => {
     const target = clampZoom(next);
     const x = canvasSize.width / 2, y = canvasSize.height / 2;
-    setPan({ x: x - (x - pan.x) * target / zoom, y: y - (y - pan.y) * target / zoom }); setZoom(target);
+    const round = (value: number) => Math.round(value * 100) / 100;
+    setPan({ x: round(x - (x - pan.x) * target / zoom), y: round(y - (y - pan.y) * target / zoom) }); setZoom(target);
   };
   const closeAddMenu = () => { if (addMenuRef.current) addMenuRef.current.open = false; };
   const addCard = (kind: 'beat' | 'sound') => {
@@ -349,7 +355,7 @@ export function BoardView() {
     input.click();
   };
   const onDoubleClick = (event: React.MouseEvent) => {
-    if ((event.target as Element).closest('[data-card],.board-links,.board__dock,.board__context-menu')) return;
+    if ((event.target as Element).closest('[data-card],.board-links,.board__context-menu')) return;
     const rect = canvasRef.current!.getBoundingClientRect();
     const id = useStore.getState().addBeat((event.clientX - rect.left - pan.x) / zoom, (event.clientY - rect.top - pan.y) / zoom);
     selectCard(`beat:${id}`);
@@ -397,6 +403,11 @@ export function BoardView() {
         {visibleSelected.length === 2 && <button className="btn board__connect" title="连接这两张卡片（L）" onClick={() => connectCards(visibleSelected[0], visibleSelected[1])}>连线</button>}
       </div>}
       <div className="board__actions">
+        <div className="board__zoom" role="group" aria-label="自由板缩放">
+          <button className="board__zoom-step" aria-label="缩小自由板" title="缩小" onClick={() => zoomTo(Math.round((zoom - .1) * 10) / 10)}>−</button>
+          <ZoomInput zoom={zoom} onCommit={zoomTo} />
+          <button className="board__zoom-step" aria-label="放大自由板" title="放大" onClick={() => zoomTo(Math.round((zoom + .1) * 10) / 10)}>+</button>
+        </div>
         <details ref={addMenuRef} className="board__dropdown"><summary className="btn--primary" aria-label="新增卡片">+ 新增</summary>
           <div className="board__menu"><button onClick={addScene}>场景卡</button><button onClick={() => addCard('beat')}>灵感卡</button><button onClick={() => addCard('sound')}>声音卡</button><button onClick={addImage}>图片卡</button></div>
         </details>
@@ -430,18 +441,14 @@ export function BoardView() {
         {!contextMenu.linkId && contextMenu.ids.length === 2 && <button role="menuitem" onClick={() => { connectCards(contextMenu.ids[0], contextMenu.ids[1]); setContextMenu(null); }}>连接这两张卡片</button>}
         <button role="menuitem" className="is-danger" onClick={() => { if (contextMenu.linkId) { useStore.getState().deleteBoardLink(contextMenu.linkId); setSelectedLink(null); } else deleteCards(contextMenu.ids); setContextMenu(null); }}>{menuDeleteLabel}</button>
       </div>}
-      <div className="board__hint">拖动卡片右上角的连线钮到另一张卡片即可连线 · Shift 多选 · Delete 删除 · 空格拖动画布</div>
-      <div className="board__dock" role="toolbar" aria-label="自由板工具" onMouseDown={stopMouse} onDoubleClick={stopMouse}>
-        <div className="zoom-ctl"><button className="icon-btn" aria-label="缩小自由板" onClick={() => setZoom((value) => Math.max(.4, Math.round((value - .1) * 10) / 10))}>−</button>
-          <ZoomInput zoom={zoom} onCommit={zoomTo} /><button className="icon-btn" aria-label="放大自由板" onClick={() => setZoom((value) => Math.min(2, Math.round((value + .1) * 10) / 10))}>+</button></div>
-      </div>
+      <div className="board__hint">鼠标移到卡片右上角会出现圆点，拖到另一张卡片即可连线 · Shift 多选 · Delete 删除 · 空格拖动画布</div>
     </div>
   </div>;
 }
 
 /** 可直接输入的缩放比例（40%–200%）；Enter 或失焦生效，Esc 还原。 */
 function ZoomInput({ zoom, onCommit }: { zoom: number; onCommit: (zoom: number) => void }) {
-  const shown = String(Math.round(zoom * 100));
+  const shown = `${Math.round(zoom * 100)}%`;
   const [draft, setDraft] = useState(shown);
   const editing = useRef(false);
   const cancelled = useRef(false);
@@ -451,16 +458,15 @@ function ZoomInput({ zoom, onCommit }: { zoom: number; onCommit: (zoom: number) 
     if (cancelled.current) { cancelled.current = false; setDraft(shown); return; }
     const value = parseFloat(draft.replace(/[^\d.]/g, ''));
     if (Number.isFinite(value) && value > 0) onCommit(value / 100);
-    setDraft(String(Math.round(clampZoom(Number.isFinite(value) && value > 0 ? value / 100 : zoom) * 100)));
+    setDraft(`${Math.round(clampZoom(Number.isFinite(value) && value > 0 ? value / 100 : zoom) * 100)}%`);
   };
-  return <label className="zoom-val zoom-input" title="输入缩放比例，Enter 确认">
-    <input aria-label="自由板缩放比例" inputMode="numeric" value={draft} onFocus={(event) => { editing.current = true; event.currentTarget.select(); }}
-      onChange={(event) => setDraft(event.target.value)} onBlur={commit}
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.nativeEvent.isComposing) return;
-        if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
-        if (event.key === 'Escape') { event.preventDefault(); cancelled.current = true; event.currentTarget.blur(); }
-      }} />%
-  </label>;
+  return <input className="board__zoom-input" aria-label="自由板缩放比例" title="输入缩放比例（40%–200%），Enter 确认" inputMode="numeric" value={draft}
+    onFocus={(event) => { editing.current = true; event.currentTarget.select(); }}
+    onChange={(event) => setDraft(event.target.value)} onBlur={commit}
+    onKeyDown={(event) => {
+      event.stopPropagation();
+      if (event.nativeEvent.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
+      if (event.key === 'Escape') { event.preventDefault(); cancelled.current = true; event.currentTarget.blur(); }
+    }} />;
 }

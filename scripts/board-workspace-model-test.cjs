@@ -38,7 +38,7 @@ const check = (label, actual, expected = true) => {
   mod._compile(built.outputFiles[0].text, mod.filename);
   const {
     useStore, createProject, parseProject, serializeProject, boardBeatPosition,
-    snapBoardPosition, BOARD_GRID_SIZE, BOARD_SNAP_TOLERANCE_PX, beatEndpoint,
+    snapBoardPosition, BOARD_GRID_SIZE, beatEndpoint,
     clampSize, RESIZE_LIMITS,
   } = mod.exports;
   const state = () => useStore.getState();
@@ -77,7 +77,7 @@ const check = (label, actual, expected = true) => {
     acts: project.acts,
   });
 
-  check('世界网格与屏幕吸附容差为28和6', [BOARD_GRID_SIZE, BOARD_SNAP_TOLERANCE_PX], [28, 6]);
+  check('世界网格为28', BOARD_GRID_SIZE, 28);
   const legacyBeat = Object.freeze({ x: 41, y: 73 });
   check('缺失自由板坐标时只读回退旧坐标', boardBeatPosition(legacyBeat), { x: 41, y: 73 });
   check('只读投影不新增可选字段', Object.keys(legacyBeat), ['x', 'y']);
@@ -85,12 +85,12 @@ const check = (label, actual, expected = true) => {
   check('损坏自由板坐标按轴回退有限旧坐标', boardBeatPosition({ x: 41, y: 73, boardX: NaN, boardY: Infinity }), { x: 41, y: 73 });
   check('损坏旧坐标仅在只读投影兜底0', boardBeatPosition({ x: NaN, y: Infinity }), { x: 0, y: 0 });
   check('吸附默认关闭保持输入坐标', snapBoardPosition({ x: 25, y: 34 }), { x: 25, y: 34 });
-  check('每个轴仅在6屏幕像素内吸附', snapBoardPosition({ x: 22, y: 35 }, 1, true), { x: 28, y: 35 });
-  check('zoom2时世界容差降为3', snapBoardPosition({ x: 25, y: 24 }, 2, true), { x: 28, y: 24 });
-  check('zoom0.5时世界容差增为12', snapBoardPosition({ x: 17, y: 15 }, 0.5, true), { x: 28, y: 15 });
-  check('负数位置也靠近正确世界网格', snapBoardPosition({ x: -25, y: -34 }, 1, true), { x: -28, y: -28 });
-  check('Alt绕过磁性吸附', snapBoardPosition({ x: 25, y: 30 }, 1, true, true), { x: 25, y: 30 });
-  check('无效缩放安全回退1', snapBoardPosition({ x: 25, y: 35 }, Infinity, true), { x: 28, y: 35 });
+  check('开启后每个轴都落到最近的网格线', snapBoardPosition({ x: 22, y: 35 }, true), { x: 28, y: 28 });
+  check('离网格较远时也吸到最近的线', snapBoardPosition({ x: 41, y: 13 }, true), { x: 28, y: 0 });
+  check('负数位置也靠近正确世界网格', snapBoardPosition({ x: -25, y: -34 }, true), { x: -28, y: -28 });
+  check('负零规整为0', Object.is(snapBoardPosition({ x: -3, y: 3 }, true).x, 0), true);
+  check('Alt绕过磁性吸附', snapBoardPosition({ x: 25, y: 30 }, true, true), { x: 25, y: 30 });
+  check('非有限坐标原样返回', snapBoardPosition({ x: NaN, y: 30 }, true).x, NaN);
 
   reset();
   const original = clone(state().project);
