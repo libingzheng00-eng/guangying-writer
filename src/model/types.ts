@@ -240,6 +240,8 @@ export interface ScriptProject {
   deliveryIgnored?: string[];
   /** Author-owned character identities/corrections; excluded from screenplay exports. */
   characterWorkspace?: CharacterWorkspace;
+  /** 本版不认识的工程字段（通常来自更新版本），原样随工程保存，不解释、不显示、不导出。 */
+  preservedFields?: Record<string, unknown>;
 }
 
 export interface RecentFile {

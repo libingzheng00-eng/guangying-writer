@@ -1,5 +1,5 @@
 import type { Beat, BoardLink, ScriptElement, ScriptProject, ScriptSettings } from '../model/types';
-import { FILE_VERSION, defaultSettings, emptyTitlePage } from '../model/project';
+import { FILE_VERSION, FORMAT_REVISION, defaultSettings, emptyTitlePage } from '../model/project';
 import { DEFAULT_INDENT, DEFAULT_REVISIONS, ELEMENT_ORDER } from '../model/elements';
 import { normalizeTargetPages } from '../model/progress';
 import { validateProjectSettings } from '../model/projectSettingsValidation';
@@ -12,11 +12,18 @@ import { parseCharacterWorkspace, reconcileCharacterWorkspace } from '../model/c
 export interface ZhspFile {
   app: 'guangying-writer';
   fileVersion: number;
+  /** 缺失表示 alpha.18.16 或更早。 */
+  formatRevision?: number;
   savedAt: number;
   project: ScriptProject;
 }
 
 type RecordValue = Record<string, unknown>;
+const KNOWN_PROJECT_FIELDS = new Set(['id', 'name', 'createdAt', 'updatedAt', 'titlePage', 'elements', 'sceneMeta', 'beats',
+  'boardLinks', 'targetPages', 'acts', 'revisions', 'settings', 'trash', 'revisionWorkspace', 'annotations', 'deliveryIgnored',
+  'characterWorkspace', 'preservedFields']);
+const KNOWN_BEAT_FIELDS = new Set(['id', 'text', 'color', 'x', 'y', 'boardX', 'boardY', 'sceneId', 'kind', 'title', 'img', 'w', 'h']);
+const MAX_PRESERVED_BYTES = 32 * 1024 * 1024;
 const elementTypes = new Set<string>(ELEMENT_ORDER);
 const reservedIdentifiers = new Set([...Object.getOwnPropertyNames(Object.prototype), 'prototype']);
 const invalidStructure = () => new Error('工程结构格式不正确，原文件未修改');
@@ -172,6 +179,10 @@ function normalizeBeat(raw: unknown): Beat {
   if (typeof b.img === 'string') beat.img = b.img;
   if (typeof b.w === 'number' && Number.isFinite(b.w)) beat.w = b.w;
   if (typeof b.h === 'number' && Number.isFinite(b.h)) beat.h = b.h;
+  // 新版本给卡片加的字段原样保留（不参与显示），旧版回存时不丢。
+  for (const key of Object.keys(b)) {
+    if (!KNOWN_BEAT_FIELDS.has(key) && !reservedIdentifiers.has(key)) (beat as unknown as RecordValue)[key] = b[key];
+  }
   return beat;
 }
 
@@ -198,8 +209,28 @@ export function serializeProject(p: ScriptProject): string {
   // Never write a snapshot which the same version would refuse to reopen.
   // Validation does not rewrite the author's original snapshot or history.
   parseProjectValue(p);
-  const file: ZhspFile = { app: 'guangying-writer', fileVersion: FILE_VERSION, savedAt: Date.now(), project: p };
+  // Unknown fields go back where the newer version wrote them; known fields win.
+  const { preservedFields, ...known } = p;
+  const project = (preservedFields ? { ...preservedFields, ...known } : known) as ScriptProject;
+  const file: ZhspFile = { app: 'guangying-writer', fileVersion: FILE_VERSION, formatRevision: FORMAT_REVISION, savedAt: Date.now(), project };
   return JSON.stringify(file, null, 2);
+}
+
+export interface ProjectFileNotice {
+  /** 文件由更新的版本保存（格式修订号更高）。 */
+  newerFormat: boolean;
+  /** 本版不认识、已原样保留的顶层字段名。 */
+  preservedFields: string[];
+}
+
+/** 打开前给作者的提示信息；不改工程内容。 */
+export function projectFileNotice(raw: string, project: ScriptProject): ProjectFileNotice {
+  let revision = 0;
+  try {
+    const json = JSON.parse(raw);
+    if (json && typeof json === 'object' && typeof json.formatRevision === 'number') revision = json.formatRevision;
+  } catch { /* parseProject already accepted it */ }
+  return { newerFormat: revision > FORMAT_REVISION, preservedFields: Object.keys(project.preservedFields || {}) };
 }
 
 /** 容错解析：兼容旧版 / 缺少字段的工程文件 */
@@ -253,6 +284,18 @@ export function parseProjectValue(value: unknown): ScriptProject {
   const revisionWorkspace = parseRevisionWorkspace(source.revisionWorkspace);
   const annotations = source.annotations === undefined ? undefined : reconcileAnnotations(elements, elements, validateAnnotations(source.annotations));
   const characterWorkspace = reconcileCharacterWorkspace({ elements, annotations }, { elements, annotations }, parseCharacterWorkspace(source.characterWorkspace));
+  const preservedFields: RecordValue = { ...(source.preservedFields === undefined ? {} : record(source.preservedFields)) };
+  for (const key of Object.keys(source)) {
+    if (KNOWN_PROJECT_FIELDS.has(key)) continue;
+    if (reservedIdentifiers.has(key)) throw invalidStructure();
+    preservedFields[key] = source[key];
+  }
+  for (const key of Object.keys(preservedFields)) {
+    if (KNOWN_PROJECT_FIELDS.has(key) || reservedIdentifiers.has(key)) throw invalidStructure();
+  }
+  const hasPreserved = Object.keys(preservedFields).length > 0;
+  // Preserved data is opaque JSON: it must round-trip and stay bounded.
+  if (hasPreserved && (JSON.stringify(preservedFields)?.length ?? Infinity) > MAX_PRESERVED_BYTES) throw invalidStructure();
   return {
     id: p.id || 'p',
     name: p.name || '未命名剧本',
@@ -275,5 +318,6 @@ export function parseProjectValue(value: unknown): ScriptProject {
     ...(annotations === undefined ? {} : { annotations }),
     ...(source.deliveryIgnored === undefined ? {} : { deliveryIgnored: normalizeDeliveryIgnored(source.deliveryIgnored) }),
     ...(characterWorkspace === undefined ? {} : { characterWorkspace }),
+    ...(hasPreserved ? { preservedFields } : {}),
   };
 }

@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useStore } from '../store/store';
 import { bridge } from '../io/native';
-import { parseProject, serializeProject } from '../io/zhsp';
+import { parseProject, projectFileNotice, serializeProject } from '../io/zhsp';
 import { fromFdx, toFdx } from '../io/fdx';
 import { fromPlainText, toHtml, toMarkdown, toPlainText } from '../io/textscript';
 import { createProject, newElement, sceneHeadings } from '../model/project';
@@ -104,6 +104,17 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
       } else {
         project = parseProject(res.content);
         filePath = res.path;
+        const notice = projectFileNotice(res.content, project);
+        if (notice.newerFormat || notice.preservedFields.length) {
+          const choice = await askChoice({
+            title: '这个工程来自更新的版本',
+            message: '它由较新版本的光影写手保存，含有本版不认识的内容。\n可以照常打开和编辑；这些内容会原样保留，保存时一并写回，但在本版中看不到、也不会导出。',
+            warning: '建议先保留一份原文件副本，或改用新版编辑。',
+            options: [{ value: 'open', label: '打开并保留新版内容', tone: 'primary' }, { value: 'cancel', label: '不打开' }],
+            cancelValue: 'cancel',
+          });
+          if (choice !== 'open' || store.getState().documentEpoch !== epochAtOpen) return false;
+        }
       }
       const hasDraft = !!document.querySelector('[data-project-draft-pending="true"]');
       if ((store.getState().dirty || hasDraft) && !window.confirm('当前剧本有未保存的修改或未确认的文字，打开其他剧本将放弃这些内容。确定继续吗？')) return false;

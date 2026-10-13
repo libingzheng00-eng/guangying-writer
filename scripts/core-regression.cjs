@@ -37,6 +37,7 @@ const suites = [
   'search-ui-test.cjs',
   'find-replace-test.cjs',
   'zhsp-compat-test.cjs',
+  'forward-compat-test.cjs',
   'history-test.cjs',
   'input-performance-test.cjs',
   'pagination-safety-test.cjs',

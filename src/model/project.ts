@@ -13,6 +13,12 @@ import { uid } from '../utils/id';
 import { plain, stripSceneNumber } from '../utils/text';
 
 export const FILE_VERSION = 1;
+/**
+ * 工程格式修订号。每当新版加入旧版不认识的工程字段时加一。
+ * 打开修订号更高的文件时提示作者，并原样保留本版不认识的字段，避免回存丢数据。
+ * 2 = alpha.18.17：首个会保留未知字段的版本（含人物线 characterWorkspace）。
+ */
+export const FORMAT_REVISION = 2;
 
 export function defaultSettings(): ScriptSettings {
   return {
