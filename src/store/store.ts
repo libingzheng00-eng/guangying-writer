@@ -16,7 +16,7 @@ import { cloneProject, createProject, newElement, deriveScenes } from '../model/
 import { sampleProject } from '../model/sample';
 import { dualAfterEnter } from '../model/flow';
 import { moveStoryboardScenes, type StoryboardPlacement } from '../model/storyboard';
-import { searchText } from '../model/search';
+import { searchText, replaceTextRanges } from '../model/search';
 import { plain, cnNum, escapeHtml } from '../utils/text';
 import { uid } from '../utils/id';
 import { DEFAULT_FONT_COLOR, normalizeFontColor } from '../model/appearance';
@@ -68,6 +68,8 @@ export interface SaveSnapshot {
   project: ScriptProject;
   documentEpoch: number;
 }
+
+export interface ReplaceMatch { elementId: string; start: number; end: number; /** 命中时的原文，用于校验未被改动 */ text: string }
 
 interface MutateOptions {
   history?: boolean;
@@ -142,6 +144,8 @@ interface StoreState {
   commitSmartType: (id: string, expectedText: string, expectedType: ElementType, html: string, targetType: ElementType, expectedEpoch: number) => boolean;
   setType: (id: string, type: ElementType) => void;
   setText: (id: string, text: string) => void;
+  /** 查找替换：一次撤销步骤；任一命中的原文已变化、文档已切换时整体拒绝，返回替换数。 */
+  replaceMatches: (matches: ReplaceMatch[], replacement: string, expectedEpoch: number) => number;
   removeElement: (id: string) => void;
   deleteWritingElements: (ids: string[]) => void;
   moveElement: (id: string, dir: -1 | 1) => void;
@@ -670,6 +674,27 @@ export const useStore = create<StoreState>((set, get) => ({
     const elements = project.elements.slice();
     elements[index] = { ...elements[index], text };
     set(projectChange(state, { ...project, elements }, { coalesce: `text:${id}` }));
+  },
+
+  replaceMatches: (matches, replacement, expectedEpoch) => {
+    const state = get();
+    lastCoalesce = null;
+    if (state.documentEpoch !== expectedEpoch || !matches.length) return 0;
+    const byElement = new Map<string, ReplaceMatch[]>();
+    for (const match of matches) byElement.set(match.elementId, [...(byElement.get(match.elementId) || []), match]);
+    const elements = state.project.elements.slice();
+    for (const [id, list] of byElement) {
+      const index = elements.findIndex(element => element.id === id);
+      if (index < 0) return 0;
+      const source = searchText(elements[index].text);
+      if (list.some(match => source.slice(match.start, match.end) !== match.text)) return 0;
+      const html = replaceTextRanges(elements[index].text, list, replacement);
+      if (html === null) return 0;
+      elements[index] = { ...elements[index], text: html };
+    }
+    // 与 setText 一样只复制改动的段落；不设 coalesce，整次替换是独立的一步撤销。
+    set(projectChange(state, { ...state.project, elements }));
+    return matches.length;
   },
 
   removeElement: (id) => {

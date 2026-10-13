@@ -35,6 +35,7 @@ const suites = [
   'smarttype-ui-test.cjs',
   'search-test.cjs',
   'search-ui-test.cjs',
+  'find-replace-test.cjs',
   'zhsp-compat-test.cjs',
   'history-test.cjs',
   'input-performance-test.cjs',

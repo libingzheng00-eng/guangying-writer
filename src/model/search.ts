@@ -89,3 +89,56 @@ export function searchScript(
   }
   return results;
 }
+
+export interface TextRange { start: number; end: number }
+
+/**
+ * 在正文 HTML 中按 searchText 偏移替换若干段文字，保留其余格式标签。
+ * 替换文字以纯文本写入（不解释为 HTML）；跨格式边界的命中沿用首字所在的格式。
+ * 范围须互不重叠，且须在 searchText(html) 的长度之内，否则返回 null 表示拒绝。
+ */
+export function replaceTextRanges(html: string, ranges: readonly TextRange[], replacement: string): string | null {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  const total = searchText(html).length;
+  const sorted = [...ranges].sort((a, b) => b.start - a.start);
+  for (let i = 0; i < sorted.length; i++) {
+    const { start, end } = sorted[i];
+    if (!(start >= 0 && end > start && end <= total)) return null;
+    if (i > 0 && end > sorted[i - 1].start) return null;
+  }
+  for (const { start, end } of sorted) {
+    const atoms: Node[] = [];
+    const walker = document.createTreeWalker(template.content, 1 | 4);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (node.nodeType === 3 || node.nodeName === 'BR') atoms.push(node);
+    }
+    let offset = 0;
+    let inserted = false;
+    for (const atom of atoms) {
+      const length = atom.nodeType === 3 ? (atom.nodeValue || '').length : 1;
+      const from = offset, to = offset + length;
+      offset = to;
+      if (to <= start || from >= end) continue;
+      if (atom.nodeType === 3) {
+        const text = atom.nodeValue || '';
+        const s = Math.max(start, from) - from, e = Math.min(end, to) - from;
+        atom.nodeValue = text.slice(0, s) + (inserted ? '' : replacement) + text.slice(e);
+      } else {
+        if (!inserted) atom.parentNode!.insertBefore(document.createTextNode(replacement), atom);
+        atom.parentNode!.removeChild(atom);
+      }
+      inserted = true;
+    }
+  }
+  // 删除替换后留下的空文本与空格式标签，避免正文 HTML 累积无意义节点。
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const element of Array.from(template.content.querySelectorAll('b, i, u, strong, em, span'))) {
+      if (!element.textContent && !element.querySelector('br')) { element.remove(); changed = true; }
+    }
+  }
+  template.content.normalize();
+  return template.innerHTML;
+}

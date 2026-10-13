@@ -6,6 +6,10 @@
   .find-panel__query input { min-width: 0; flex: 1; width: 100%; }
   .find-panel button, .find-panel input { color: var(--text); }
   .find-panel__query > button { flex: 0 0 30px; }
+  .find-panel__heading strong { flex: 1; }
+  .find-panel__heading .find-panel__toggle { font-size: 12px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px; }
+  .find-panel__heading .find-panel__toggle[aria-pressed='true'] { border-color: var(--accent); }
+  .find-panel__replace > button { flex: 0 0 auto; padding: 0 8px; white-space: nowrap; }
   .find-panel__options { justify-content: space-between; flex-wrap: wrap; font-size: 12px; }
   .find-panel__options label { display: flex; align-items: center; gap: 4px; }
   .find-panel__options input { width: auto; }
