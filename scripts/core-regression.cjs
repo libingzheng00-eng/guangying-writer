@@ -1,5 +1,6 @@
 /* One local baseline; native Electron/OS clipboard checks remain separate. */
-const { spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
+const os = require('node:os');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
@@ -68,16 +69,50 @@ const suites = [
   'export-command-races-test.cjs',
 ];
 
-for (const [index, suite] of suites.entries()) {
-  console.log(`\n[${index + 1}/${suites.length}] ${suite}`);
-  const result = spawnSync(process.execPath, [path.join(__dirname, suite)], {
-    cwd: root,
-    stdio: 'inherit',
-    timeout: 120000,
+// 套件彼此独立（各自的 jsdom、内存打包、临时目录），并行运行；输出按清单顺序整段打印。
+// CORE_JOBS=1 可退回逐个运行，便于定位问题。
+const jobs = Math.max(1, Math.min(Number(process.env.CORE_JOBS) || Math.min(os.cpus().length, 6), suites.length));
+
+function run(suite) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const child = spawn(process.execPath, [path.join(__dirname, suite)], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    child.stdout.on('data', (chunk) => { output += chunk; });
+    child.stderr.on('data', (chunk) => { output += chunk; });
+    const timer = setTimeout(() => child.kill('SIGKILL'), 120000);
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      resolve({ suite, code, signal, output, seconds: (Date.now() - started) / 1000 });
+    });
   });
-  if (result.error || result.signal || result.status !== 0) {
-    console.error(`FAILED: ${suite}`, result.error || result.signal || result.status);
+}
+
+(async () => {
+  const results = new Array(suites.length);
+  let next = 0, printed = 0, failed = null;
+  const flush = () => {
+    while (printed < suites.length && results[printed]) {
+      const r = results[printed];
+      console.log(`\n[${printed + 1}/${suites.length}] ${r.suite} (${r.seconds.toFixed(1)}s)`);
+      process.stdout.write(r.output);
+      if ((r.code !== 0 || r.signal) && !failed) failed = r;
+      printed++;
+    }
+  };
+  const worker = async () => {
+    while (next < suites.length && !failed) {
+      const index = next++;
+      results[index] = await run(suites[index]);
+      if (results[index].code !== 0 || results[index].signal) failed = failed || results[index];
+      flush();
+    }
+  };
+  await Promise.all(Array.from({ length: jobs }, worker));
+  flush();
+  if (failed) {
+    console.error(`FAILED: ${failed.suite}`, failed.signal || failed.code);
     process.exit(1);
   }
-}
-console.log(`\nCore regression: ${suites.length}/${suites.length} suites passed.`);
+  console.log(`\nCore regression: ${suites.length}/${suites.length} suites passed (${jobs} parallel jobs).`);
+})();

@@ -156,16 +156,14 @@
   .app-shell[data-theme] .bcard--scene { box-shadow: inset 3px 0 var(--scene-color), var(--card-glow); }
   .app-shell[data-theme] .bcard:hover { border-color: var(--border-strong); }
   .app-shell[data-theme] .bcard.is-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .app-shell[data-theme] :is(.bcard__title, .bcard__media-title, .bcard__edit, .board-link-note input) { color: var(--text); text-shadow: none; }
+
+  .app-shell[data-theme] :is(.bcard__title, .bcard__media-title, .bcard__edit) { color: var(--text); text-shadow: none; }
   .app-shell[data-theme] :is(.bcard__edit, .bcard__media) { background: var(--control-bg); }
   .app-shell[data-theme] .bcard__synopsis,
   .app-shell[data-theme] .board-link-note input::placeholder { color: var(--muted); }
   .app-shell[data-theme] .board__color-bar { background: var(--panel); border-color: var(--border); }
   .app-shell[data-theme] .board__link-state { color: var(--accent); }
-  .app-shell[data-theme] .bcard .bcard__link { color: var(--text); background: var(--control-bg); border-color: var(--border); }
-  .app-shell[data-theme] .bcard__actions { background: var(--control-bg); border-radius: 4px; }
-  .app-shell[data-theme] .bcard__connect { color: var(--muted); }
-  .app-shell[data-theme] .bcard__connect.is-active { color: var(--accent); background: var(--accent-soft); }
+
   .app-shell[data-theme] :is(.cards__label, .reports__label, .preview__label, .cards__act-title) { color: var(--text); }
   /* 故事卡：中性卡面，作者选择的场景色只留在左侧 4px 色条（卡片内联底色从卡面左缘露出）。 */
   .app-shell[data-theme] .cards .card {
@@ -179,7 +177,7 @@
   .app-shell[data-theme] .cards .card__synopsis::placeholder { color: var(--muted); }
   .app-shell[data-theme] .cards .card__heading { color: var(--muted); }
   .app-shell[data-theme] .cards .card__no { color: var(--muted); background: var(--panel-2); }
-  .app-shell[data-theme] .cards .card__dot { border-color: var(--border-strong); }
+
   /* 色块、移至菜单只在悬停、键盘聚焦或选中时出现；控件仍可用 Tab 到达。 */
   .app-shell[data-theme] .cards .card .card__footer > :is(select, .btn) { opacity: 0; transition: opacity .12s ease; }
   .app-shell[data-theme] .cards .card:is(:hover, :focus-within, .is-selected) .card__footer > :is(select, .btn) { opacity: 1; }
