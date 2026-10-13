@@ -153,7 +153,8 @@ const check = (label, actual, expected = true) => { assert.deepEqual(actual, exp
 
   // The board fields are existing commit-on-blur drafts; fixed-source checks
   // ensure the audit does not silently drop their explicit ownership markers.
-  const board = fs.readFileSync(path.join(repo, 'src/components/BoardView.tsx'), 'utf8');
+  const board = ['src/components/BoardView.tsx', 'src/components/board/BoardCards.tsx', 'src/components/board/BoardLinks.tsx']
+    .map((file) => fs.readFileSync(path.join(repo, file), 'utf8')).join('\n');
   check('existing board title draft is explicitly native-owned', /<input[^>]*data-native-edit-history[^>]*className="bcard__media-title"/.test(board));
   check('existing board relation draft is explicitly native-owned', /<input[^>]*data-native-edit-history[^>]*className="board-link__input"/.test(board));
   groups++;

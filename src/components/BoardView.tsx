@@ -7,11 +7,11 @@ import { BOARD_GRID_SIZE, boardBeatPosition, snapBoardPosition, type BoardCardPo
 import { cardCenters, marqueeSel } from '../model/selection';
 import type { Beat, BoardLink, Scene } from '../model/types';
 import { safeDisplayColor, safeEmbeddedImageSource } from '../utils/displayValues';
-import { SCENE_REVIEW_LABELS } from './SceneReviewFields';
-import { RichNoteField } from './RichNoteField';
+import { SceneCard, BeatCard } from './board/BoardCards';
+import { BoardLinks } from './board/BoardLinks';
+import { stopMouse, stopWheel, type Layout } from './board/boardShared';
 
 type Filter = 'both' | 'scenes' | 'beats';
-interface Layout extends BoardCardPosition { w: number; h: number; kind: ResizableKind }
 type Preview = Record<string, { x?: number; y?: number; w?: number; h?: number }>;
 interface ContextMenu { x: number; y: number; ids: string[]; linkId?: string }
 interface Gesture {
@@ -29,8 +29,6 @@ const autoPos = (index: number) => ({ x: 48 + (index % 3) * 364, y: 48 + Math.fl
 const dimension = (value: number | undefined, fallback: number) => Number.isFinite(value) && value! > 0 ? value! : fallback;
 const isTextTarget = (target: EventTarget | null) => target instanceof Element &&
   (!!target.closest('input,textarea,select') || (target instanceof HTMLElement && target.isContentEditable));
-const stopMouse = (event: React.MouseEvent) => event.stopPropagation();
-const stopWheel = (event: React.WheelEvent) => event.stopPropagation();
 const keepsNativeWheel = (target: EventTarget | null) => isTextTarget(target) ||
   (target instanceof Element && !!target.closest('.board__dock, .board__context-menu'));
 
@@ -427,122 +425,5 @@ export function BoardView() {
           <span className="zoom-val">{Math.round(zoom * 100)}%</span><button className="icon-btn" aria-label="放大自由板" onClick={() => setZoom((value) => Math.min(2, Math.round((value + .1) * 10) / 10))}>+</button></div>
       </div>
     </div>
-  </div>;
-}
-
-interface CardProps {
-  layout: Layout; selected: boolean; linking: boolean; snapping: boolean;
-  onSelect: () => void; onResizeStart: (event: React.MouseEvent, id: string) => void; onLinkStart: (event: React.MouseEvent, id: string) => void;
-}
-function LinkHandle({ id, onStart }: { id: string; onStart: CardProps['onLinkStart'] }) {
-  return <button className="bcard__connector" aria-label="拖到另一张卡片建立连线" title="拖到另一张卡片建立连线"
-    onMouseDown={(event) => onStart(event, id)} onClick={(event) => { event.preventDefault(); event.stopPropagation(); }} onDoubleClick={stopMouse}><span /></button>;
-}
-const cardClass = (props: CardProps) => `bcard${props.selected ? ' is-selected' : ''}${props.linking ? ' is-linking' : ''}${props.snapping ? ' is-snapping' : ''}`;
-function ResizeHandle({ layout, onStart }: { layout: Layout; onStart: CardProps['onResizeStart'] }) {
-  const limits = sizeLimitFor(layout.kind);
-  return <button className="bcard__resize" aria-label={layout.kind === 'scene' ? '调整场景卡大小' : '调整卡片大小'} title={`拖动缩放（${limits.minW}–${limits.maxW}px）`}
-    onMouseDown={(event) => onStart(event, layout.id)} onClick={(event) => { event.preventDefault(); event.stopPropagation(); }} onDoubleClick={stopMouse}><span /></button>;
-}
-function SceneCard(props: CardProps & { scene: Scene; onOpen: () => void }) {
-  const { scene, layout, onSelect } = props;
-  return <div className={`${cardClass(props)} bcard--scene`} data-card="scene" data-drag="scene" data-id={scene.elementId} data-kind="scene"
-    style={{ left: layout.x, top: layout.y, width: layout.w, height: layout.h, '--scene-color': safeDisplayColor(scene.color) } as React.CSSProperties} onDoubleClick={(event) => { event.stopPropagation(); props.onOpen(); }}>
-    <div className="bcard__head"><span className="bcard__no">{scene.number}</span><span className="bcard__title" title={scene.title || scene.heading}>{scene.title || scene.heading || '场景标题'}</span>
-      {scene.revisionStatus && <span className={`bcard__status is-${scene.revisionStatus}`}>{SCENE_REVIEW_LABELS[scene.revisionStatus]}</span>}</div>
-    <RichNoteField className="bcard__scene-notes" label={`第 ${scene.number} 场简介`} placeholder="这一场发生了什么？" value={scene.synopsis} onFocus={onSelect} stopPointer
-      onChange={(synopsis) => useStore.getState().updateSceneMeta(scene.elementId, { synopsis })} />
-    <LinkHandle id={layout.id} onStart={props.onLinkStart} />
-    <ResizeHandle layout={layout} onStart={props.onResizeStart} />
-  </div>;
-}
-function BeatCard(props: CardProps & { beat: Beat }) {
-  const { beat, layout, onSelect } = props;
-  const image = beat.kind === 'image';
-  const sound = beat.kind === 'sound';
-  const imageSource = safeEmbeddedImageSource(beat.img);
-  const update = (patch: Partial<Beat>) => useStore.getState().updateBeat(beat.id, patch);
-  return <div className={`${cardClass(props)} bcard--beat${image ? ' bcard--image' : sound ? ' bcard--sound' : ''}`} data-card="beat" data-id={beat.id} data-kind={beat.kind || 'beat'}
-    style={{ left: layout.x, top: layout.y, width: layout.w, height: layout.h, '--card-color': safeDisplayColor(beat.color) } as React.CSSProperties}>
-    {!image && <div className="bcard__head"><CardTitle value={beat.title || ''} label={sound ? '声音标题' : '灵感标题'} placeholder={sound ? '声音标题' : '添加标题'} onSelect={onSelect} onCommit={(title) => useStore.getState().commitBoardCardTitle(beat.id, title)} /></div>}
-    {image && <><div className="bcard__media">{imageSource ? <img className="bcard__media-img" src={imageSource} alt={beat.title || '参考图片'} draggable={false} /> : <div className="bcard__empty-media">{beat.img ? '图片来源已阻止，请重新导入本地图片' : '暂无图片'}</div>}</div>
-      <input className="bcard__caption" aria-label="图片标题" placeholder="图片标题（可选）" value={beat.title || ''} onFocus={onSelect} onChange={(event) => update({ title: event.target.value })} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel} /></>}
-    <RichNoteField className={`bcard__edit${image ? ' bcard__image-notes' : ''}`} label={image ? '图片备注' : sound ? '声音说明' : '灵感内容'}
-      placeholder={image ? '图片备注、画面灵感…' : sound ? '声音、音乐或氛围说明…' : '写下灵感、人物动机或事件关系…'} value={beat.text} onFocus={onSelect} stopPointer
-      onChange={(text) => update({ text })} />
-    <LinkHandle id={layout.id} onStart={props.onLinkStart} />
-    <ResizeHandle layout={layout} onStart={props.onResizeStart} />
-  </div>;
-}
-
-// 单击标题仍可选中/拖动卡片；双击才编辑，防止标题输入框吞掉 Shift 多选和 L 连线。
-function CardTitle({ value, label, placeholder, onSelect, onCommit }: { value: string; label: string; placeholder: string; onSelect: () => void; onCommit: (value: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  const input = useRef<HTMLInputElement>(null);
-  const finishing = useRef(false);
-  const draftRef = useRef(draft); draftRef.current = draft;
-  useEffect(() => { if (editing) { input.current?.focus(); input.current?.select(); } }, [editing]);
-  const begin = () => { finishing.current = false; setDraft(value); setEditing(true); onSelect(); };
-  const finish = (commit: boolean) => {
-    if (finishing.current) return; finishing.current = true;
-    if (commit && draftRef.current !== value) onCommit(draftRef.current);
-    setEditing(false);
-  };
-  return editing ? <input ref={input} data-native-edit-history data-project-draft-pending={draft !== value ? 'true' : undefined} className="bcard__media-title" aria-label={label} value={draft} placeholder={placeholder}
-    onChange={(event) => setDraft(event.target.value)} onBlur={() => finish(true)} onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel}
-    onKeyDown={(event) => { event.stopPropagation(); if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-      if (event.key === 'Enter' || event.key === 'Escape') { event.preventDefault(); finish(event.key === 'Enter'); } }} />
-    : <span className="bcard__media-title" tabIndex={0} role="button" aria-label={`编辑${label}`} title="双击编辑标题" onDoubleClick={(event) => { event.stopPropagation(); begin(); }}
-      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === 'F2') { event.preventDefault(); event.stopPropagation(); begin(); } }}>{value || placeholder}</span>;
-}
-
-// 关系线从矩形边缘出发；保存的端点仍是卡片 ID，不保存像素、也不改变关系语义。
-function connectionPath(a: Layout, b: Layout) {
-  const ac = { x: a.x + a.w / 2, y: a.y + a.h / 2 }, bc = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
-  const dx = bc.x - ac.x, dy = bc.y - ac.y;
-  const edge = (card: Layout) => Math.min(dx ? card.w / 2 / Math.abs(dx) : Infinity, dy ? card.h / 2 / Math.abs(dy) : Infinity);
-  const af = edge(a), bf = edge(b);
-  if (!Number.isFinite(af) || !Number.isFinite(bf)) return { d: '', x: ac.x, y: ac.y };
-  const start = { x: ac.x + dx * af, y: ac.y + dy * af }, end = { x: bc.x - dx * bf, y: bc.y - dy * bf };
-  const x = (start.x + end.x) / 2, y = (start.y + end.y) / 2;
-  const controls = Math.abs(dx) >= Math.abs(dy) ? `${x} ${start.y}, ${x} ${end.y}` : `${start.x} ${y}, ${end.x} ${y}`;
-  return { d: `M ${start.x} ${start.y} C ${controls}, ${end.x} ${end.y}`, x, y };
-}
-function BoardLinks({ links, layouts, selectedLink, zoom, onSelect, onFinish }: { links: BoardLink[]; layouts: Map<string, Layout>; selectedLink: string | null; zoom: number; onSelect: (id: string) => void; onFinish: () => void }) {
-  return <svg className="board-links" aria-label="卡片关系线">
-    {links.map((link) => {
-      const a = layouts.get(link.from), b = layouts.get(link.to); if (!a || !b) return null;
-      const line = connectionPath(a, b);
-      return <g key={link.id} data-link-id={link.id} className={`board-link${selectedLink === link.id ? ' is-selected' : ''}`}>
-        <path className="board-link__stroke" d={line.d} vectorEffect="non-scaling-stroke" />
-        <path className="board-link__hit" data-link-id={link.id} d={line.d} style={{ strokeWidth: 14 / zoom }} onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); onSelect(link.id); }} onDoubleClick={stopMouse} />
-        <foreignObject x={line.x - 130} y={line.y - 18} width="260" height="38"><LinkLabel link={link} selected={selectedLink === link.id} onSelect={onSelect} onFinish={onFinish} /></foreignObject>
-      </g>;
-    })}
-  </svg>;
-}
-function LinkLabel({ link, selected, onSelect, onFinish }: { link: BoardLink; selected: boolean; onSelect: (id: string) => void; onFinish: () => void }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(link.note || '');
-  const draftRef = useRef(draft); draftRef.current = draft;
-  const finishing = useRef(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (!editing) setDraft(link.note || ''); }, [link.note, editing]);
-  useEffect(() => { if (editing) { inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
-  const finish = (commit: boolean) => {
-    if (finishing.current) return; finishing.current = true;
-    if (commit && draftRef.current !== (link.note || '')) useStore.getState().commitBoardLinkNote(link.id, draftRef.current);
-    setEditing(false); onFinish();
-  };
-  const begin = () => { onSelect(link.id); finishing.current = false; setDraft(link.note || ''); setEditing(true); };
-  return <div className="board-link__note" onMouseDown={stopMouse} onDoubleClick={stopMouse} onWheel={stopWheel}>
-    {editing ? <input ref={inputRef} data-native-edit-history data-project-draft-pending={draft !== (link.note || '') ? 'true' : undefined} className="board-link__input" aria-label="关系说明" value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={() => finish(true)}
-      onKeyDown={(event) => {
-        event.stopPropagation(); if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-        if (event.key === 'Enter' || event.key === 'Escape') { event.preventDefault(); finish(event.key === 'Enter'); }
-      }} /> : (link.note || selected) ? <button className={`board-link__label${link.note ? '' : ' is-empty'}`} aria-label={link.note ? `关系说明：${link.note}` : '添加关系说明'} title="双击编辑关系说明"
-      onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); onSelect(link.id); }} onDoubleClick={begin}
-      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === 'F2') { event.preventDefault(); event.stopPropagation(); begin(); } }}>{link.note || '双击添加关系说明'}</button> : null}
   </div>;
 }
