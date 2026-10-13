@@ -517,13 +517,14 @@
   .app-shell[data-theme] .board--polished .board-link__stroke { stroke: var(--border-strong); stroke-width: 1.6; }
   .app-shell[data-theme] .board--polished .board-link__label { min-height: 22px; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); font-size: 13px; line-height: 20px; box-shadow: var(--card-glow); }
   .app-shell[data-theme] .board--polished .board-link__label.is-empty { max-width: 120px; font-size: 12px; border-style: dashed; }
-  /* 连线把手：卡片右上角的醒目圆钮（24px，命中区 32px），悬停或选中时出现。 */
+  /* 连线把手：卡片右上角内侧的醒目圆钮（24px，命中区 30px）。卡片本身 overflow:hidden，所以放在卡内，不压到边框外。 */
   .app-shell[data-theme] .board--polished .bcard__connector {
-    top: -12px; right: -12px; transform: none; width: 32px; height: 32px; margin: -4px;
+    top: 6px; right: 6px; transform: none; width: 30px; height: 30px; margin: 0;
     display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent;
   }
+  .app-shell[data-theme] .board--polished .bcard__head { padding-right: 28px; }
   .app-shell[data-theme] .board--polished .bcard__connector svg {
-    box-sizing: content-box; width: 14px; height: 14px; padding: 5px; border: 2px solid var(--panel); border-radius: 50%;
+    box-sizing: content-box; width: 13px; height: 13px; padding: 4.5px; border: 1.5px solid var(--panel); border-radius: 50%;
     background: var(--accent); color: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .25); transition: transform .12s ease;
   }
   .app-shell[data-theme] .board--polished .bcard__connector:hover svg { transform: scale(1.15); }
@@ -533,11 +534,10 @@
     border-color: var(--border-strong); background: var(--panel); color: var(--accent); box-shadow: 0 1px 3px rgba(0, 0, 0, .14);
   }
   .app-shell[data-theme] .board--polished .bcard__connector span { display: none; }
-  .app-shell[data-theme] .board--polished .bcard__status { margin-right: 14px; }
   /* 缩放比例可直接输入 */
   .app-shell[data-theme] .board--polished .zoom-input { display: inline-flex; align-items: center; gap: 1px; font-variant-numeric: tabular-nums; color: var(--muted); }
   .app-shell[data-theme] .board--polished .zoom-input input {
-    width: 40px; height: 24px; padding: 0 4px; border: 1px solid transparent; border-radius: 5px; background: transparent;
+    width: 40px; height: 24px; padding: 0 2px 0 4px; border: 1px solid transparent; border-radius: 5px; background: transparent;
     color: var(--text); font: inherit; font-size: 13px; text-align: right;
   }
   .app-shell[data-theme] .board--polished .zoom-input input:hover { border-color: var(--border); }
