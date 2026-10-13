@@ -62,9 +62,11 @@ store：不可变修改 → 历史事务 → project + version + dirty
 
 | 职责 | 主要位置 | 不应承担的职责 |
 | --- | --- | --- |
-| 状态、历史、不可变写入 | `src/store/store.ts` | 原生 DOM 历史、实际文件 I/O |
+| 状态组合入口 | `src/store/store.ts`（只组合切片）、`types.ts`（状态接口） | 写具体业务逻辑 |
+| 撤销历史、合并规则、改稿事务 | `src/store/history.ts` | 在切片里另写一套撤销 / 合并逻辑 |
+| 各功能的状态操作 | `src/store/slices/`：ui、document、writing、scenes、board、review | 跨切片直接改别的切片的私有变量（只通过 `get()` 调用对方的操作） |
 | 元素/场景/人物派生 | `src/model/project.ts` | 卡片 UI 状态、直接改正文 |
-| 编辑事件、选区操作 | `Editor.tsx`、`ScriptBlock.tsx` | 另建历史栈、绕过事务写 DOM |
+| 编辑事件、选区操作 | `Editor.tsx`、`ScriptBlock.tsx`；周边部件在 `components/writing/`（图片拖入、进度栏收起、素材卡、候选菜单、标题页卡） | 另建历史栈、绕过事务写 DOM |
 | SmartType候选与明确接受 | `src/model/smarttype.ts`、`Editor.tsx`、`store.commitSmartType` | 首字擅自改类型、确认顺便切段、逐次setText/setType制造两次撤销 |
 | 智能双引号输入投影 | `src/utils/smartQuotes.ts` | 全文标点校正、HTML 属性替换、重整粘贴/手动引号 |
 | 统一撤销入口、临时光标书签 | `src/utils/editHistory.ts` | 记录用户内容到外部、序列化焦点 |
@@ -77,7 +79,7 @@ store：不可变修改 → 历史事务 → project + version + dirty
 | 工程格式兼容 | `src/io/zhsp.ts` | 自动迁移用户坐标、吞掉已知字段 |
 | 分页与 A4 投影 | `PaginationProvider.tsx`、`PreviewView.tsx` | 用自由板布局重排剧本 |
 | 原位创作 PDF | `src/io/creativePdf.ts`、`electron/pdf.js` | 把图片挪到文末、巨型 data 页面 URL |
-| 自由板手势、坐标隔离 | `BoardView.tsx`、`boardWorkspace.ts` | 偷改写作图片的 x/y |
+| 自由板手势、坐标隔离 | `BoardView.tsx`（画布与手势）、`components/board/`（卡片、关系线）、`boardWorkspace.ts` | 偷改写作图片的 x/y |
 | 故事板归幕与排序 | `CardsView.tsx`、`storyboard.ts` | 把“未归幕”当移动正文命令 |
 | 只读统计分析 | `ReportsView.tsx`、`reports.ts` | 每字运行未显示的统计页、修改工程 |
 | 原生桥接与权限 | `src/io/native.ts`、`electron/` | 从渲染器直接访问文件系统 |
@@ -91,6 +93,14 @@ store：不可变修改 → 历史事务 → project + version + dirty
 - 删除场次标题时清理元数据、关联与孤儿线，不误删保留的素材内容、图片和坐标；撤销完整恢复。
 - `documentEpoch` 在新建/载入时改变，即使加载的工程 ID 相同，也能阻止旧异步结果写入新文档。它和选择、焦点、光标书签不写进 `.zhsp`。
 - 自由板素材位置写 `boardX/boardY`，缺失时只显示回退到旧 `x/y`。写作素材和创作 PDF 继续使用 `x/y`；切板/网格开关不补字段。尺寸 `w/h` 仍按既有工程语义保存，不另做隐式迁移。
+
+### 新增功能放在哪里
+
+1. **数据**：新工程字段写在 `model/types.ts`，并且必须是可选字段；在 `io/zhsp.ts` 里校验，同时把 `FORMAT_REVISION`（`model/project.ts`）加一。
+2. **操作**：新的一组状态操作新建一个切片 `store/slices/<功能>.ts`，在 `store/types.ts` 声明接口，在 `store/store.ts` 组合进来。所有写工程的操作都走 `get().mutate(...)` 或 `makeReviewChange`，不要自己拼历史。
+3. **界面**：一个视图里的独立部件放进 `components/<视图>/`（例如 `writing/`、`board/`），主组件只保留状态连接和手势协调。单个文件超过约 500 行时，先拆再加功能。
+4. **测试**：在 `scripts/` 新建 `<功能>-test.cjs`，并登记到 `scripts/core-regression.cjs`。全量回归默认并行运行（`CORE_JOBS=1` 可以改为逐个运行，方便定位）。
+5. **文档**：只有改变用户可见的行为时，才更新 `CORE_FEATURES.md` 的契约，和说明书对应的段落。
 
 ## 4. 写作撤销：唯一事实来源
 

@@ -146,7 +146,7 @@ node scripts/progress-bands-test.cjs
 | 只读元素/续说派生与快捷输入目录复用 | `src/model/flow.ts`、`src/model/smarttype.ts`、`Editor.tsx`、`PaginationProvider.tsx` | writing-derivation / smarttype / writing / 长稿与原生输入 |
 | 场景进度与跳转、角色改名同步 | `ProgressBar.tsx`、`progress.ts`、`ReportsView.tsx`、`store.ts` | writing / render / history / 实机跳转 |
 
-表中未写完整路径的组件位于 `src/components/`，模型位于 `src/model/`，`store.ts` 位于 `src/store/`，`useCommands.ts` 位于 `src/app/`。测试入口名称对应 `scripts/` 中同名 `*-test.cjs` 或 `*-electron.cjs` 文件。
+表中未写完整路径的组件位于 `src/components/`，模型位于 `src/model/`，`useCommands.ts` 位于 `src/app/`。表中的 `store.ts` 指 `src/store/` 下的状态层：业务操作按功能分在 `src/store/slices/` 里，撤销与合并规则在 `src/store/history.ts`。测试入口名称对应 `scripts/` 中同名 `*-test.cjs` 或 `*-electron.cjs` 文件。
 
 这些代码不是只读文件，也不做哈希“锁死”：修复错误必须可以改。任何改变上述行为的设计决定，须先征得用户明确认可；维护者不得靠删断言或关 CI 来掩盖回归。`AGENTS.md` 给 AI 明确约束，`core-checks` CI 自动运行基线；必须由管理员另外设为受保护分支的必需检查，才能强制阻止未通过检查的合并。
 

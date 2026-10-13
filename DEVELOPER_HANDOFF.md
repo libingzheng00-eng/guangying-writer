@@ -26,10 +26,16 @@
 - **查找替换**：查找面板新增替换栏。`store.replaceMatches` 一次替换算一步撤销；命中原文已变化或已切换文档时，整批替换会被拒绝。HTML 替换逻辑在 `model/search.ts` 的 `replaceTextRanges`。
 - **新版字段保留**：`zhsp.ts` 把本版不认识的工程、正文元素和卡片字段原样保留（工程级字段放在 `preservedFields`，保存时写回原位置）。文件里新增了 `formatRevision`；打开格式修订号更高的文件前，会先询问作者。**以后每次新增工程字段，都要把 `FORMAT_REVISION`（`model/project.ts`）加一。** alpha.18.16 及更早的版本仍然会丢弃未知字段，这一点无法通过新版补救。
 
+## 代码地图（2026-10-13 重构后）
+
+- `src/store/`：`store.ts` 只负责组合；`types.ts` 是状态接口，`history.ts` 放撤销、合并和改稿事务；业务操作在 `slices/`（ui、document、writing、scenes、board、review）。
+- `src/components/`：每个视图一个主组件，独立部件放进子目录 `writing/`、`board/`。
+- 新增功能怎么放，见 [MAINTENANCE.md](docs/MAINTENANCE.md) 的「新增功能放在哪里」。
+
 ## 验证
 
 ```bash
-npm run typecheck && npm run build && npm run test:core   # 61 套
+npm run typecheck && npm run build && npm run test:core   # 62 套，默认并行，约 25 秒
 node scripts/character-lines-native.cjs --output <新的绝对路径>   # 需要 python3 + pypdf
 node scripts/review-native.cjs --output <新的绝对路径>
 ```
