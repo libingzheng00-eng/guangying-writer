@@ -76,8 +76,8 @@ export default function App() {
   const isSaving = commands.isSaving;
   // 与工作台共用纯色背景；仅改变显示，不改变稿纸或素材的坐标。
   const writeBg = appTheme === 'day'
-    ? 'linear-gradient(#eeede8, #eeede8)'
-    : 'linear-gradient(#181d1b, #181d1b)';
+    ? 'linear-gradient(#f7f7f8, #f7f7f8)'
+    : 'linear-gradient(#111113, #111113)';
 
   /* 启动：读取自动保存或示例剧本 */
   useEffect(() => {

@@ -270,8 +270,9 @@ function loadFontColor(): string {
 function loadAppTheme(): AppTheme {
   try {
     const value = localStorage.getItem(LS_APP_THEME) || localStorage.getItem(LEGACY_LS_APP_THEME);
-    return value === 'day' ? 'day' : 'night';
-  } catch { return 'night'; }
+    // 现代工具外观以日间为默认；明确选过夜间的作者保持夜间。
+    return value === 'night' ? 'night' : 'day';
+  } catch { return 'day'; }
 }
 const COALESCE_IDLE_MS = 1500;
 const TEXT_GROUP_MAX_MS = 5000;
