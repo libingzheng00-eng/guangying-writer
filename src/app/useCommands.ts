@@ -91,10 +91,11 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
       let project;
       let filePath: string | null = null;
       if (res.path.toLowerCase().endsWith('.fdx')) {
-        const { elements, title } = fromFdx(res.content);
+        const { elements, title, sceneMeta } = fromFdx(res.content);
         const p = createProject(res.path.split(/[\\/]/).pop()?.replace(/\.fdx$/i, '') || '导入的剧本');
         p.elements = elements.length ? elements : [newElement('action', '')];
-        if (title) Object.assign(p.titlePage, title);
+        p.sceneMeta = sceneMeta;
+        if (title && Object.values(title).some(Boolean)) Object.assign(p.titlePage, title, { show: true });
         project = p;
       } else if (/\.(txt|md)$/i.test(res.path)) {
         const elements = fromPlainText(res.content);
@@ -156,7 +157,9 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
         return false;
       }
       const isFdx = res.path.toLowerCase().endsWith('.fdx');
-      const elements = isFdx ? fromFdx(res.content).elements : fromPlainText(res.content);
+      const fdx = isFdx ? fromFdx(res.content) : null;
+      const elements = fdx ? fdx.elements : fromPlainText(res.content);
+      const importedMeta = fdx?.sceneMeta || [];
       if (!elements.length) {
         notify('没有识别到内容', 'error');
         return false;
@@ -179,10 +182,13 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
       if (choice === 'append') {
         mutate((p) => {
           p.elements.push(...elements);
+          p.sceneMeta.push(...importedMeta);
         });
       } else {
         const p = createProject(store.getState().project.name);
         p.elements = elements;
+        p.sceneMeta = importedMeta;
+        if (fdx?.title && Object.values(fdx.title).some(Boolean)) Object.assign(p.titlePage, fdx.title, { show: true });
         beforeReplace.current?.();
         loadProject(p, null);
         store.setState({ dirty: true });
