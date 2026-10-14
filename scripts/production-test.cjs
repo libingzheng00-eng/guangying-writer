@@ -75,6 +75,10 @@ console.error = (...args) => { errors.push(args.join(' ')); originalError(...arg
   const gone = { ...p, elements: p.elements.filter((e) => !['e4', 'e5', 'e6'].includes(e.id)) };
   check('整页内容删掉后，前一页显示为 1-2', m.paginateMeasured(gone, heights(gone), geo).pages.map((page) => page.label), ['1-2', '3']);
 
+  const headed = { ...p, elements: p.elements.map((e) => e.id === 'e3' ? { ...e, type: 'scene_heading', text: '内景 合成 夜' } : e) };
+  check('锁定页前面的场次标题不会被单独挤到一页', m.paginateMeasured(headed, heights(headed), geo).pages.map((page) => [page.label, page.items.map((it) => it.elements[0].id)]),
+    [['1', ['e1', 'e2', 'e3']], ['2', ['e4', 'e5', 'e6']], ['3', ['e7', 'e8', 'e9']]]);
+
   // ---- store: scene lock and alternates, each one undo step ----
   const q = m.createProject('合成备选');
   q.elements = [

@@ -24,8 +24,12 @@ export function AltDialogueBar({ el, scrollRef }: { el: ScriptElement; scrollRef
       setPos({ top: Math.round(box.top - origin.top), left: Math.round(Math.min(right + 12, layer.clientWidth - 196)) });
     };
     measure();
+    // 收起 / 展开侧栏、拖动窗口都会改变页面位置，跟着重新定位。
+    const layer = scrollRef.current?.querySelector('.editor__scroll');
+    const observer = typeof ResizeObserver !== 'undefined' && layer ? new ResizeObserver(measure) : null;
+    if (layer) observer?.observe(layer);
     window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
   }, [el.id, version, scrollRef]);
 
   const total = altTotal(el);

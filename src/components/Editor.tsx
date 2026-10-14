@@ -819,7 +819,7 @@ export function Editor() {
   };
   // 只在正文两侧的空白处接管右键；正文、卡片、输入框里保留系统默认菜单。
   const onMaterialContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('.script-flow, .writing-material-card, .title-page-card, input, textarea, button, [contenteditable="true"]')) return;
+    if ((event.target as HTMLElement).closest('.script-flow, .writing-material-card, .titlepage-card, input, textarea, button, [contenteditable="true"]')) return;
     event.preventDefault();
     setMaterialMenu({ clientX: event.clientX, clientY: event.clientY });
   };

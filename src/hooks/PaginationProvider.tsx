@@ -157,6 +157,8 @@ export function paginateMeasured(
       let remaining = item.keep;
       for (let nextIndex = itemIndex + 1; nextIndex < measuredItems.length && remaining > 0; nextIndex += 1) {
         const next = measuredItems[nextIndex];
+        // 锁定页的起头段落一定另起一页，跟随单元不能跨过它，否则前一段会被单独挤到新页。
+        if (anchorIndex.has(next.elements[0].id)) break;
         const taken = Math.min(remaining, linesFor(next));
         keepLines += marginFor(next) + taken;
         if (taken < linesFor(next) && next.kind === 'single' && next.elements[0].type === 'dialogue' && project.settings.moreText) keepLines += 1;
