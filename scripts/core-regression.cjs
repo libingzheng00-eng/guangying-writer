@@ -37,6 +37,8 @@ const suites = [
   'search-test.cjs',
   'search-ui-test.cjs',
   'find-replace-test.cjs',
+  'fdx-test.cjs',
+  'production-test.cjs',
   'zhsp-compat-test.cjs',
   'forward-compat-test.cjs',
   'history-test.cjs',

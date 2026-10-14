@@ -1,7 +1,7 @@
 import type { StoreApi } from 'zustand';
 /** 共享的状态类型：各功能切片按此接口实现自己的部分。 */
 import { type WritingContext } from '../app/writingContext';
-import type { Act, BoardLink, Beat, ElementType, Revision, SceneMeta, ScriptProject, ScriptSettings, TitlePage } from '../model/types';
+import type { Act, BoardLink, Beat, ElementType, PageLock, Revision, SceneMeta, ScriptProject, ScriptSettings, TitlePage } from '../model/types';
 import { type StoryboardPlacement } from '../model/storyboard';
 import { clampSize } from '../model/board';
 import { type BoardCardPosition } from '../model/boardWorkspace';
@@ -214,6 +214,13 @@ export interface StoreState {
   clearDeliveryIgnored: (expectedEpoch?: number) => boolean;
   commitReviewSceneMeta: (elementId: string, patch: ReviewScenePatch, expectedEpoch?: number) => boolean;
   moveReviewScene: (sourceId: string, targetId: string, edge: 'before' | 'after', expectedEpoch?: number) => boolean;
+  lockSceneNumbers: () => void;
+  unlockSceneNumbers: () => void;
+  lockPages: (pages: PageLock['pages']) => void;
+  unlockPages: () => void;
+  addAltVersion: (id: string) => void;
+  selectAltVersion: (id: string, n: number) => void;
+  deleteAltVersion: (id: string) => void;
 }
 
 export type WorkspaceSource = { kind: 'version'; id: string; elementIds: string[] } | { kind: 'stash'; id: string };

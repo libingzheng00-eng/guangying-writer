@@ -5,6 +5,7 @@ import { EditableBlock } from './ScriptBlock';
 import { ProgressBar } from './ProgressBar';
 import { WritingMaterialCards } from './writing/WritingMaterials';
 import { WritingContextMenu } from './writing/WritingContextMenu';
+import { AltDialogueBar } from './writing/AltDialogueBar';
 import { imageTitle, pickImageFile, readImageFile } from '../utils/imageFiles';
 import { TitlePageCard } from './writing/TitlePageCard';
 import { useImageDrop } from './writing/useImageDrop';
@@ -779,6 +780,9 @@ export function Editor() {
   // 这里不能恢复第二套 wimg/“写作图”数据类型，否则旧工程兼容和 PDF 素材页会再次分叉。
   const writingImages = project.beats.filter((b) => b.kind === 'image');
   const allMaterials = [...writingSounds, ...writingImages];
+  // 备选台词工具条只在光标停在对白上时出现；多选、导出时不显示。
+  const activeElement = activeId ? project.elements.find((e) => e.id === activeId) : undefined;
+  const activeAltElement = activeElement?.type === 'dialogue' && !selectMode && !pdfExportMode ? activeElement : undefined;
   const writingMaterials = showCards || pdfExportMode === 'creative' ? allMaterials : [];
   // 新增了卡片（右键新建、拖入图片、撤销恢复）就重新显示，免得新卡藏起来看不见。
   const materialCount = useRef(allMaterials.length);
@@ -815,7 +819,7 @@ export function Editor() {
   };
   // 只在正文两侧的空白处接管右键；正文、卡片、输入框里保留系统默认菜单。
   const onMaterialContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('.script-flow, .writing-material-card, .title-page-card, input, textarea, button, [contenteditable="true"]')) return;
+    if ((event.target as HTMLElement).closest('.script-flow, .writing-material-card, .titlepage-card, input, textarea, button, [contenteditable="true"]')) return;
     event.preventDefault();
     setMaterialMenu({ clientX: event.clientX, clientY: event.clientY });
   };
@@ -856,6 +860,7 @@ export function Editor() {
         onContextMenu={onMaterialContextMenu}
       >
         <WritingMaterialCards cards={writingMaterials} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
+        {activeAltElement ? <AltDialogueBar el={activeAltElement} scrollRef={scrollRef} /> : null}
         {settings.indent && project.titlePage.show ? <TitlePageCard /> : null}
         <div className="script-flow" ref={contentRef} style={columnStyle}>
           {items.map((item, i) => {

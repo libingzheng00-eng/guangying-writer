@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useStore } from '../store/store';
 import { usePagination, type Placed, type PageInfo } from '../hooks/PaginationProvider';
+import { plainPageNumber } from '../model/locks';
 import { StaticBlock } from './ScriptBlock';
 import { fontStackOf } from '../model/elements';
 import { PAPER_MM } from '../model/stats';
@@ -164,7 +165,7 @@ function PageCard({
 }) {
   const s = project.settings;
   const num = index + (project.titlePage.show && s.titlePageBreak ? 0 : s.startPageAt);
-  const showNum = s.showPageNumbers && !showTitle && num >= s.startPageAt;
+  const showNum = s.showPageNumbers && !showTitle && (page.label !== undefined || num >= s.startPageAt);
   return (
     <div
       className="preview__page"
@@ -183,7 +184,7 @@ function PageCard({
           className="page__num"
           style={{ top: Math.max(6, geo.pt * 0.42), right: Math.max(8, geo.pr * 0.5), fontSize: `${s.fontSize}pt` }}
         >
-          {num + (project.titlePage.show && s.titlePageBreak ? 1 : 0)}
+          {page.label ?? plainPageNumber(index, project.titlePage.show && s.titlePageBreak, s.startPageAt)}
         </div>
       ) : null}
       {showTitle ? (

@@ -8,6 +8,7 @@ import { createWritingSlice } from './slices/writing';
 import { createScenesSlice } from './slices/scenes';
 import { createBoardSlice } from './slices/board';
 import { createReviewSlice } from './slices/review';
+import { createProductionSlice } from './slices/production';
 
 export type { ViewMode, SidebarMode, AppTheme, FocusRequest, Toast, SaveSnapshot, ReplaceMatch, WorkspaceSource, ReviewScenePatch } from './types';
 export { DEFAULT_FONT_COLOR } from '../model/appearance';
@@ -47,4 +48,5 @@ export const useStore = create<StoreState>((set, get) => ({
   ...createScenesSlice(set, get),
   ...createBoardSlice(set, get),
   ...createReviewSlice(set, get),
+  ...createProductionSlice(set, get),
 }) as StoreState);

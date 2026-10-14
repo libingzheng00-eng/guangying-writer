@@ -265,6 +265,7 @@ export function EditableBlock(props: EditableBlockProps) {
       data-id={el.id}
       data-type={el.type}
       data-contd={contdSuffix || undefined}
+      data-alts={el.alts?.length ? el.alts.length + 1 : undefined}
       style={blockStyle({ settings, half, revColor }, el)}
       contentEditable={!props.readOnly}
       suppressContentEditableWarning
