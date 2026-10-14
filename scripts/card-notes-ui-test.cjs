@@ -108,6 +108,49 @@ console.error = (...args) => { errors.push(args.join(' ')); originalError(...arg
   check('重新打开仍保持收起', !!q('button[aria-label="展开进度栏"]'));
   await click(q('button[aria-label="展开进度栏"]'));
   check('展开后打字机进度栏恢复', [!!q('.write-progress'), localStorage.getItem('guangying:progress-collapsed')], [true, '0']);
+
+  // ---- 进度栏：右侧不再有按钮；点页数框改目标；指针停在当前页 ----
+  check('进度栏右侧不再有目标框和声音按钮', [q('.write-progress__tools'), q('button[aria-label="新建声音卡"]'), q('button[aria-label="显示或隐藏声音卡"]')], [null, null, null]);
+  const historyBeforeTarget = state().past.length;
+  await click(q('.write-progress__label[role="button"]'));
+  const targetField = q('input[aria-label="目标页数"]');
+  check('点击页数框出现目标页数输入', !!targetField);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set.call(targetField, '8');
+    targetField.dispatchEvent(new w.Event('input', { bubbles: true }));
+    targetField.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+  check('回车后目标页数生效并收起输入框', [state().project.targetPages, q('input[aria-label="目标页数"]'), q('.write-progress__target').textContent], [8, null, '8']);
+  check('改目标页数是一步可撤销的修改', state().past.length, historyBeforeTarget + 1);
+  await click(q('.write-progress__label[role="button"]'));
+  await act(async () => {
+    const field = q('input[aria-label="目标页数"]');
+    Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set.call(field, '99');
+    field.dispatchEvent(new w.Event('input', { bubbles: true }));
+    field.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  check('Esc 放弃修改', [state().project.targetPages, q('input[aria-label="目标页数"]')], [8, null]);
+  const marker = q('.write-progress__marker');
+  check('打字机指针按当前页定位（第 1 页 / 目标 8 页）', marker.style.left, 'calc(12.5% - 28px)');
+
+  // ---- 正文两侧空白处右键：新建声音卡、隐藏所有卡片 ----
+  const layer = q('.editor__scroll');
+  await act(async () => { q('.script-flow').dispatchEvent(new w.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 200 })); });
+  check('正文里右键不弹素材菜单', q('.writing-context-menu'), null);
+  await act(async () => { layer.dispatchEvent(new w.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 200 })); });
+  check('空白处右键弹出素材菜单', qa('.writing-context-menu [role="menuitem"]').map((node) => node.textContent), ['新建声音卡', '新建图片卡…', '隐藏所有卡片']);
+  const beatsBefore = state().project.beats.length;
+  await click(qa('.writing-context-menu [role="menuitem"]')[0]);
+  check('新建声音卡后菜单关闭、卡片出现', [q('.writing-context-menu'), state().project.beats.length, state().project.beats.at(-1).kind, qa('.writing-material-card').length], [null, beatsBefore + 1, 'sound', 1]);
+  await act(async () => { layer.dispatchEvent(new w.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 200 })); });
+  await click(qa('.writing-context-menu [role="menuitem"]')[2]);
+  check('隐藏所有卡片后画面上没有素材卡，工程不变', [qa('.writing-material-card').length, state().project.beats.length], [0, beatsBefore + 1]);
+  await act(async () => { layer.dispatchEvent(new w.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 200 })); });
+  check('隐藏后菜单改为显示所有卡片', qa('.writing-context-menu [role="menuitem"]')[2].textContent, '显示所有卡片（1）');
+  await act(async () => { document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+  check('Esc 关闭菜单', q('.writing-context-menu'), null);
+  await act(async () => { state().addBeat(40, 200, '', 'sound'); });
+  check('新增卡片时自动重新显示全部卡片', qa('.writing-material-card').length, 2);
   await act(async () => root3.unmount());
 
   check('没有 React 运行时错误', errors.filter(line => !line.includes('not wrapped in act')), []);

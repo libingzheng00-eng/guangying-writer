@@ -4,7 +4,7 @@
   /* 页数按内容取宽，不能再用94px固定列和旧min-width挤压标尺。
      Snell Roundhand为macOS本机英式圆手体，仅引用字体，不分发系统字体文件。 */
   .app-shell[data-theme] .editor > .write-progress {
-    grid-template-columns: max-content minmax(160px, 1fr) max-content;
+    grid-template-columns: max-content minmax(160px, 1fr);
     column-gap: 18px;
     padding-inline: 18px;
   }
@@ -32,8 +32,6 @@
     font-size: 20px;
     font-weight: 500;
   }
-  .app-shell[data-theme] .editor > .write-progress .write-progress__goal { padding-left: 0; gap: 6px; }
-  .app-shell[data-theme] .editor > .write-progress .write-progress__tools { gap: 4px; }
   /* 只收细可见轨道；鼠标仍可在整行点击、显示跳页提示。 */
   .app-shell[data-theme] .editor > .write-progress .write-progress__road {
     border: 0;
@@ -91,20 +89,17 @@
   .app-shell[data-theme] .editor > .write-progress .write-progress__scenes.is-over-target {
     border-color: var(--danger);
   }
-  .app-shell[data-theme] .editor > .write-progress .write-progress__goal input {
-    width: 64px;
-    min-width: 64px;
-    flex-basis: 64px;
-    padding-inline: 6px;
-    border-radius: 6px;
-    font-size: 12px;
+  /* 左侧页数框可点击修改目标页数；右侧不再放按钮，进度条一直延伸到栏尾。 */
+  .app-shell[data-theme] .editor > .write-progress .write-progress__label { cursor: pointer; border-radius: 6px; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__label:hover { background: var(--control-hover); }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__label:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__target-input {
+    width: 3.2em; min-width: 0; height: 1.4em; padding: 0 2px; border: 1px solid var(--accent); border-radius: 4px;
+    background: var(--control-bg); color: var(--text); font: inherit; font-size: 18px; text-align: center; box-shadow: none; outline: none;
+    -moz-appearance: textfield;
   }
-  .app-shell[data-theme] .editor > .write-progress .writing-material-controls button {
-    border-radius: 6px 0 0 6px;
-  }
-  .app-shell[data-theme] .editor > .write-progress .writing-material-controls button + button {
-    border-radius: 0 6px 6px 0;
-  }
+  .app-shell[data-theme] .editor > .write-progress .write-progress__target-input::-webkit-inner-spin-button,
+  .app-shell[data-theme] .editor > .write-progress .write-progress__target-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   @media (max-width: 1100px) {
     .app-shell[data-theme] .editor > .write-progress { column-gap: 12px; padding-inline: 12px; }
   }
@@ -130,7 +125,9 @@
   .app-shell[data-theme] .editor > .write-progress:hover .write-progress__collapse,
   .app-shell[data-theme] .editor > .write-progress .write-progress__collapse:focus-visible { opacity: 1; }
   .app-shell[data-theme] .editor > .write-progress .write-progress__collapse:hover { color: var(--accent); }
-  .app-shell[data-theme] .editor > .write-progress-collapsed { position: sticky; top: 0; z-index: 12; height: 0; overflow: visible; }
+  .app-shell[data-theme] .editor > .write-progress-collapsed { position: sticky; top: 0; left: 0; z-index: 12; height: 0; overflow: visible; }
+  /* 页面放大后需要横向滚动时，进度栏留在原处，不跟着正文一起滑走。 */
+  .app-shell[data-theme] .editor > .write-progress { left: 0; }
   .app-shell[data-theme] .write-progress-collapsed__reveal {
     position: absolute; left: 50%; top: 0; transform: translateX(-50%);
     display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 18px; padding: 0;

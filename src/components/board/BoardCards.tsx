@@ -14,10 +14,7 @@ export interface CardProps {
 }
 function LinkHandle({ id, onStart }: { id: string; onStart: CardProps['onLinkStart'] }) {
   return <button className="bcard__connector" aria-label="拖到另一张卡片建立连线" title="拖到另一张卡片建立连线"
-    onMouseDown={(event) => onStart(event, id)} onClick={(event) => { event.preventDefault(); event.stopPropagation(); }} onDoubleClick={stopMouse}>
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1" /><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1" />
-    </svg></button>;
+    onMouseDown={(event) => onStart(event, id)} onClick={(event) => { event.preventDefault(); event.stopPropagation(); }} onDoubleClick={stopMouse}><span aria-hidden="true" /></button>;
 }
 const cardClass = (props: CardProps) => `bcard${props.selected ? ' is-selected' : ''}${props.linking ? ' is-linking' : ''}${props.snapping ? ' is-snapping' : ''}`;
 function ResizeHandle({ layout, onStart }: { layout: Layout; onStart: CardProps['onResizeStart'] }) {

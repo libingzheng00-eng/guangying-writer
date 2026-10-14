@@ -2,23 +2,13 @@ import React, { useRef } from 'react';
 import { safeEmbeddedImageSource } from '../../utils/displayValues';
 import { RichNoteField } from '../RichNoteField';
 
-/** 写作画布上的声音 / 图片素材卡（与自由板共用同一套 Beat，坐标用 x/y）。 */
-export function MaterialControls({
-  soundCount, showSound, onToggleSound, onAddSound,
-}: {
-  soundCount: number; showSound: boolean;
-  onToggleSound: () => void; onAddSound: () => void;
-}) {
-  return (
-    <span className="writing-material-controls" aria-label="写作素材">
-      <span className="writing-material-controls__group">
-        <button type="button" aria-label="显示或隐藏声音卡" aria-pressed={showSound} title={showSound ? '暂时隐藏声音卡' : '显示声音卡'} onClick={onToggleSound}>◌ <b>{soundCount}</b></button>
-        <button type="button" aria-label="新建声音卡" title="新建声音卡" onClick={onAddSound}>＋</button>
-      </span>
-    </span>
-  );
+/** 与 CSS 中的 clamp() 相同：卡片不超出写作区右缘，免得出现横向滚动条。保存的坐标不变。 */
+function shownX(x: number, layerWidth: number, cardWidth: number): number {
+  if (!layerWidth || !cardWidth) return x;
+  return Math.max(16, Math.min(x, layerWidth - cardWidth - 16));
 }
 
+/** 写作画布上的声音 / 图片素材卡（与自由板共用同一套 Beat，坐标用 x/y）。 */
 export function WritingMaterialCards({ cards, onUpdate, onMove, onDelete }: {
   cards: Array<{ id: string; x: number; y: number; text: string; title?: string; img?: string; kind?: 'beat' | 'sound' | 'image' }>;
   onUpdate: (id: string, patch: { title?: string; text?: string }) => void;
@@ -28,7 +18,9 @@ export function WritingMaterialCards({ cards, onUpdate, onMove, onDelete }: {
   const dragRef = useRef<{ id: string; x: number; y: number; startX: number; startY: number } | null>(null);
   const onPointerDown = (event: React.PointerEvent<HTMLElement>, card: { id: string; x: number; y: number }) => {
     if ((event.target as HTMLElement).closest('input, textarea, button, [data-rich-note]')) return;
-    dragRef.current = { id: card.id, x: card.x, y: card.y, startX: event.clientX, startY: event.clientY };
+    // 从卡片当前显示的位置开始拖（窗口变窄时显示位置会被收进可见范围，见 shownX）。
+    const layerWidth = event.currentTarget.parentElement?.clientWidth || 0;
+    dragRef.current = { id: card.id, x: shownX(card.x, layerWidth, event.currentTarget.offsetWidth), y: card.y, startX: event.clientX, startY: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
   const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
@@ -40,7 +32,7 @@ export function WritingMaterialCards({ cards, onUpdate, onMove, onDelete }: {
   return (
     <div className="writing-material-layer">
       {cards.map((card) => (
-        <article key={card.id} className={`writing-material-card${card.kind === 'image' ? ' writing-material-card--image' : ''}`} style={{ left: card.x, top: card.y }} onPointerDown={(e) => onPointerDown(e, card)} onPointerMove={onPointerMove} onPointerUp={stopDrag}>
+        <article key={card.id} className={`writing-material-card${card.kind === 'image' ? ' writing-material-card--image' : ''}`} style={{ '--material-x': `${card.x}px`, top: card.y } as React.CSSProperties} onPointerDown={(e) => onPointerDown(e, card)} onPointerMove={onPointerMove} onPointerUp={stopDrag}>
           <header className="writing-material-card__head">
             <span className="writing-material-card__kind" aria-hidden>{card.kind === 'image' ? '▣' : '◌'}</span>
             <input value={card.title || ''} placeholder={card.kind === 'image' ? '图片素材' : '声音设计'} aria-label={card.kind === 'image' ? '图片卡标题' : '声音卡标题'} onChange={(e) => onUpdate(card.id, { title: e.target.value })} />

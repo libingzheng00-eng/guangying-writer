@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store/store';
 import { usePagination } from '../hooks/PaginationProvider';
 import {
@@ -11,7 +11,7 @@ import {
 import typewriterPointer from '../assets/typewriter-pointer.png';
 import { safeDisplayColor } from '../utils/displayValues';
 
-export function ProgressBar({ children, onCollapse }: { children?: React.ReactNode; onCollapse?: () => void }) {
+export function ProgressBar({ onCollapse }: { onCollapse?: () => void }) {
   const project = useStore((s) => s.project);
   const activeId = useStore((s) => s.activeId);
   const pageCount = useStore((s) => s.pageCount);
@@ -19,7 +19,12 @@ export function ProgressBar({ children, onCollapse }: { children?: React.ReactNo
   const { pageOf } = usePagination();
 
   const target = Math.max(0, project.targetPages || 0);
-  const current = activeId && pageOf[activeId] !== undefined ? pageOf[activeId] + 1 : 0;
+  const caretPage = activeId && pageOf[activeId] !== undefined ? pageOf[activeId] + 1 : 0;
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const viewedPage = useViewedPage(rootRef, pageOf, activeId);
+  // 当前页：光标所在段落还在画面里就用光标页，否则用画面中间正在看的那一页。
+  const current = viewedPage || caretPage;
+  const [editingTarget, setEditingTarget] = useState(false);
 
   // v3.3-scene-strips：按预计排版行数计算各场篇幅，占比条不写入项目数据。
   const sceneBands: SceneBand[] = useMemo(() => computeSceneBands(project), [
@@ -38,6 +43,9 @@ export function ProgressBar({ children, onCollapse }: { children?: React.ReactNo
   const writtenPages = writtenPagesExcludingTitle(pageCount, project);
   const completionPct = target > 0 ? Math.max(0, Math.min(100, Math.round((writtenPages / target) * 100))) : 0;
   const overP = computeOverPages(writtenPages, target);
+
+  // 打字机指针停在当前页（与点击进度条跳页的换算一致：第 n 页在 n / 目标 处）；填充条仍表示已写页数。
+  const pointerPct = target > 0 ? Math.max(0, Math.min(100, ((current || 1) / target) * 100)) : 0;
 
   // 里程碑：25% / 75%（v2.6 已按用户要求移除 50%）
   const milestones = [25, 75];
@@ -108,12 +116,16 @@ export function ProgressBar({ children, onCollapse }: { children?: React.ReactNo
   };
 
   return (
-    <div className="write-progress write-progress--typewriter">
-      <div className="write-progress__label">
+    <div className="write-progress write-progress--typewriter" ref={rootRef}>
+      <div className="write-progress__label" role="button" tabIndex={editingTarget ? -1 : 0} aria-label={`当前第 ${current || 0} 页，目标 ${target || '未设'} 页，点击修改目标页数`}
+        title="点击修改目标页数（0 = 关闭目标）" onClick={() => setEditingTarget(true)}
+        onKeyDown={(event) => { if (!editingTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setEditingTarget(true); } }}>
         <div className="write-progress__value">
           <strong>{current || 0}</strong>
           <span className="write-progress__divider">/</span>
-          <span className="write-progress__target">{target > 0 ? target : '—'}</span>
+          {editingTarget
+            ? <TargetInput value={target} onDone={(next) => { setEditingTarget(false); if (next !== null) useStore.getState().setTargetPages(next); }} />
+            : <span className="write-progress__target">{target > 0 ? target : '—'}</span>}
         </div>
       </div>
 
@@ -144,8 +156,8 @@ export function ProgressBar({ children, onCollapse }: { children?: React.ReactNo
           <span
             ref={markerRef}
             className="write-progress__marker"
-            style={{ left: `calc(${completionPct}% - 28px)` }}
-            title={`已写 ${writtenPages} / ${target} 页`}
+            style={{ left: `calc(${pointerPct}% - 28px)` }}
+            title={`第 ${current || 1} 页 · 已写 ${writtenPages} / ${target} 页`}
           >
             <img src={typewriterPointer} alt="打字机进度指针" draggable={false} />
           </span>
@@ -195,25 +207,75 @@ export function ProgressBar({ children, onCollapse }: { children?: React.ReactNo
         ) : null}
       </div>
 
-      <div className="write-progress__tools">
-        <label className="write-progress__goal" title="目标页数（0 = 关闭目标，隐藏进度条）">
-          目标
-          <input
-            type="number"
-            min={0}
-            max={9999}
-            value={target}
-            placeholder="100"
-            aria-label="目标页数"
-            onChange={(e) => useStore.getState().setTargetPages(Number(e.target.value))}
-          />
-          页
-        </label>
-        {children}
-      </div>
       {onCollapse ? <button type="button" className="write-progress__collapse" title="收起进度栏" aria-label="收起进度栏" onClick={onCollapse}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
       </button> : null}
     </div>
   );
+}
+
+/** 进度栏左侧页数框里的目标页数输入：Enter / 失焦生效，Esc 放弃。 */
+function TargetInput({ value, onDone }: { value: number; onDone: (next: number | null) => void }) {
+  const [draft, setDraft] = useState(String(value || ''));
+  const done = useRef(false);
+  const finish = (commit: boolean) => {
+    if (done.current) return; done.current = true;
+    const next = Math.max(0, Math.min(9999, Math.round(Number(draft) || 0)));
+    onDone(commit && next !== value ? next : null);
+  };
+  return <input className="write-progress__target-input" type="number" min={0} max={9999} aria-label="目标页数" autoFocus value={draft}
+    onFocus={(event) => event.currentTarget.select()} onClick={(event) => event.stopPropagation()}
+    onChange={(event) => setDraft(event.target.value)} onBlur={() => finish(true)}
+    onKeyDown={(event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+    }} />;
+}
+
+/**
+ * 画面里正在看的那一页（从 1 开始）。光标段落仍在画面里时返回 0，交给光标页决定；
+ * 滚动到别处时取画面中线处的段落所在页。只读 DOM，不写工程。
+ */
+function useViewedPage(rootRef: React.RefObject<HTMLDivElement>, pageOf: Record<string, number>, activeId: string | null): number {
+  const [page, setPage] = useState(0);
+  const latest = useRef({ pageOf, activeId });
+  latest.current = { pageOf, activeId };
+  const remeasure = useRef<() => void>(() => {});
+  useEffect(() => {
+    const scroller = rootRef.current?.closest('.editor') as HTMLElement | null;
+    if (!scroller) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const { pageOf: pages, activeId: caret } = latest.current;
+      const view = scroller.getBoundingClientRect();
+      const top = view.top + (rootRef.current?.offsetHeight || 0), bottom = view.bottom;
+      if (bottom <= top) return;
+      const nodes = Array.from(scroller.querySelectorAll<HTMLElement>('.script-flow [data-id]'));
+      const caretNode = caret ? nodes.find((node) => node.dataset.id === caret) : undefined;
+      if (caretNode) {
+        const box = caretNode.getBoundingClientRect();
+        if (box.bottom > top && box.top < bottom) { setPage(0); return; }
+      }
+      const middle = (top + bottom) / 2;
+      let lo = 0, hi = nodes.length - 1, hit = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (nodes[mid].getBoundingClientRect().bottom >= middle) { hit = mid; hi = mid - 1; } else lo = mid + 1;
+      }
+      const id = hit >= 0 ? nodes[hit].dataset.id : nodes[nodes.length - 1]?.dataset.id;
+      setPage(id && pages[id] !== undefined ? pages[id] + 1 : 0);
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
+    remeasure.current = schedule;
+    scroller.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    schedule();
+    return () => { scroller.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule); if (frame) cancelAnimationFrame(frame); };
+  }, [rootRef]);
+  // 光标移动（打字、点进度条跳页）后重新判断一次。不能派发假的 scroll 事件，
+  // 否则会把 SmartType 等跟随滚动关闭的浮层误关掉。
+  useEffect(() => { remeasure.current(); }, [activeId, pageOf]);
+  return page;
 }

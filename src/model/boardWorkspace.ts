@@ -11,7 +11,6 @@ export interface BoardCardPosition extends BoardPosition {
 }
 
 export const BOARD_GRID_SIZE = 28;
-export const BOARD_SNAP_TOLERANCE_PX = 6;
 
 const finite = (value: unknown, fallback: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -26,21 +25,14 @@ export function boardBeatPosition(beat: Pick<Beat, 'x' | 'y' | 'boardX' | 'board
 
 /**
  * 主动拖动时使用的磁性吸附投影。开启吸附或打开工程时不调用它写回坐标。
- * 每个轴独立靠近 28 世界单位网格，容差保持为 6 个屏幕像素；Alt 可临时绕过。
+ * 开启后每个轴都落到最近的 28 世界单位网格线上（与画布参考网格一致），拖动时卡片整齐对齐；Alt 可临时绕过。
  */
 export function snapBoardPosition(
   position: BoardPosition,
-  zoom = 1,
   enabled = false,
   bypass = false,
 ): BoardPosition {
   if (!enabled || bypass) return { ...position };
-  const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
-  const tolerance = BOARD_SNAP_TOLERANCE_PX / scale;
-  const snapAxis = (value: number): number => {
-    if (!Number.isFinite(value)) return value;
-    const grid = Math.round(value / BOARD_GRID_SIZE) * BOARD_GRID_SIZE;
-    return Math.abs(grid - value) <= tolerance ? grid : value;
-  };
+  const snapAxis = (value: number): number => Number.isFinite(value) ? Math.round(value / BOARD_GRID_SIZE) * BOARD_GRID_SIZE || 0 : value;
   return { x: snapAxis(position.x), y: snapAxis(position.y) };
 }

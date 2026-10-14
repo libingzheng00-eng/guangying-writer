@@ -10,6 +10,7 @@ import { safeDisplayColor, safeEmbeddedImageSource } from '../utils/displayValue
 import { SceneCard, BeatCard } from './board/BoardCards';
 import { BoardLinks } from './board/BoardLinks';
 import { stopMouse, stopWheel, type Layout } from './board/boardShared';
+import { hasDraggedFiles, imageTitle, isImageFile, pickImageFile, readImageFile } from '../utils/imageFiles';
 
 type Filter = 'both' | 'scenes' | 'beats';
 type Preview = Record<string, { x?: number; y?: number; w?: number; h?: number }>;
@@ -32,8 +33,11 @@ const isTextTarget = (target: EventTarget | null) => target instanceof Element &
 const WHEEL_SCROLL_RATE = .0012;
 const WHEEL_PINCH_RATE = .01;
 const clampZoom = (value: number) => Math.max(.4, Math.min(2, Number.isFinite(value) ? value : 1));
+const SNAP_KEY = 'guangying:boardSnap';
+const loadBoardSnap = () => { try { return localStorage.getItem(SNAP_KEY) !== 'off'; } catch { return true; } };
+const saveBoardSnap = (on: boolean) => { try { localStorage.setItem(SNAP_KEY, on ? 'on' : 'off'); } catch { /* 本机偏好写不进去时只影响这一次 */ } };
 const keepsNativeWheel = (target: EventTarget | null) => isTextTarget(target) ||
-  (target instanceof Element && !!target.closest('.board__dock, .board__context-menu'));
+  (target instanceof Element && !!target.closest('.board__context-menu'));
 
 export function BoardView() {
   const project = useStore((s) => s.project);
@@ -59,7 +63,9 @@ export function BoardView() {
   const [linkDraft, setLinkDraft] = useState<{ from: string; x: number; y: number; target: string | null } | null>(null);
   const [selectedLink, setSelectedLink] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(true);
-  const [snap, setSnap] = useState(false);
+  // 磁吸默认开启（本机偏好，不写工程）；关掉后下次打开仍保持关闭。
+  const [snap, setSnapState] = useState(loadBoardSnap);
+  const setSnap = (value: boolean) => { setSnapState(value); saveBoardSnap(value); };
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [preview, setPreview] = useState<Preview>({});
   const [snapping, setSnapping] = useState(false);
@@ -253,7 +259,7 @@ export function BoardView() {
       if (data.mode === 'pan') setPan({ x: data.pan.x + dx, y: data.pan.y + dy });
       if (data.mode === 'move' && data.anchor) {
         const raw = { x: data.anchor.x + dx / data.zoom, y: data.anchor.y + dy / data.zoom };
-        const next = snapBoardPosition(raw, data.zoom, snap, event.altKey);
+        const next = snapBoardPosition(raw, snap, event.altKey);
         const mx = next.x - data.anchor.x, my = next.y - data.anchor.y;
         data.final = data.members.map((card) => ({ id: card.id, x: Math.round((card.x + mx) * 100) / 100, y: Math.round((card.y + my) * 100) / 100 }));
         setPreview(Object.fromEntries(data.final.map((card) => [card.id, { x: card.x, y: card.y }])));
@@ -320,7 +326,8 @@ export function BoardView() {
   const zoomTo = (next: number) => {
     const target = clampZoom(next);
     const x = canvasSize.width / 2, y = canvasSize.height / 2;
-    setPan({ x: x - (x - pan.x) * target / zoom, y: y - (y - pan.y) * target / zoom }); setZoom(target);
+    const round = (value: number) => Math.round(value * 100) / 100;
+    setPan({ x: round(x - (x - pan.x) * target / zoom), y: round(y - (y - pan.y) * target / zoom) }); setZoom(target);
   };
   const closeAddMenu = () => { if (addMenuRef.current) addMenuRef.current.open = false; };
   const addCard = (kind: 'beat' | 'sound') => {
@@ -331,25 +338,51 @@ export function BoardView() {
     const store = useStore.getState(); const pos = autoPos(deriveScenes(store.project).length + store.project.beats.length);
     const id = store.addBoardScene(pos.x, pos.y); if (id) selectCard(`scene:${id}`); closeAddMenu();
   };
-  const addImage = () => {
-    closeAddMenu();
+  // 新建 / 拖入图片卡共用：读取并解码成功才建卡；读取期间换了工程就放弃。
+  const addImageCards = async (files: File[], at?: { x: number; y: number }) => {
     const documentEpoch = useStore.getState().documentEpoch;
-    const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
-    input.onchange = () => {
-      const file = input.files?.[0]; if (!file) return;
-      const reader = new FileReader();
-      reader.onerror = () => { if (useStore.getState().documentEpoch === documentEpoch) useStore.getState().notify('图片读取失败，未创建卡片', 'error'); };
-      reader.onload = () => {
-        if (typeof reader.result !== 'string' || useStore.getState().documentEpoch !== documentEpoch) return;
-        const store = useStore.getState(); const pos = autoPos(deriveScenes(store.project).length + store.project.beats.length);
-        const id = store.addBeat(pos.x, pos.y, '', 'image', { img: reader.result, title: file.name }); selectCard(`beat:${id}`);
-      };
-      reader.readAsDataURL(file);
-    };
-    input.click();
+    let last = '';
+    for (const [index, file] of files.entries()) {
+      try {
+        const img = await readImageFile(file);
+        if (useStore.getState().documentEpoch !== documentEpoch) return;
+        const store = useStore.getState();
+        const pos = at ? { x: at.x + index * 24, y: at.y + index * 24 } : autoPos(deriveScenes(store.project).length + store.project.beats.length);
+        last = store.addBeat(pos.x, pos.y, '', 'image', { img, title: imageTitle(file) });
+      } catch {
+        if (useStore.getState().documentEpoch === documentEpoch) useStore.getState().notify(`无法读取图片“${file.name}”，请尝试有效的 PNG、JPEG 或 WebP 文件。`, 'error');
+      }
+    }
+    if (last) selectCard(`beat:${last}`);
+  };
+  const addImage = async () => {
+    closeAddMenu();
+    const file = await pickImageFile();
+    if (file) await addImageCards([file]);
+  };
+  // 从访达 / 桌面直接把图片拖进画布：落在松手的位置。
+  const [dropActive, setDropActive] = useState(false);
+  const onDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!hasDraggedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setDropActive(true);
+  };
+  const onDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropActive(false);
+  };
+  const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    setDropActive(false);
+    if (!hasDraggedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const images = Array.from(event.dataTransfer.files).filter(isImageFile);
+    if (!images.length) { useStore.getState().notify('请拖入本地图片文件（如 PNG、JPEG 或 WebP）。', 'error'); return; }
+    const rect = canvasRef.current!.getBoundingClientRect();
+    void addImageCards(images, { x: Math.round((event.clientX - rect.left - pan.x) / zoom - 20), y: Math.round((event.clientY - rect.top - pan.y) / zoom - 20) });
   };
   const onDoubleClick = (event: React.MouseEvent) => {
-    if ((event.target as Element).closest('[data-card],.board-links,.board__dock,.board__context-menu')) return;
+    if ((event.target as Element).closest('[data-card],.board-links,.board__context-menu')) return;
     const rect = canvasRef.current!.getBoundingClientRect();
     const id = useStore.getState().addBeat((event.clientX - rect.left - pan.x) / zoom, (event.clientY - rect.top - pan.y) / zoom);
     selectCard(`beat:${id}`);
@@ -397,6 +430,11 @@ export function BoardView() {
         {visibleSelected.length === 2 && <button className="btn board__connect" title="连接这两张卡片（L）" onClick={() => connectCards(visibleSelected[0], visibleSelected[1])}>连线</button>}
       </div>}
       <div className="board__actions">
+        <div className="board__zoom" role="group" aria-label="自由板缩放">
+          <button className="board__zoom-step" aria-label="缩小自由板" title="缩小" onClick={() => zoomTo(Math.round((zoom - .1) * 10) / 10)}>−</button>
+          <ZoomInput zoom={zoom} onCommit={zoomTo} />
+          <button className="board__zoom-step" aria-label="放大自由板" title="放大" onClick={() => zoomTo(Math.round((zoom + .1) * 10) / 10)}>+</button>
+        </div>
         <details ref={addMenuRef} className="board__dropdown"><summary className="btn--primary" aria-label="新增卡片">+ 新增</summary>
           <div className="board__menu"><button onClick={addScene}>场景卡</button><button onClick={() => addCard('beat')}>灵感卡</button><button onClick={() => addCard('sound')}>声音卡</button><button onClick={addImage}>图片卡</button></div>
         </details>
@@ -409,7 +447,8 @@ export function BoardView() {
         </details>
       </div>
     </div>
-    <div ref={canvasRef} className="board__canvas" tabIndex={-1} aria-label="自由板画布" data-grid={showGrid ? 'on' : 'off'} data-panning={spaceHeld ? 'on' : 'off'}
+    <div ref={canvasRef} className={`board__canvas${dropActive ? ' is-image-drop-target' : ''}`} tabIndex={-1} aria-label="自由板画布" data-grid={showGrid ? 'on' : 'off'} data-panning={spaceHeld ? 'on' : 'off'}
+      onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}
       style={{ backgroundSize: `${BOARD_GRID_SIZE * zoom}px ${BOARD_GRID_SIZE * zoom}px`, backgroundPosition: `${pan.x}px ${pan.y}px` }}
       onWheel={onWheel} onMouseDownCapture={onMouseDownCapture} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}>
       <div className="board__world" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
@@ -430,18 +469,14 @@ export function BoardView() {
         {!contextMenu.linkId && contextMenu.ids.length === 2 && <button role="menuitem" onClick={() => { connectCards(contextMenu.ids[0], contextMenu.ids[1]); setContextMenu(null); }}>连接这两张卡片</button>}
         <button role="menuitem" className="is-danger" onClick={() => { if (contextMenu.linkId) { useStore.getState().deleteBoardLink(contextMenu.linkId); setSelectedLink(null); } else deleteCards(contextMenu.ids); setContextMenu(null); }}>{menuDeleteLabel}</button>
       </div>}
-      <div className="board__hint">拖动卡片右上角的连线钮到另一张卡片即可连线 · Shift 多选 · Delete 删除 · 空格拖动画布</div>
-      <div className="board__dock" role="toolbar" aria-label="自由板工具" onMouseDown={stopMouse} onDoubleClick={stopMouse}>
-        <div className="zoom-ctl"><button className="icon-btn" aria-label="缩小自由板" onClick={() => setZoom((value) => Math.max(.4, Math.round((value - .1) * 10) / 10))}>−</button>
-          <ZoomInput zoom={zoom} onCommit={zoomTo} /><button className="icon-btn" aria-label="放大自由板" onClick={() => setZoom((value) => Math.min(2, Math.round((value + .1) * 10) / 10))}>+</button></div>
-      </div>
+      <div className="board__hint">鼠标移到卡片右上角会出现圆点，拖到另一张卡片即可连线 · Shift 多选 · Delete 删除 · 空格拖动画布</div>
     </div>
   </div>;
 }
 
 /** 可直接输入的缩放比例（40%–200%）；Enter 或失焦生效，Esc 还原。 */
 function ZoomInput({ zoom, onCommit }: { zoom: number; onCommit: (zoom: number) => void }) {
-  const shown = String(Math.round(zoom * 100));
+  const shown = `${Math.round(zoom * 100)}%`;
   const [draft, setDraft] = useState(shown);
   const editing = useRef(false);
   const cancelled = useRef(false);
@@ -451,16 +486,15 @@ function ZoomInput({ zoom, onCommit }: { zoom: number; onCommit: (zoom: number) 
     if (cancelled.current) { cancelled.current = false; setDraft(shown); return; }
     const value = parseFloat(draft.replace(/[^\d.]/g, ''));
     if (Number.isFinite(value) && value > 0) onCommit(value / 100);
-    setDraft(String(Math.round(clampZoom(Number.isFinite(value) && value > 0 ? value / 100 : zoom) * 100)));
+    setDraft(`${Math.round(clampZoom(Number.isFinite(value) && value > 0 ? value / 100 : zoom) * 100)}%`);
   };
-  return <label className="zoom-val zoom-input" title="输入缩放比例，Enter 确认">
-    <input aria-label="自由板缩放比例" inputMode="numeric" value={draft} onFocus={(event) => { editing.current = true; event.currentTarget.select(); }}
-      onChange={(event) => setDraft(event.target.value)} onBlur={commit}
-      onKeyDown={(event) => {
-        event.stopPropagation();
-        if (event.nativeEvent.isComposing) return;
-        if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
-        if (event.key === 'Escape') { event.preventDefault(); cancelled.current = true; event.currentTarget.blur(); }
-      }} />%
-  </label>;
+  return <input className="board__zoom-input" aria-label="自由板缩放比例" title="输入缩放比例（40%–200%），Enter 确认" inputMode="numeric" value={draft}
+    onFocus={(event) => { editing.current = true; event.currentTarget.select(); }}
+    onChange={(event) => setDraft(event.target.value)} onBlur={commit}
+    onKeyDown={(event) => {
+      event.stopPropagation();
+      if (event.nativeEvent.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); }
+      if (event.key === 'Escape') { event.preventDefault(); cancelled.current = true; event.currentTarget.blur(); }
+    }} />;
 }

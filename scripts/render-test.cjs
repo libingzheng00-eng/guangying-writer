@@ -138,9 +138,14 @@ process.on('exit', cleanTemporaryBundle);
 
   // 第五项：进度条主题 / 场景条带 / 终点图标等只渲染在写作视图，必须先在写作视图抓。
   // 兼容旧 alpha.1：用 .target-pages / .typewriter-progress__pointer；新 alpha.5 用 .write-progress__goal / .write-progress__marker。
+  // 2026-10-14：目标页数改为点击左侧页数框修改，点开后出现同名输入框。
+  const targetLabel = q('.write-progress__label[role="button"]');
+  if (targetLabel) { targetLabel.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); await new Promise((resolve) => setTimeout(resolve, 30)); }
   const targetPagesVisible =
     !!q('.target-pages input') ||
-    !!q('.write-progress__goal input');
+    !!q('input[aria-label="目标页数"]');
+  const targetInput = q('input[aria-label="目标页数"]');
+  if (targetInput) { targetInput.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise((resolve) => setTimeout(resolve, 30)); }
   const typewriterPointerVisible =
     !!q('.typewriter-progress__pointer') ||
     !!q('.write-progress__marker img');

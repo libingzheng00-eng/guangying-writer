@@ -42,7 +42,6 @@ const FONT_COLOR_PRESETS = [
   { name: '纯黑', color: '#000000' },
   { name: '纯白', color: '#ffffff' },
   { name: '荧光黄', color: '#e9ff3a' },
-  { name: '暖白', color: '#ffe9c4' },
   { name: '青蓝', color: '#8fd3ff' },
   { name: '薄荷', color: '#a8ffcf' },
   { name: '樱粉', color: '#ffb3d1' },
@@ -420,7 +419,7 @@ export function SettingsDialog({ onClose, session }: DialogProps) {
               <button className={appTheme === 'night' ? 'is-active' : ''} onClick={() => setAppTheme('night')}>夜间</button>
               <button className={appTheme === 'day' ? 'is-active' : ''} onClick={() => setAppTheme('day')}>日间</button>
             </div>
-            <p className="hint">只影响本机外观，不会写入剧本文件。默认正文随主题切换：日间黑色，夜间白色。</p>
+            <p className="hint">只影响本机外观，不会写入剧本文件。默认正文随主题切换：日间黑色，夜间暖白。</p>
           </div>
           <div className="field">
             <label>写作字体颜色</label>

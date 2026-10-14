@@ -31,10 +31,15 @@ let h;
     await mouse(h.w, 'mouseup', { clientX: start.clientX + dx, clientY: start.clientY + dy });
   };
   await mount();
+  check('磁吸默认开启', q('.board--workspace').dataset.snap, 'on');
+  // 下面逐像素的拖动断言在关闭磁吸时进行；磁吸本身在后面单独验证。
+  localStorage.setItem('guangying:boardSnap', 'off');
+  await mount();
+  check('关闭磁吸记在本机，重新打开仍是关闭', q('.board--workspace').dataset.snap, 'off');
   const original = clone(state().project);
   const initialHistory = history();
   check('默认不处于连线拖动状态', linking(), 'off');
-  check('每张卡片都有连线圆点，旧的选择/连线模式按钮已移除', [qa('.bcard__connector').length, qa('.board__dock button[aria-label="连接两张卡片"]').length], [4, 0]);
+  check('每张卡片都有连线圆点，旧的选择/连线模式按钮已移除', [qa('.bcard__connector > span').length, qa('button[aria-label="连接两张卡片"]').length], [4, 0]);
   check('新增和视图设置收拢为可访问下拉入口', qa('.board__dropdown summary').map((node) => node.getAttribute('aria-label')).sort(), ['新增卡片', '视图设置']);
   check('卡片均具有统一身份与类型', qa('[data-card]').map((node) => [node.dataset.id, node.dataset.kind]), [['s1', 'scene'], ['s2', 'scene'], ['b1', 'beat'], ['b2', 'sound']]);
   check('空选区不显示顶栏卡片工具', q('.board__selection-tools'), null);
@@ -317,12 +322,18 @@ let h;
   await h.openViewSettings();
   await click(q('input[aria-label="磁吸网格"]'));
   await drag(card('b1').querySelector('.bcard__head'), 13, 17);
-  check('主动磁吸按轴仅在6px容差内落到28px网格', [state().project.beats[0].boardX, state().project.beats[0].boardY, state().past.length], [560, 47, 1]);
+  // 550+13=563 → 560，30+17=47 → 56：两个轴都落到最近的28网格线。
+  check('磁吸拖动时两个轴都落到最近的28网格线', [state().project.beats[0].boardX, state().project.beats[0].boardY, state().past.length], [560, 56, 1]);
   check('磁吸拖动仍保留写作素材坐标', [state().project.beats[0].x, state().project.beats[0].y], [550, 30]);
   await drag(card('b1').querySelector('.bcard__head'), 40, 20);
-  check('连续两次释放各自保留独立历史', [state().project.beats[0].boardX, state().project.beats[0].boardY, state().past.length], [600, 67, 2]);
+  check('连续两次释放各自保留独立历史', [state().project.beats[0].boardX, state().project.beats[0].boardY, state().past.length], [588, 84, 2]);
   await act(async () => state().undo());
-  check('撤销第二次拖动保留第一次的磁吸结果', [state().project.beats[0].boardX, state().project.beats[0].boardY, state().past.length], [560, 47, 1]);
+  check('撤销第二次拖动保留第一次的磁吸结果', [state().project.beats[0].boardX, state().project.beats[0].boardY, state().past.length], [560, 56, 1]);
+  await mouse(card('b1').querySelector('.bcard__head'), 'mousedown', { clientX: 100, clientY: 100 });
+  await mouse(h.w, 'mousemove', { clientX: 113, clientY: 117, altKey: true });
+  await mouse(h.w, 'mouseup', { clientX: 113, clientY: 117, altKey: true });
+  check('按住Alt拖动暂停磁吸', [state().project.beats[0].boardX, state().project.beats[0].boardY], [573, 73]);
+  localStorage.setItem('guangying:boardSnap', 'off');
   // React delegates wheel as passive. Canvas cancellation must actually take
   // effect through a non-passive listener, while text controls keep native
   // scrolling. A handler merely calling preventDefault is not sufficient.
@@ -360,21 +371,21 @@ let h;
     await input(zoomField(), value);
     await key(zoomField(), finish);
   };
-  check('缩放比例显示为可输入的百分数', zoomField().value, String(Math.round(state().writingContext.board.zoom * 100)));
+  check('缩放比例显示为可输入的百分数', zoomField().value, `${Math.round(state().writingContext.board.zoom * 100)}%`);
   const zoomProject = state().project, zoomHistory = history();
   await typeZoom('150', 'Enter');
-  check('输入150回车后缩放到150%', [state().writingContext.board.zoom, zoomField().value], [1.5, '150']);
+  check('输入150回车后缩放到150%', [state().writingContext.board.zoom, zoomField().value], [1.5, '150%']);
   await typeZoom('80%', 'Enter');
-  check('带百分号输入也能识别', [state().writingContext.board.zoom, zoomField().value], [.8, '80']);
+  check('带百分号输入也能识别', [state().writingContext.board.zoom, zoomField().value], [.8, '80%']);
   await typeZoom('999', 'Enter');
-  check('超出范围的比例自动限制在40%–200%', [state().writingContext.board.zoom, zoomField().value], [2, '200']);
+  check('超出范围的比例自动限制在40%–200%', [state().writingContext.board.zoom, zoomField().value], [2, '200%']);
   await typeZoom('55', 'Escape');
-  check('Esc放弃输入，保持原比例', [state().writingContext.board.zoom, zoomField().value], [2, '200']);
+  check('Esc放弃输入，保持原比例', [state().writingContext.board.zoom, zoomField().value], [2, '200%']);
   await typeZoom('abc', 'Enter');
-  check('无效输入不改变比例并恢复显示', [state().writingContext.board.zoom, zoomField().value], [2, '200']);
+  check('无效输入不改变比例并恢复显示', [state().writingContext.board.zoom, zoomField().value], [2, '200%']);
   check('改缩放比例不写工程、不进撤销历史', [state().project, history()], [zoomProject, zoomHistory]);
   await click(q('button[aria-label="缩小自由板"]'));
-  check('−按钮后输入框同步显示新比例', zoomField().value, '190');
+  check('−按钮后输入框同步显示新比例', zoomField().value, '190%');
 
   await pressCard('b1');
   await mouse(title('b2'), 'dblclick');
@@ -383,7 +394,7 @@ let h;
   nestedEditor.innerHTML = '<span><em>合成嵌套编辑文字</em></span>';
   canvas().appendChild(nestedEditor);
   const nativeWheelTargets = [card('s1').querySelector('[data-rich-note]'), titleInput('b2'),
-    nestedEditor.querySelector('em'), q('.board__dock button')];
+    nestedEditor.querySelector('em'), q('.board__zoom button')];
   for (const target of nativeWheelTargets) {
     const beforeWheel = state().writingContext, beforeTransform = q('.board__world').style.transform;
     const result = await sendWheel(target);

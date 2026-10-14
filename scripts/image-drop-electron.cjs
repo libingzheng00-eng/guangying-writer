@@ -122,15 +122,19 @@ app.whenReady().then(async () => {
     check('一次撤销整张新图片卡，不残留空卡', await count() === 0);
     await run(`document.querySelector('button[title="重做 ⌘/Ctrl+Shift+Z"]').click()`);
     await until('document.querySelector(".writing-material-card__image")?.naturalWidth > 0');
-    await run(`document.querySelector('button[aria-label="显示或隐藏声音卡"]').click()`);
-    check('关闭声音仍能看见图片', await run(`(() => { const e=document.querySelector('.writing-material-card--image'); return !!e && getComputedStyle(e).visibility === 'visible' && getComputedStyle(e.parentElement).opacity === '1'; })()`));
+    // 正文两侧空白处右键 →「隐藏所有卡片」：图片卡一起隐藏，工程不变。
+    await run(`(() => { const f=document.querySelector('.script-flow').getBoundingClientRect(); document.querySelector('.editor__scroll').dispatchEvent(new MouseEvent('contextmenu', {bubbles:true,cancelable:true,clientX:Math.max(8,f.left-40),clientY:f.top+120})); })()`);
+    await until('!!document.querySelector(".writing-context-menu")');
+    await run(`[...document.querySelectorAll('.writing-context-menu [role="menuitem"]')].find(b=>b.textContent.startsWith('隐藏所有卡片')).click()`);
+    await until('document.querySelectorAll(".writing-material-card").length === 0');
+    check('右键「隐藏所有卡片」后图片卡也隐藏', await count() === 0);
     // 滚动容器/内层坐标必须用真实 layout 验证。临时增加空白高度，不改工程正文。
     await run(`document.querySelector('.editor__scroll').style.minHeight='2400px'; document.querySelector('.editor').scrollTop=700;`);
     await pause(150);
     const edge = await run(`(() => { const b=document.querySelector('.editor').getBoundingClientRect(); return {x:b.right-25, y:b.top+260, right:b.right}; })()`);
     await drop([second], edge.x, edge.y);
     await until('document.querySelectorAll(".writing-material-card--image").length === 2');
-    check('关闭声音后仍能拖入第二张图片', await count() === 2);
+    check('隐藏后拖入新图片，全部卡片重新显示', await count() === 2);
     check('滚动后的右侧落点保持在可见范围内', await run(`(() => { const all=[...document.querySelectorAll('.writing-material-card--image')]; const r=all[1].getBoundingClientRect(); return r.right <= ${edge.right} && r.top >= ${edge.y}-40 && r.top <= ${edge.y}+10; })()`));
     await screenshot('image-drop-night.png');
     await drop([broken], edge.x - 350, edge.y);

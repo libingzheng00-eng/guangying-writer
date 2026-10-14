@@ -3,7 +3,9 @@ import { useStore } from '../store/store';
 import { usePagination } from '../hooks/PaginationProvider';
 import { EditableBlock } from './ScriptBlock';
 import { ProgressBar } from './ProgressBar';
-import { MaterialControls, WritingMaterialCards } from './writing/WritingMaterials';
+import { WritingMaterialCards } from './writing/WritingMaterials';
+import { WritingContextMenu } from './writing/WritingContextMenu';
+import { imageTitle, pickImageFile, readImageFile } from '../utils/imageFiles';
 import { TitlePageCard } from './writing/TitlePageCard';
 import { useImageDrop } from './writing/useImageDrop';
 import { useProgressCollapsed } from './writing/useProgressCollapsed';
@@ -99,7 +101,9 @@ export function Editor() {
     () => readSmartTypeCatalog(project, activeId || undefined, documentEpoch),
     [readSmartTypeCatalog, project.elements, activeId, documentEpoch],
   );
-  const [showSoundCards, setShowSoundCards] = useState(true);
+  // 写作页素材卡（声音 / 图片）的显示开关，只是本次的界面状态；创作版 PDF 仍会带上全部卡片。
+  const [showCards, setShowCards] = useState(true);
+  const [materialMenu, setMaterialMenu] = useState<{ clientX: number; clientY: number } | null>(null);
   const [progressCollapsed, toggleProgress] = useProgressCollapsed();
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -774,14 +778,48 @@ export function Editor() {
   // 图片只使用统一的 image 卡：自由板可新建，写作页保留“直接拖入照片”的入口。
   // 这里不能恢复第二套 wimg/“写作图”数据类型，否则旧工程兼容和 PDF 素材页会再次分叉。
   const writingImages = project.beats.filter((b) => b.kind === 'image');
-  // 声音开关只控制声音，不能把已拖入的图片一起隐藏。
-  const writingMaterials = [...(showSoundCards || pdfExportMode === 'creative' ? writingSounds : []), ...writingImages];
-  const addWritingSound = () => {
-    const count = writingSounds.length;
-    const x = Math.max(24, (scrollRef.current?.clientWidth || 980) - 274);
-    const y = 84 + count * 24;
+  const allMaterials = [...writingSounds, ...writingImages];
+  const writingMaterials = showCards || pdfExportMode === 'creative' ? allMaterials : [];
+  // 新增了卡片（右键新建、拖入图片、撤销恢复）就重新显示，免得新卡藏起来看不见。
+  const materialCount = useRef(allMaterials.length);
+  useEffect(() => {
+    if (allMaterials.length > materialCount.current) setShowCards(true);
+    materialCount.current = allMaterials.length;
+  }, [allMaterials.length]);
+  // 右键位置换算成素材层坐标；卡片左上角落在鼠标附近，并收在写作区可见宽度内。
+  const materialPoint = (clientX: number, clientY: number, width: number) => {
+    const layer = scrollRef.current?.querySelector<HTMLElement>('.editor__scroll');
+    if (!layer) return { x: 24, y: 84 };
+    const origin = layer.getBoundingClientRect();
+    return {
+      x: Math.round(Math.max(16, Math.min(clientX - origin.left - 20, layer.clientWidth - width - 16))),
+      y: Math.round(Math.max(16, clientY - origin.top - 16)),
+    };
+  };
+  const addWritingSound = (clientX: number, clientY: number) => {
+    const { x, y } = materialPoint(clientX, clientY, 258);
     addBeat(x, y, '', 'sound');
   };
+  const addWritingImage = async (clientX: number, clientY: number) => {
+    const { x, y } = materialPoint(clientX, clientY, 290);
+    const documentAtPick = useStore.getState().documentEpoch;
+    const file = await pickImageFile();
+    if (!file || useStore.getState().documentEpoch !== documentAtPick) return;
+    try {
+      const img = await readImageFile(file);
+      if (useStore.getState().documentEpoch !== documentAtPick) return;
+      addBeat(x, y, '', 'image', { title: imageTitle(file), img });
+    } catch {
+      if (useStore.getState().documentEpoch === documentAtPick) useStore.getState().notify(`无法读取图片“${file.name}”，请尝试有效的 PNG、JPEG 或 WebP 文件。`, 'error');
+    }
+  };
+  // 只在正文两侧的空白处接管右键；正文、卡片、输入框里保留系统默认菜单。
+  const onMaterialContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('.script-flow, .writing-material-card, .title-page-card, input, textarea, button, [contenteditable="true"]')) return;
+    event.preventDefault();
+    setMaterialMenu({ clientX: event.clientX, clientY: event.clientY });
+  };
+  const closeMaterialMenu = useCallback(() => setMaterialMenu(null), []);
 
   const imageDrop = useImageDrop(scrollRef);
 
@@ -802,14 +840,12 @@ export function Editor() {
         <button type="button" className="write-progress-collapsed__reveal" title="展开进度栏" aria-label="展开进度栏" onClick={() => toggleProgress(false)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
         </button>
-      </div> : <ProgressBar onCollapse={() => toggleProgress(true)}>
-        <MaterialControls
-          soundCount={writingSounds.length}
-          showSound={showSoundCards}
-          onToggleSound={() => setShowSoundCards((v) => !v)}
-          onAddSound={addWritingSound}
-        />
-      </ProgressBar>}
+      </div> : <ProgressBar onCollapse={() => toggleProgress(true)} />}
+      {/* 菜单挂在 .editor 下，不受正文层 z-index 限制，能盖住进度栏。 */}
+      {materialMenu && <WritingContextMenu x={materialMenu.clientX} y={materialMenu.clientY} cardsHidden={!showCards} cardCount={allMaterials.length}
+        onAddSound={() => addWritingSound(materialMenu.clientX, materialMenu.clientY)}
+        onAddImage={() => { void addWritingImage(materialMenu.clientX, materialMenu.clientY); }}
+        onToggleCards={() => setShowCards((value) => !value)} onClose={closeMaterialMenu} />}
       <div
         className={`editor__scroll${imageDrop.active ? ' is-image-drop-target' : ''}`}
         data-ready={readyKey === `${version}:${project.settings.paper}` ? 'true' : 'false'}
@@ -817,6 +853,7 @@ export function Editor() {
         onDragOverCapture={imageDrop.onDragOverCapture}
         onDragLeave={imageDrop.onDragLeave}
         onDropCapture={imageDrop.onDropCapture}
+        onContextMenu={onMaterialContextMenu}
       >
         <WritingMaterialCards cards={writingMaterials} onUpdate={updateBeat} onMove={moveBeat} onDelete={deleteBeat} />
         {settings.indent && project.titlePage.show ? <TitlePageCard /> : null}
