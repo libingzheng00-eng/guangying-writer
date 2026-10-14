@@ -122,7 +122,10 @@ function titlePage(title: TitlePage, project: ScriptProject): string[] {
   // 旧工程的标题页可能缺字段。
   const lines = (value: string | undefined) => (value || '').split(/\r?\n/).map((v) => v.trim()).filter(Boolean);
   const centre = [title.title, title.subtitle].flatMap(lines);
-  const credit = [...lines(title.author), ...lines(title.basedOn)];
+  // Final Draft 的标题页习惯写「Written by」再写名字；这里用「编剧」，作者自己已写了标签就不重复。
+  const authors = lines(title.author);
+  const labelled = authors.length && !/^(written by|screenplay by|story by|teleplay by|by|编剧|作者)[：:]?$/i.test(authors[0]) ? ['编剧', ...authors] : authors;
+  const credit = [...labelled, ...lines(title.basedOn)];
   const bottom = [title.version, title.date, title.contact].flatMap(lines);
   return [
     '  <TitlePage>',
@@ -226,20 +229,44 @@ export function toFdx(p: ScriptProject): string {
 
 /* ------------------------------ 导入 ------------------------------ */
 
+/**
+ * Final Draft 段落类型 → 本软件元素类型。名单按 Final Draft 11 / 13 自带的全部模板和范例整理（2026-10-15）。
+ * 大纲、梗概、注释类段落只供作者参考，导入成「备忘」，不会进正式稿；不认识的类型按「通用」保留文字。
+ */
 const FROM_FDX: Record<string, ElementType> = {
   'scene heading': 'scene_heading',
   action: 'action',
   character: 'character',
   parenthetical: 'parenthetical',
   dialogue: 'dialogue',
+  lyrics: 'dialogue',
+  lyric: 'dialogue',
   transition: 'transition',
+  'fade in': 'transition',
   shot: 'shot',
+  insert: 'shot',
+  'mini slug': 'shot',
   'act heading': 'act',
   'new act': 'act',
-  'end of act': 'act',
+  teaser: 'act',
+  'teaser/act one': 'act',
+  chapter: 'act',
+  'end of act': 'general',
+  'end of episode': 'general',
+  'end of chapter': 'general',
+  'end of script': 'general',
   general: 'general',
   'general text': 'general',
-  lyric: 'general',
+  summary: 'note',
+  note: 'note',
+  notations: 'note',
+  'outline 1': 'note',
+  'outline 2': 'note',
+  'outline 3': 'note',
+  'outline 4': 'note',
+  'outline 1 (acts)': 'note',
+  'outline 2 (sequences)': 'note',
+  'outline 3 (scenes)': 'note',
 };
 
 const childElements = (node: Element, name: string) => Array.from(node.children).filter((child) => child.tagName.toLowerCase() === name.toLowerCase());
@@ -281,15 +308,21 @@ function readTitlePage(node: Element): Partial<TitlePage> {
   if (!centred.length && !other.length) return {};
   const title: Partial<TitlePage> = { title: centred[0] || '' };
   const rest = centred.slice(1);
-  const by = rest.findIndex((line) => /^(written by|screenplay by|story by|teleplay by|by|编剧|作者|编剧：?)$/i.test(line));
-  if (by >= 0) {
-    if (by > 0) title.subtitle = rest.slice(0, by).join('\n');
-    title.author = [rest[by], ...rest.slice(by + 1).filter((line) => !/based on|改编自|原著/i.test(line))].join('\n');
-    const based = rest.slice(by + 1).filter((line) => /based on|改编自|原著/i.test(line));
-    if (based.length) title.basedOn = based.join('\n');
-  } else if (rest.length) {
-    title.subtitle = rest.join('\n');
-  }
+  const isCredit = (line: string) => /^(written by|screenplay by|story by|teleplay by|by|编剧|作者)[：:]?$/i.test(line);
+  const isBased = (line: string) => /based on|改编自|原著/i.test(line);
+  const by = rest.findIndex(isCredit);
+  // 「Written by / 编剧」本身是标签，不写进作者（本软件的标题页会自己加「编剧：」）。
+  const before = by >= 0 ? rest.slice(0, by) : rest;
+  const after = by >= 0 ? rest.slice(by + 1) : [];
+  if (by >= 0 && after.length) title.author = after[0];
+  const leftovers = [...before, ...after.slice(1)];
+  const based = leftovers.filter(isBased);
+  const others = leftovers.filter((line) => !isBased(line));
+  if (based.length) title.basedOn = based.join('\n');
+  // 片名下面紧跟的一行当副标题，其余（引言、说明等）放进标题页备注，不丢内容。
+  if (by > 0 && before.length) { title.subtitle = before.join('\n'); others.splice(0, before.length); }
+  else if (by < 0 && others.length) title.subtitle = others.shift();
+  if (others.length) title.notes = others.join('\n');
   if (other.length) title.contact = other.join('\n');
   return title;
 }
@@ -339,7 +372,8 @@ export function fromFdx(xml: string): FdxImport {
       });
       continue;
     }
-    const type = FROM_FDX[(node.getAttribute('Type') || '').trim().toLowerCase()] || 'action';
+    const rawType = (node.getAttribute('Type') || '').trim().toLowerCase();
+    const type = FROM_FDX[rawType] || (rawType ? 'general' : 'action');
     const el = newElement(type, textOf(node));
     elements.push(el);
     const props = type === 'scene_heading' ? childElements(node, 'SceneProperties')[0] : undefined;

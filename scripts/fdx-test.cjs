@@ -108,7 +108,12 @@ const FD_TYPES = new Set(['General', 'Scene Heading', 'Action', 'Character', 'Pa
   check('双列对白读回左右两列', back.elements.filter((e) => e.dualGroup).map((e) => e.dual), ['left', 'left', 'right', 'right']);
   check('场景标题 / 梗概 / 颜色读回场景卡', back.sceneMeta.map((m) => [m.title, m.synopsis, m.color]), [['候船', '林舟等人', '#cfe4ff']]);
   check('场景梗概不会混进场次标题', back.elements[1].text, '内景 合成车站 日');
-  check('标题页读回', [back.title.title, back.title.subtitle, back.title.author, back.title.contact], ['合成片名', '第一稿', '编剧\n合成作者', '2026-10-15\ntest@example.invalid']);
+  check('标题页读回（「编剧」标签不进作者名）', [back.title.title, back.title.subtitle, back.title.author, back.title.contact], ['合成片名', '第一稿', '合成作者', '2026-10-15\ntest@example.invalid']);
+  const plainAuthor = createProject('只写名字');
+  Object.assign(plainAuthor.titlePage, { show: true, title: '片名', author: '某作者', subtitle: '', basedOn: '', date: '', contact: '' });
+  const plainXml = new w.DOMParser().parseFromString(toFdx(plainAuthor), 'application/xml');
+  check('作者没写标签时，Final Draft 标题页自动加「编剧」', Array.from(plainXml.querySelectorAll(':scope > TitlePage > Content > Paragraph')).map(txt).filter(Boolean), ['片名', '编剧', '某作者']);
+  check('再导入作者仍是名字本身', fromFdx(toFdx(plainAuthor)).title.author, '某作者');
 
   // ---- older Guangying exports stay readable ----
   const legacy = '<?xml version="1.0"?><FinalDraft><Content><TitlePage><Paragraph Type="Title"><Text>旧片名</Text></Paragraph></TitlePage><Paragraph Type="Dual Dialogue"><DualDialogue><Paragraph Type="Character"><Text>甲</Text></Paragraph><Paragraph Type="Dialogue"><Text>一</Text></Paragraph><Paragraph Type="Character"><Text>乙</Text></Paragraph><Paragraph Type="Dialogue"><Text>二</Text></Paragraph></DualDialogue></Paragraph><Paragraph Type="Act Heading"><Text>第二幕</Text></Paragraph></Content></FinalDraft>';
@@ -122,9 +127,19 @@ const FD_TYPES = new Set(['General', 'Scene Heading', 'Action', 'Character', 'Pa
     const real = fromFdx(fs.readFileSync(sample, 'utf8'));
     const headings = real.elements.filter((e) => e.type === 'scene_heading');
     check('Final Draft 范例：读到场次、双列、标题页，梗概不混进场次标题',
-      [headings.length > 3, real.elements.some((e) => e.dualGroup), real.title.title, headings.every((e) => !/Deanna's running/.test(e.text)), real.sceneMeta.length > 0],
-      [true, true, 'Airship', true, true]);
+      [headings.length > 3, real.elements.some((e) => e.dualGroup), real.title.title, real.title.author, headings.every((e) => !/Deanna's running/.test(e.text)), real.sceneMeta.length > 0],
+      [true, true, 'Airship', "Pete D'Alessandro", true, true]);
   } else console.log('  - 本机没有 Final Draft 11 范例，跳过真实文件导入');
+  // 本机装了 Final Draft 时，把它自带的全部模板和范例逐个导入（只读）：都不能报错，大纲类段落进「备忘」。
+  const fdRoots = ['/Applications/Final Draft 11.app', '/Applications/Final Draft 13.app'].filter((dir) => fs.existsSync(dir));
+  if (fdRoots.length) {
+    const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => d.isDirectory() ? walk(path.join(dir, d.name)) : /\.fdxt?$/i.test(d.name) ? [path.join(dir, d.name)] : []);
+    const files = fdRoots.flatMap(walk);
+    const failures = files.filter((file) => { try { fromFdx(fs.readFileSync(file, 'utf8')); return false; } catch { return true; } });
+    check(`Final Draft 自带的 ${files.length} 份模板 / 范例全部能导入`, failures, []);
+    const outline = files.find((file) => /Outline\.fdxt$/.test(file) && /Tangle/.test(file));
+    if (outline) check('大纲类段落导入成备忘', fromFdx(fs.readFileSync(outline, 'utf8')).elements.some((e) => e.type === 'note'), true);
+  }
 
   console.log(`\n=== fdx ${checks}/${checks} PASS (synthetic + optional Final Draft sample; opening in Final Draft is manual QA) ===`);
 })().catch((error) => { console.error(error); process.exit(1); });
