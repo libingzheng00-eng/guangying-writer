@@ -38,6 +38,23 @@ export interface ScriptElement {
   omit?: boolean;
   /** 所属场景卡 id */
   sceneId?: string;
+  /** 备选台词：这一段未采用的其他版本（HTML），导出只用当前 text */
+  alts?: string[];
+  /** 当前版本在全部版本里的序号（从 1 开始），仅在有 alts 时有意义 */
+  altNo?: number;
+}
+
+/** 场号锁定：锁定那一刻每个场次标题的场号；之后新插入的场按前一场编成 5A、5B。 */
+export interface SceneNumberLock {
+  lockedAt: number;
+  numbers: Record<string, string>;
+}
+
+/** 页码锁定：锁定那一刻每页的起始段落和页码；之后加长的内容编成 12A、12B 页。 */
+export interface PageLock {
+  lockedAt: number;
+  /** id 为 null 表示该页从上一页续下来的段落中间开始（只记页码） */
+  pages: Array<{ id: string | null; label: string }>;
 }
 
 /**
@@ -228,6 +245,10 @@ export interface ScriptProject {
   boardLinks?: BoardLink[];
   /** 剧本目标页数；缺失时按 100 页处理，兼容旧项目。 */
   targetPages?: number;
+  /** 场号锁定（拍摄稿）；缺失表示未锁定 */
+  sceneLock?: SceneNumberLock;
+  /** 页码锁定（拍摄稿）；缺失表示未锁定 */
+  pageLock?: PageLock;
   acts: Act[];
   revisions: Revision[];
   settings: ScriptSettings;

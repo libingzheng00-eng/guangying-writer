@@ -284,6 +284,19 @@
   .app-shell[data-theme] .writing-context-menu button:disabled { opacity: .45; cursor: default; background: transparent; }
   .app-shell[data-theme] .writing-context-menu hr { width: 100%; margin: 3px 0; border: 0; border-top: 1px solid var(--border); }
 
+  /* 备选台词：光标所在对白右侧的小工具条；有多个版本的对白在左侧页边显示一个「⇄」小记号（只在写作页，不进打印）。 */
+  .app-shell[data-theme] .alt-dialogue-bar {
+    position: absolute; z-index: 8; display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 4px;
+    border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: var(--text); box-shadow: var(--card-glow); font-size: 12px; white-space: nowrap;
+  }
+  .app-shell[data-theme] .alt-dialogue-bar__label { padding: 0 4px; color: var(--muted); }
+  .app-shell[data-theme] .alt-dialogue-bar__count { min-width: 30px; text-align: center; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+  .app-shell[data-theme] .alt-dialogue-bar button {
+    width: 24px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text); font-size: 14px; line-height: 1; cursor: pointer;
+  }
+  .app-shell[data-theme] .alt-dialogue-bar button:hover { background: var(--control-hover); color: var(--accent); }
+  .app-shell[data-theme] .alt-dialogue-bar__delete:hover { color: var(--danger) !important; }
+
   /* 窄窗口：带图标的按钮只留图标，文字转为读屏可读的隐藏文本，工具栏不溢出。 */
   @media (max-width: 1279px) {
     .app-shell[data-theme] .toolbar .toolbar__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

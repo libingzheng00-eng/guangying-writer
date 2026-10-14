@@ -7,6 +7,7 @@ import { PAPER_MM } from '../model/stats';
 import { stripSceneNumber } from '../utils/text';
 import { fontStackOf } from '../model/elements';
 import { deriveScenes } from '../model/project';
+import { lockedPageLabels } from '../model/locks';
 
 const PX_PER_MM = 96 / 25.4;
 const PT_TO_PX = 96 / 72;
@@ -28,6 +29,8 @@ export interface PageInfo {
   index: number;
   items: Placed[];
   revColor: string | null;
+  /** 锁页后的页码（12、12A、12-13）；未锁页时不设，由显示处按顺序编号 */
+  label?: string;
 }
 
 export interface PaginationResult {
@@ -110,6 +113,12 @@ export function paginateMeasured(
   let curH = 0;
   let curRev: string | null = null;
   let prevPageLastCharacter: string | null = null;
+  // 锁页：锁定时每页起头的段落在这里强制换页；记下每页由哪个锁定页起头，最后算页码。
+  const lock = project.pageLock;
+  const anchorIndex = new Map<string, number>();
+  lock?.pages.forEach((entry, index) => { if (entry.id && !anchorIndex.has(entry.id)) anchorIndex.set(entry.id, index); });
+  const pageAnchors: number[] = [];
+  let curAnchor = -1;
   const revRank = (id?: string) => id ? project.revisions.findIndex((r) => r.id === id) : -1;
   const flush = () => {
     if (!cur.length) return;
@@ -119,9 +128,11 @@ export function paginateMeasured(
       if (dialogue) prevPageLastCharacter = characterForDialogue(project, dialogue.id);
     }
     pages.push({ index: pages.length, items: cur, revColor: curRev });
+    pageAnchors.push(curAnchor);
     cur = [];
     curH = 0;
     curRev = null;
+    curAnchor = -1;
   };
 
   const measuredItems = buildItems(project);
@@ -136,6 +147,11 @@ export function paginateMeasured(
     const isDialogue = item.kind === 'single' && item.elements[0].type === 'dialogue';
     // 双列也使用统一裁剪窗；允许按行续页，避免长双列把场次标题独留上一页。
     const splitable = item.kind === 'dual' || canSplit(item.elements[0]);
+    const anchor = anchorIndex.get(item.elements[0].id);
+    if (anchor !== undefined) {
+      if (cur.length) flush();
+      curAnchor = anchor;
+    }
     if (cur.length && item.keep > 0) {
       let keepLines = mtLines + totalLines;
       let remaining = item.keep;
@@ -206,6 +222,10 @@ export function paginateMeasured(
     }
   }
   flush();
+  if (lock?.pages.length) {
+    const present = new Set(pageAnchors.filter((anchor) => anchor >= 0));
+    lockedPageLabels(lock, pageAnchors, present).forEach((label, index) => { pages[index].label = label; });
+  }
   const withTitle = project.titlePage.show && project.settings.titlePageBreak
     ? [{ index: -1, items: [], revColor: null } as PageInfo, ...pages]
     : pages;
@@ -266,7 +286,7 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, requestedKey, items, geo, project.revisions, project.titlePage.show, project.settings.titlePageBreak]);
+  }, [version, requestedKey, items, geo, project.revisions, project.titlePage.show, project.settings.titlePageBreak, project.pageLock]);
 
   const sceneNo = useMemo(() => {
     const m: Record<string, string> = {};

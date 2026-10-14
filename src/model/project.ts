@@ -11,14 +11,16 @@ import type {
 import { DEFAULT_INDENT, DEFAULT_REVISIONS, CARD_COLORS } from './elements';
 import { uid } from '../utils/id';
 import { plain, stripSceneNumber } from '../utils/text';
+import { sceneNumbersFor } from './locks';
 
 export const FILE_VERSION = 1;
 /**
  * 工程格式修订号。每当新版加入旧版不认识的工程字段时加一。
  * 打开修订号更高的文件时提示作者，并原样保留本版不认识的字段，避免回存丢数据。
  * 2 = alpha.18.17：首个会保留未知字段的版本（含人物线 characterWorkspace）。
+ * 3 = alpha.18.22：场号 / 页码锁定（sceneLock、pageLock）与备选台词（元素的 alts、altNo）。
  */
-export const FORMAT_REVISION = 2;
+export const FORMAT_REVISION = 3;
 
 export function defaultSettings(): ScriptSettings {
   return {
@@ -112,11 +114,13 @@ export function deriveScenes(project: ScriptProject): Scene[] {
   for (const meta of project.sceneMeta) {
     if (!metaByElement.has(meta.elementId)) metaByElement.set(meta.elementId, meta);
   }
+  // 拍摄稿锁定场号后，原场号不变，新插入的场编成 5A、5B（见 model/locks.ts）。
+  const numbers = sceneNumbersFor(indices.map((i) => els[i].id), project.sceneLock);
   indices.forEach((startIdx, k) => {
     const el = els[startIdx];
     const end = k + 1 < indices.length ? indices[k + 1] : els.length;
     const m = metaByElement.get(el.id);
-    const number = project.settings.autoNumberScenes ? String(k + 1) : m?.title || '';
+    const number = project.settings.autoNumberScenes ? numbers[k] : m?.title || '';
     out.push({
       id: m?.id || el.id,
       elementId: el.id,

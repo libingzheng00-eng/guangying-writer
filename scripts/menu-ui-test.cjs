@@ -124,7 +124,7 @@ function nativeMenus(platform) {
 
   check('文件菜单初始关闭', [menu(), trigger().getAttribute('aria-expanded')], [null, 'false']);
   await open();
-  check('菜单保留既有11个操作并新增启动页入口', [trigger().getAttribute('aria-controls'), menu().id, menu().getAttribute('aria-label'), items().length], [menu().id, menu().id, '文件', 12]);
+  check('菜单保留既有11个操作、启动页入口和两个拍摄稿锁定项', [trigger().getAttribute('aria-controls'), menu().id, menu().getAttribute('aria-label'), items().length, items().slice(-2).map(item => item.textContent)], [menu().id, menu().id, '文件', 14, ['锁定场号（拍摄稿）', '锁定页码（拍摄稿）']]);
   check('鼠标打开聚焦首项且菜单项不加入普通Tab序列', [document.activeElement, items().every(item => item.tabIndex === -1)], [items()[0], true]);
   await key(document.activeElement, 'ArrowUp');
   check('向上从首项循环至最后一项', document.activeElement, items().at(-1));
@@ -235,7 +235,7 @@ function nativeMenus(platform) {
   await click(items().find(item => item.textContent === '启动页 / 最近项目'));
   check('启动页入口关闭菜单并允许目标页面接管焦点', [menu(), calls.at(-1), document.activeElement.id], [null, ['home'], 'outside']);
   await open();
-  await click(items().at(-1));
+  await click(items().find(item => item.textContent === '标题页…'));
   check('标题页执行前建立稳定返回按钮，执行后不夺回新焦点', [menu(), calls.at(-1), openerAtTitle, document.activeElement.id], [null, ['title'], trigger(), 'outside']);
 
   await open();

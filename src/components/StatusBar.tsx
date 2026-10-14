@@ -46,6 +46,8 @@ export function StatusBar() {
       <RecoveryIndicator />
       {activeEl ? <span className="statusbar__type">{ELEMENT_META[activeEl.type].label}</span> : null}
       {project.settings.revisionMode ? <span className="badge">修订模式</span> : null}
+      {project.sceneLock ? <span className="badge" title="拍摄稿：场号已锁定，新插入的场编成 5A、5B。在「文件」菜单里解除。">场号已锁定</span> : null}
+      {project.pageLock ? <span className="badge" title="拍摄稿：页码已锁定，加长的内容编成 12A、12B 页。在「文件」菜单里解除。">页码已锁定</span> : null}
       <span className="zoom">
         <button onClick={() => setZoom(zoom - 0.1)}>－</button>
         <span>{Math.round(zoom * 100)}%</span>

@@ -6,6 +6,9 @@ import type { ElementType } from '../model/types';
 import type { useCommands } from '../app/useCommands';
 import { runEditHistory } from '../utils/editHistory';
 import { safeDisplayColor } from '../utils/displayValues';
+import { usePagination } from '../hooks/PaginationProvider';
+import { pageLockFromPages, plainPageNumber } from '../model/locks';
+import { askChoice } from '../app/choiceDialog';
 
 const VIEWS: { key: ViewMode; label: string }[] = [
   { key: 'write', label: '写作' },
@@ -20,6 +23,34 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const project = useStore((s) => s.project);
+  const { pages } = usePagination();
+  // 拍摄稿锁定：锁定只需一步（可撤销）；解除会让编号重新连续排，先问一句。
+  const toggleSceneLock = async () => {
+    const state = useStore.getState();
+    if (!state.project.sceneLock) {
+      if (!state.project.settings.autoNumberScenes) { state.notify('请先在设置里打开「自动场号」，再锁定场号。', 'error'); return; }
+      state.lockSceneNumbers();
+      state.notify('已锁定场号：之后新插入的场会编成 5A、5B，删掉的场号不再补位。', 'ok');
+      return;
+    }
+    const choice = await askChoice({ title: '解除场号锁定', message: '解除后所有场次会重新按 1、2、3 连续编号，5A、5B 这类编号会消失。',
+      options: [{ value: 'unlock', label: '解除并重新编号', tone: 'danger' }, { value: 'cancel', label: '保持锁定' }], cancelValue: 'cancel' });
+    if (choice === 'unlock') useStore.getState().unlockSceneNumbers();
+  };
+  const togglePageLock = async () => {
+    const state = useStore.getState();
+    if (!state.project.pageLock) {
+      const separateTitle = state.project.titlePage.show && state.project.settings.titlePageBreak;
+      const locked = pageLockFromPages(pages, (index) => plainPageNumber(index, separateTitle, state.project.settings.startPageAt));
+      if (!locked.length) { state.notify('排版还没完成，请稍后再锁定页码。', 'error'); return; }
+      state.lockPages(locked);
+      state.notify(`已锁定 ${locked.length} 页的页码：之后加长的内容会编成 12A、12B 页，删短的页保留原页码。`, 'ok');
+      return;
+    }
+    const choice = await askChoice({ title: '解除页码锁定', message: '解除后会重新连续分页，12A、12B 这类页码会消失。',
+      options: [{ value: 'unlock', label: '解除并重新分页', tone: 'danger' }, { value: 'cancel', label: '保持锁定' }], cancelValue: 'cancel' });
+    if (choice === 'unlock') useStore.getState().unlockPages();
+  };
   const documentEpoch = useStore((s) => s.documentEpoch);
   const activeId = useStore((s) => s.activeId);
   const activeRev = useStore((s) => s.activeRev);
@@ -281,6 +312,9 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
               <Item label="导出网页 HTML…" onClick={() => runMenuAction(() => commands.exportAs('html'))} />
               <div className="menu__sep" role="separator" />
               <Item label="标题页…" onClick={() => runMenuAction(onOpenTitle)} />
+              <div className="menu__sep" role="separator" />
+              <Item label={project.sceneLock ? '解除场号锁定…' : '锁定场号（拍摄稿）'} onClick={() => runMenuAction(toggleSceneLock)} />
+              <Item label={project.pageLock ? '解除页码锁定…' : '锁定页码（拍摄稿）'} onClick={() => runMenuAction(togglePageLock)} />
             </div>
           ) : null}
         </div>

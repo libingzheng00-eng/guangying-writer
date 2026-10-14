@@ -751,6 +751,13 @@ textarea {
   opacity: 0.4;
 }
 /* (CONT'D) 续说后缀：纯视觉，由 [data-contd] 驱动；不进 innerHTML、不入统计 / 导出 */
+/* 备选台词记号：有多个版本的对白在左侧页边显示「⇄ 版本数」；只在写作页，预览和打印不显示。 */
+@media screen {
+  .editor .sc-el--dialogue[data-alts]::before {
+    content: '⇄' attr(data-alts); position: absolute; left: -46px; top: 0; padding: 0 4px; border-radius: 4px;
+    background: var(--accent-soft, rgba(91, 91, 214, .08)); color: var(--accent); font: 600 11px/18px -apple-system, BlinkMacSystemFont, sans-serif; pointer-events: none;
+  }
+}
 .sc-el--character.has-contd::after {
   content: attr(data-contd);
   color: rgba(255, 255, 255, 0.55);

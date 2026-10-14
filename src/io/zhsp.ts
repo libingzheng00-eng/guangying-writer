@@ -21,7 +21,7 @@ export interface ZhspFile {
 type RecordValue = Record<string, unknown>;
 const KNOWN_PROJECT_FIELDS = new Set(['id', 'name', 'createdAt', 'updatedAt', 'titlePage', 'elements', 'sceneMeta', 'beats',
   'boardLinks', 'targetPages', 'acts', 'revisions', 'settings', 'trash', 'revisionWorkspace', 'annotations', 'deliveryIgnored',
-  'characterWorkspace', 'preservedFields']);
+  'characterWorkspace', 'sceneLock', 'pageLock', 'preservedFields']);
 const KNOWN_BEAT_FIELDS = new Set(['id', 'text', 'color', 'x', 'y', 'boardX', 'boardY', 'sceneId', 'kind', 'title', 'img', 'w', 'h']);
 const MAX_PRESERVED_BYTES = 32 * 1024 * 1024;
 const elementTypes = new Set<string>(ELEMENT_ORDER);
@@ -202,7 +202,39 @@ function normalizeElement(raw: unknown): ScriptElement {
   const cached = validatedText.get(element);
   const html = cached?.text === text ? cached.html : sanitizeProjectHtml(text);
   if (cached?.text !== text) validatedText.set(element, { text, html });
-  return { ...element, text: html };
+  // 备选台词：每个版本同正文一样清洗；altNo 只能是 1..版本数。
+  if (element.alts !== undefined && (!Array.isArray(element.alts) || element.alts.some((alt) => typeof alt !== 'string'))) throw invalidStructure();
+  const alts = element.alts?.length ? element.alts.map((alt) => sanitizeProjectHtml(alt)) : undefined;
+  const { alts: _alts, altNo: _altNo, ...rest } = element;
+  void _alts; void _altNo;
+  if (!alts) return { ...rest, text: html };
+  const altNo = Number.isInteger(element.altNo) && element.altNo! >= 1 && element.altNo! <= alts.length + 1 ? element.altNo! : 1;
+  return { ...rest, text: html, alts, altNo };
+}
+
+function normalizeSceneLock(value: unknown): ScriptProject['sceneLock'] {
+  if (value === undefined) return undefined;
+  const lock = record(value);
+  const numbers = record(lock.numbers);
+  const clean: Record<string, string> = {};
+  for (const [id, number] of Object.entries(numbers)) {
+    identifier(id);
+    if (typeof number !== 'string' || !number.trim() || number.length > 16) throw invalidStructure();
+    clean[id] = number.trim();
+  }
+  return { lockedAt: typeof lock.lockedAt === 'number' && Number.isFinite(lock.lockedAt) ? lock.lockedAt : Date.now(), numbers: clean };
+}
+
+function normalizePageLock(value: unknown): ScriptProject['pageLock'] {
+  if (value === undefined) return undefined;
+  const lock = record(value);
+  const pages = list(lock.pages).map((raw) => {
+    const page = record(raw);
+    if (page.id !== null) identifier(page.id);
+    if (typeof page.label !== 'string' || !page.label.trim() || page.label.length > 16) throw invalidStructure();
+    return { id: page.id as string | null, label: page.label.trim() };
+  });
+  return { lockedAt: typeof lock.lockedAt === 'number' && Number.isFinite(lock.lockedAt) ? lock.lockedAt : Date.now(), pages };
 }
 
 export function serializeProject(p: ScriptProject): string {
@@ -283,6 +315,8 @@ export function parseProjectValue(value: unknown): ScriptProject {
   const trash = source.trash === undefined ? undefined : list(source.trash).map(normalizeElement);
   const revisionWorkspace = parseRevisionWorkspace(source.revisionWorkspace);
   const annotations = source.annotations === undefined ? undefined : reconcileAnnotations(elements, elements, validateAnnotations(source.annotations));
+  const sceneLock = normalizeSceneLock(source.sceneLock);
+  const pageLock = normalizePageLock(source.pageLock);
   const characterWorkspace = reconcileCharacterWorkspace({ elements, annotations }, { elements, annotations }, parseCharacterWorkspace(source.characterWorkspace));
   const preservedFields: RecordValue = { ...(source.preservedFields === undefined ? {} : record(source.preservedFields)) };
   for (const key of Object.keys(source)) {
@@ -318,6 +352,8 @@ export function parseProjectValue(value: unknown): ScriptProject {
     ...(annotations === undefined ? {} : { annotations }),
     ...(source.deliveryIgnored === undefined ? {} : { deliveryIgnored: normalizeDeliveryIgnored(source.deliveryIgnored) }),
     ...(characterWorkspace === undefined ? {} : { characterWorkspace }),
+    ...(sceneLock === undefined ? {} : { sceneLock }),
+    ...(pageLock === undefined ? {} : { pageLock }),
     ...(hasPreserved ? { preservedFields } : {}),
   };
 }
