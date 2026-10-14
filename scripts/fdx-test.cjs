@@ -71,6 +71,13 @@ const FD_TYPES = new Set(['General', 'Scene Heading', 'Action', 'Character', 'Pa
   const settings = Array.from(root.querySelectorAll(':scope > ElementSettings'));
   check('每种用到的类型都有版式设置，字体用 Final Draft 自带的中文字体',
     [...new Set(paras.map((n) => n.getAttribute('Type')))].every((type) => settings.some((s) => s.getAttribute('Type') === type && s.querySelector('FontSpec').getAttribute('Font') === 'Sans Mono CJK Final Draft')), true);
+  // 本机 Final Draft 11 实测：AutomaticCharacterContinueds="Yes" 会让它打开后随机崩溃，必须写 No。
+  check("(MORE)/(CONT'D) 和场号设置都带字体，页眉页脚齐全",
+    [!!root.querySelector(':scope > MoresAndContinueds > FontSpec[Font="Sans Mono CJK Final Draft"]'), !!root.querySelector(':scope > MoresAndContinueds > DialogueBreaks'), !!root.querySelector(':scope > MoresAndContinueds > SceneBreaks'),
+      !!root.querySelector(':scope > HeaderAndFooter > Header DynamicLabel[Type="Page #"]'), root.querySelector(':scope > HeaderAndFooter').getAttribute('HeaderVisible'),
+      !!root.querySelector(':scope > SceneNumberOptions > FontSpec[Font="Sans Mono CJK Final Draft"]'),
+      root.querySelector(':scope > MoresAndContinueds > DialogueBreaks').getAttribute('AutomaticCharacterContinueds')],
+    [true, true, true, true, 'Yes', true, 'No']);
   check('A4 纸张', [root.querySelector('PageLayout > PageSize').getAttribute('Width'), root.querySelector('PageLayout > PageSize').getAttribute('Height')], ['8.27', '11.69']);
   const dialogueSpec = settings.find((s) => s.getAttribute('Type') === 'Dialogue').querySelector('ParagraphSpec');
   check('对白缩进按「元素缩进」换算（左 6 字、右 8 字）', [dialogueSpec.getAttribute('LeftIndent'), dialogueSpec.getAttribute('RightIndent')], ['2.38', '5.95']);

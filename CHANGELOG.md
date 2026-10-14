@@ -3,6 +3,7 @@
 ## v1.3.0-alpha.18.21（2026-10-15，未发布）
 
 - 重做 Final Draft (FDX) 导出：按 Final Draft 13 自己的文件结构输出。标题页不再塞在正文里，双列对白改用 Final Draft 的写法，补上字体与版式设置（中文用 Final Draft 自带的 Sans Mono CJK 字体，缩进按「元素缩进」换算，A4 / Letter 纸张），带出场号和场景卡的标题、梗概、颜色；备忘和省略内容不导出。
+- 修正 Final Draft 11 打开导出文件会崩溃：原因是文件里打开了「自动给同一人物的连续对白加 (CONT'D)」，Final Draft 11 一遇到就随机崩溃。现在导出时关闭这项（Final Draft 自带模板默认也是关），需要的话可以在 Final Draft 里再打开。已在 Final Draft 11 上反复打开验证。
 - FDX 导入也能正确读 Final Draft 自己存的文件：标题页、双列对白、场景标题 / 梗概 / 颜色都能读回，场景梗概不会再混进场次标题。旧版本光影写手导出的 FDX 仍能打开。
 
 ## v1.3.0-alpha.18.20（2026-10-14，GitHub 预发布）

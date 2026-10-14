@@ -135,6 +135,39 @@ function titlePage(title: TitlePage, project: ScriptProject): string[] {
   ];
 }
 
+const fontSpec = (size: number, indent: string) =>
+  `${indent}<FontSpec AdornmentStyle="0" Background="#FFFFFFFFFFFF" Color="#000000000000" Font="${CJK_FONT}" RevisionID="0" Size="${size}" Style="" />`;
+
+/** (MORE)/(CONT'D) 与场号的字体按 Final Draft 自己的写法带上 <FontSpec>。 */
+function moresAndContinueds(settings: ScriptProject['settings']): string[] {
+  return [
+    '  <MoresAndContinueds>',
+    fontSpec(settings.fontSize || 12, '    '),
+    // 「自动给同一人物的连续对白加 (CONT'D)」必须关掉：本机 Final Draft 11 打开时它一开就会随机崩溃
+    // （逐项排查确认，关掉后反复打开都稳定；Final Draft 自带模板默认也是关）。需要时可在 Final Draft 里再打开。
+    `    <DialogueBreaks AutomaticCharacterContinueds="No" BottomOfPage="Yes" DialogueBottom="${attr(settings.moreText || '(MORE)')}" DialogueTop="${attr(settings.contdText || "(CONT'D)")}" TopOfNext="Yes" />`,
+    `    <SceneBreaks ContinuedNumber="No" SceneBottom="${attr(settings.moreText || '(CONTINUED)')}" SceneBottomOfPage="No" SceneTop="${attr(settings.contdText || 'CONTINUED:')}" SceneTopOfNext="No" />`,
+    '  </MoresAndContinueds>',
+  ];
+}
+
+/** 页眉放页码（与「显示页码」设置一致），页脚留空；字体同样写全，避免 Final Draft 取不到字体。 */
+function headerAndFooter(settings: ScriptProject['settings']): string[] {
+  const size = settings.fontSize || 12;
+  const run = (body: string) => `<Text AdornmentStyle="0" Background="#FFFFFFFFFFFF" Color="#000000000000" Font="${CJK_FONT}" RevisionID="0" Size="${size}" Style="">${body}</Text>`;
+  const para = (inner: string) => `      <Paragraph Alignment="Right" FirstIndent="0.00" Leading="Regular" LeftIndent="1.25" RightIndent="-1.25" SpaceBefore="0" Spacing="1" StartsNewPage="No">${inner}</Paragraph>`;
+  return [
+    `  <HeaderAndFooter FooterFirstPage="Yes" FooterVisible="No" HeaderFirstPage="No" HeaderVisible="${settings.showPageNumbers === false ? 'No' : 'Yes'}" StartingPage="${Math.max(1, Math.round(settings.startPageAt || 1))}">`,
+    '    <Header>',
+    para(`<DynamicLabel AdornmentStyle="0" Background="#FFFFFFFFFFFF" Color="#000000000000" Font="${CJK_FONT}" RevisionID="0" Size="${size}" Style="" Type="Page #" />${run('.')}`),
+    '    </Header>',
+    '    <Footer>',
+    para(run('')),
+    '    </Footer>',
+    '  </HeaderAndFooter>',
+  ];
+}
+
 export function toFdx(p: ScriptProject): string {
   const { settings } = p;
   const scenes = deriveScenes(p);
@@ -181,10 +214,11 @@ export function toFdx(p: ScriptProject): string {
     '  </PageLayout>',
     ...elementSettings(p),
     ...(p.titlePage.show ? titlePage(p.titlePage, p) : []),
-    '  <MoresAndContinueds>',
-    `    <DialogueBreaks AutomaticCharacterContinueds="${settings.contdCharacter === false ? 'No' : 'Yes'}" BottomOfPage="Yes" DialogueBottom="${attr(settings.moreText || '(MORE)')}" DialogueTop="${attr(settings.contdText || "(CONT'D)")}" TopOfNext="Yes" />`,
-    '  </MoresAndContinueds>',
-    `  <SceneNumberOptions LeftLocation="0.75" NumberScheme="1A" RightLocation="${inch(page.width - 0.9)}" ShowNumbersOnLeft="${['left', 'both'].includes(settings.sceneNumber) ? 'Yes' : 'No'}" ShowNumbersOnRight="${['right', 'both'].includes(settings.sceneNumber) ? 'Yes' : 'No'}" />`,
+    ...moresAndContinueds(settings),
+    ...headerAndFooter(settings),
+    `  <SceneNumberOptions LeftLocation="0.75" NumberScheme="1A" RightLocation="${inch(page.width - 0.9)}" ShowNumbersOnLeft="${['left', 'both'].includes(settings.sceneNumber) ? 'Yes' : 'No'}" ShowNumbersOnRight="${['right', 'both'].includes(settings.sceneNumber) ? 'Yes' : 'No'}">`,
+    fontSpec(settings.fontSize || 12, '    '),
+    '  </SceneNumberOptions>',
     '</FinalDraft>',
     '',
   ].join('\n');
