@@ -297,6 +297,41 @@
   .app-shell[data-theme] .alt-dialogue-bar button:hover { background: var(--control-hover); color: var(--accent); }
   .app-shell[data-theme] .alt-dialogue-bar__delete:hover { color: var(--danger) !important; }
 
+  .app-shell[data-theme] .preview__translation { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; color: var(--muted); font-size: 12px; }
+  .app-shell[data-theme] .preview__translation select { height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control-bg); color: var(--text); font-size: 13px; }
+  /* 双语对照视图（外观） */
+  .app-shell[data-theme] .bilingual { background: var(--bg); color: var(--text); }
+  .app-shell[data-theme] .bilingual__bar { background: var(--panel); }
+  .app-shell[data-theme] .bilingual__title { font-weight: 600; }
+  .app-shell[data-theme] .bilingual__progress { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .app-shell[data-theme] .bilingual__bar select, .app-shell[data-theme] .bilingual__shown select {
+    height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--control-bg); color: var(--text); font-size: 13px;
+  }
+  .app-shell[data-theme] .bilingual__shown { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .app-shell[data-theme] .bilingual__head { position: sticky; top: -12px; z-index: 1; padding: 8px 0; background: var(--bg); color: var(--muted); font-size: 12px; font-weight: 600; }
+  .app-shell[data-theme] .bilingual__type { display: block; margin-bottom: 4px; color: var(--muted); font-size: 11px; }
+  .app-shell[data-theme] .bilingual__source-text { white-space: pre-wrap; line-height: 1.7; font-size: 14px; }
+  .app-shell[data-theme] .bilingual__row--scene_heading .bilingual__source-text { font-weight: 600; }
+  .app-shell[data-theme] .bilingual__row--dialogue .bilingual__source-text,
+  .app-shell[data-theme] .bilingual__row--parenthetical .bilingual__source-text { padding-left: 2em; }
+  .app-shell[data-theme] .bilingual__row--character .bilingual__source-text { padding-left: 4em; font-weight: 600; }
+  .app-shell[data-theme] .bilingual__target textarea {
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text);
+    font: inherit; font-size: 14px; line-height: 1.7;
+  }
+  .app-shell[data-theme] .bilingual__target textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .app-shell[data-theme] .bilingual__row.is-missing .bilingual__target textarea { background: var(--panel-2); }
+  .app-shell[data-theme] .bilingual__row.is-stale .bilingual__target textarea { border-color: #d97706; background: rgba(217, 119, 6, .07); }
+  .app-shell[data-theme] .bilingual__stale { display: flex; align-items: center; gap: 8px; margin-top: 4px; color: #b45309; font-size: 12px; }
+  .app-shell[data-theme='night'] .bilingual__stale { color: #fbbf24; }
+  .app-shell[data-theme] .bilingual__stale button { padding: 1px 8px; border: 1px solid currentColor; border-radius: 999px; background: transparent; color: inherit; font-size: 11px; cursor: pointer; }
+  .app-shell[data-theme] .bilingual__empty { padding: 40px 0; color: var(--muted); text-align: center; }
+  .app-shell[data-theme] .bilingual__glossary { background: var(--panel); }
+  .app-shell[data-theme] .bilingual__glossary h3 { margin: 4px 0 6px; font-size: 13px; }
+  .app-shell[data-theme] .bilingual__hint, .app-shell[data-theme] .bilingual__notes { color: var(--muted); font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+  .app-shell[data-theme] .bilingual__glossary-row input { min-width: 0; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: 5px; background: var(--control-bg); color: var(--text); font-size: 13px; }
+  .app-shell[data-theme] .bilingual__glossary-row button { width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+
   /* 窄窗口：带图标的按钮只留图标，文字转为读屏可读的隐藏文本，工具栏不溢出。 */
   @media (max-width: 1279px) {
     .app-shell[data-theme] .toolbar .toolbar__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

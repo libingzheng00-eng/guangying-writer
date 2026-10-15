@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store/store';
 import { usePagination } from '../hooks/PaginationProvider';
 import {
@@ -27,14 +27,19 @@ export function ProgressBar({ onCollapse }: { onCollapse?: () => void }) {
   const [editingTarget, setEditingTarget] = useState(false);
 
   // v3.3-scene-strips：按预计排版行数计算各场篇幅，占比条不写入项目数据。
-  const sceneBands: SceneBand[] = useMemo(() => computeSceneBands(project), [
-    project.elements,
-    project.sceneMeta,
-    project.settings.indent,
-    project.settings.autoNumberScenes,
+  // 占比条跟随（延后的）正文：打字时先沿用上一版，空闲时再重算，不占用输入的那一帧。
+  const bandProject = useDeferredValue(project);
+  const sceneBands: SceneBand[] = useMemo(() => computeSceneBands(bandProject), [
+    bandProject.elements,
+    bandProject.sceneMeta,
+    bandProject.settings.indent,
+    bandProject.settings.autoNumberScenes,
   ]);
 
-  const activeElementIndex = activeId ? project.elements.findIndex((e) => e.id === activeId) : -1;
+  const activeElementIndex = useMemo(
+    () => (activeId ? bandProject.elements.findIndex((e) => e.id === activeId) : -1),
+    [activeId, bandProject.elements],
+  );
   const activeSceneIndex = sceneBands.findIndex(
     (s) => activeElementIndex >= s.start && activeElementIndex < s.end,
   );
@@ -115,6 +120,33 @@ export function ProgressBar({ onCollapse }: { onCollapse?: () => void }) {
     if (cand) requestFocus(cand.id, 'start');
   };
 
+  // 场景按钮只随占比、页数、目标和当前场变化；打字时的即时渲染直接复用。
+  const bandButtons = useMemo(() => (
+    sceneBands.length
+      ? sceneBands.map((scene, index) => {
+        const { targetPct, renderPct } = sceneBandPercent(scene.pct, writtenPages, target);
+        const percentText = `${targetPct.toFixed(targetPct < 1 ? 1 : 0)}%`;
+        const scaleLabel = target > 0 ? '占目标 ' : '占当前剧本 ';
+        return (
+          <button
+            type="button"
+            role="listitem"
+            key={scene.elementId}
+            className={'write-progress__scene' + (index === activeSceneIndex ? ' is-active' : '')}
+            style={{ flex: `0 0 ${renderPct}%`, backgroundColor: safeDisplayColor(scene.color) }}
+            title={`第 ${scene.number} 场 · ${scaleLabel}${percentText}${scene.heading ? ' · ' + scene.heading : ''} · 点击跳转`}
+            aria-label={`第 ${scene.number} 场，${scaleLabel}${percentText}`}
+            onClick={() => requestFocus(scene.elementId, 'start', 'start')}
+          >
+            <span className="write-progress__scene-no">{scene.number}</span>
+          </button>
+        );
+      })
+      : <span className="write-progress__scenes-empty">暂无场景</span>
+    // requestFocus 是商店里的固定函数。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [sceneBands, writtenPages, target, activeSceneIndex]);
+
   return (
     <div className="write-progress write-progress--typewriter" ref={rootRef}>
       <div className="write-progress__label" role="button" tabIndex={editingTarget ? -1 : 0} aria-label={`当前第 ${current || 0} 页，目标 ${target || '未设'} 页，点击修改目标页数`}
@@ -181,27 +213,7 @@ export function ProgressBar({ onCollapse }: { onCollapse?: () => void }) {
         data-target-pages={target}
         data-over-pages={overP}
       >
-        {sceneBands.length
-          ? sceneBands.map((scene, index) => {
-              const { targetPct, renderPct } = sceneBandPercent(scene.pct, writtenPages, target);
-              const percentText = `${targetPct.toFixed(targetPct < 1 ? 1 : 0)}%`;
-              const scaleLabel = target > 0 ? '占目标 ' : '占当前剧本 ';
-              return (
-                <button
-                  type="button"
-                  role="listitem"
-                  key={scene.elementId}
-                  className={'write-progress__scene' + (index === activeSceneIndex ? ' is-active' : '')}
-                style={{ flex: `0 0 ${renderPct}%`, backgroundColor: safeDisplayColor(scene.color) }}
-                  title={`第 ${scene.number} 场 · ${scaleLabel}${percentText}${scene.heading ? ' · ' + scene.heading : ''} · 点击跳转`}
-                  aria-label={`第 ${scene.number} 场，${scaleLabel}${percentText}`}
-                  onClick={() => requestFocus(scene.elementId, 'start', 'start')}
-                >
-                  <span className="write-progress__scene-no">{scene.number}</span>
-                </button>
-              );
-            })
-          : <span className="write-progress__scenes-empty">暂无场景</span>}
+        {bandButtons}
         {overP > 0 ? (
           <span className="write-progress__over">{`超出目标 ${overP} 页`}</span>
         ) : null}
@@ -246,13 +258,22 @@ function useViewedPage(rootRef: React.RefObject<HTMLDivElement>, pageOf: Record<
     const scroller = rootRef.current?.closest('.editor') as HTMLElement | null;
     if (!scroller) return;
     let frame = 0;
+    // 段落节点列表只在正文变化后重新收集；滚动时不再每帧把几千个节点复制成数组。
+    let collected: { version: number; nodes: HTMLElement[] } | null = null;
+    const blockNodes = () => {
+      const version = useStore.getState().version;
+      if (!collected || collected.version !== version || (collected.nodes.length && !collected.nodes[0].isConnected)) {
+        collected = { version, nodes: Array.from(scroller.querySelectorAll<HTMLElement>('.script-flow [data-id]')) };
+      }
+      return collected.nodes;
+    };
     const measure = () => {
       frame = 0;
       const { pageOf: pages, activeId: caret } = latest.current;
       const view = scroller.getBoundingClientRect();
       const top = view.top + (rootRef.current?.offsetHeight || 0), bottom = view.bottom;
       if (bottom <= top) return;
-      const nodes = Array.from(scroller.querySelectorAll<HTMLElement>('.script-flow [data-id]'));
+      const nodes = blockNodes();
       const caretNode = caret ? nodes.find((node) => node.dataset.id === caret) : undefined;
       if (caretNode) {
         const box = caretNode.getBoundingClientRect();

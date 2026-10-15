@@ -156,7 +156,8 @@ const root = path.resolve(__dirname, '..');
     const editor = fs.readFileSync(path.join(root, 'src/components/Editor.tsx'), 'utf8');
     const pagination = fs.readFileSync(path.join(root, 'src/hooks/PaginationProvider.tsx'), 'utf8');
     assert.ok(editor.includes('deriveWritingElements(project.elements)'));
-    assert.ok(pagination.includes('deriveWritingElements(project.elements)'));
+    // 测量稿在停笔后才换成最新正文（request.project → source），用的仍是同一个推导函数。
+    assert.ok(pagination.includes('deriveWritingElements(source.elements)'));
     assert.ok(!editor.includes('project.elements.indexOf(e)'));
     assert.ok(!editor.includes('shouldShowContdSuffix(project, el)'));
     assert.ok(!pagination.includes('shouldShowContdSuffix(project, e)'));

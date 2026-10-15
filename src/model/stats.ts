@@ -1,5 +1,5 @@
 import type { ElementType, ScriptProject } from './types';
-import { plain, countWords } from '../utils/text';
+import { plainOf, wordsOf, hanCountOf } from './textCache';
 import { deriveCharacters, deriveScenes } from './project';
 import type { CharacterStat } from './project';
 
@@ -55,7 +55,7 @@ export function estimatePages(p: ScriptProject): number {
     const left = fmt ? fmt.left : 0;
     const right = fmt ? fmt.right : 0;
     const width = Math.max(8, cpl - left - right);
-    const text = plain(el.text);
+    const text = plainOf(el);
     const raw = text.length ? text : ' ';
     let l = 0;
     raw.split('\n').forEach((seg) => {
@@ -76,11 +76,12 @@ export function computeStats(p: ScriptProject, pageCount?: number): ScriptStats 
   p.elements.forEach((el) => {
     if (el.type === 'note') return;
     elementCounts[el.type] = (elementCounts[el.type] || 0) + 1;
-    const w = countWords(el.text);
+    // 按段落缓存：打字时只有正在写的那一段需要重新数字。
+    const w = wordsOf(el);
     words += w;
     if (el.type === 'dialogue') dialogueWords += w;
     if (el.type === 'action') actionWords += w;
-    cjk += plain(el.text).match(/[\u4e00-\u9fff]/g)?.length ?? 0;
+    cjk += hanCountOf(el);
   });
   const pages = pageCount && pageCount > 0 ? pageCount : estimatePages(p);
   const scenes = deriveScenes(p);

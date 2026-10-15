@@ -1,6 +1,7 @@
 import type { StoreApi } from 'zustand';
 /** 共享的状态类型：各功能切片按此接口实现自己的部分。 */
 import { type WritingContext } from '../app/writingContext';
+import type { TranslationLanguage } from '../model/translation';
 import type { Act, BoardLink, Beat, ElementType, PageLock, Revision, SceneMeta, ScriptProject, ScriptSettings, TitlePage } from '../model/types';
 import { type StoryboardPlacement } from '../model/storyboard';
 import { clampSize } from '../model/board';
@@ -11,7 +12,7 @@ import { type CharacterProfile, type CharacterOverride, type CharacterAssignment
 import { removeCharacterProfile } from '../model/characterActions';
 import { type CharacterSourceTarget } from '../app/characterNavigation';
 
-export type ViewMode = 'write' | 'cards' | 'board' | 'preview' | 'reports' | 'character-lines';
+export type ViewMode = 'write' | 'cards' | 'board' | 'preview' | 'reports' | 'character-lines' | 'bilingual';
 export type SidebarMode = 'navigator' | 'outline' | 'inspector';
 export type AppTheme = 'night' | 'day';
 
@@ -221,6 +222,12 @@ export interface StoreState {
   addAltVersion: (id: string) => void;
   selectAltVersion: (id: string, n: number) => void;
   deleteAltVersion: (id: string) => void;
+  /** 写作页和预览里显示哪种译文（本机偏好）；null 为不显示 */
+  shownTranslation: TranslationLanguage | null;
+  setShownTranslation: (lang: TranslationLanguage | null) => void;
+  setTranslation: (id: string, lang: TranslationLanguage, text: string) => void;
+  markTranslationReviewed: (id: string, lang: TranslationLanguage) => void;
+  setGlossary: (lang: TranslationLanguage, rows: Array<{ source: string; target: string; note?: string }>) => void;
 }
 
 export type WorkspaceSource = { kind: 'version'; id: string; elementIds: string[] } | { kind: 'stash'; id: string };

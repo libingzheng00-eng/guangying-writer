@@ -1,7 +1,10 @@
+import { memo } from 'react';
 import { useStore } from '../../store/store';
 
-/** 写作画布顶部的标题页摘要卡，双击进入预览。 */
-export function TitlePageCard() {
+/** 写作画布顶部的标题页摘要卡，双击进入预览。只读自己订阅的标题页，写作页刷新时不跟着重画。 */
+export const TitlePageCard = memo(TitlePageCardView);
+
+function TitlePageCardView() {
   const tp = useStore((s) => s.project.titlePage);
   const setView = useStore((s) => s.setView);
   return (

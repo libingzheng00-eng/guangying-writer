@@ -27,7 +27,11 @@ export function escapeHtml(s: string): string {
 
 /** 统计中文字数：中文字符 + 英文单词 + 数字串 */
 export function countWords(text: string): number {
-  const t = plain(text);
+  return countPlainWords(plain(text));
+}
+
+/** 与 countWords 相同，但传入已经去掉标记的纯文本（调用方已有缓存时用）。 */
+export function countPlainWords(t: string): number {
   if (!t) return 0;
   const cjk = t.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g)?.length ?? 0;
   const words = t.replace(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff]/g, ' ')

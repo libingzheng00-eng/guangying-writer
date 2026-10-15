@@ -7,6 +7,7 @@ import { CardsView } from './components/CardsView';
 import { BoardView } from './components/BoardView';
 import { PreviewView } from './components/PreviewView';
 import { ReportsView } from './components/ReportsView';
+import { BilingualView } from './components/BilingualView';
 import { CharacterLinesView } from './components/CharacterLinesView';
 import { Sidebar } from './components/Sidebar';
 import { StatusBar } from './components/StatusBar';
@@ -215,7 +216,9 @@ export default function App() {
         epoch = currentEpoch;
         useRecoveryStatus.setState({ lastSuccess: null });
       }
-      if (useRecoveryStatus.getState().phase !== 'error') useRecoveryStatus.setState({ phase: 'pending' });
+      // 连续打字时状态已是「待更新」，不必每个字都通知一次状态栏。
+      const phase = useRecoveryStatus.getState().phase;
+      if (phase !== 'error' && phase !== 'pending') useRecoveryStatus.setState({ phase: 'pending' });
     });
     const flush = () => { contextSubscription.current?.flush(); return subscription.flush(); };
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -264,8 +267,8 @@ export default function App() {
         return;
       }
       const st = useStore.getState();
-      if (st.view === 'character-lines' && action.startsWith('element:')) {
-        st.notify('人物线为只读阅读，请先定位正文后编辑。');
+      if ((st.view === 'character-lines' || st.view === 'bilingual') && action.startsWith('element:')) {
+        st.notify(st.view === 'bilingual' ? '双语对照里只写译文，原文请回到写作页修改。' : '人物线为只读阅读，请先定位正文后编辑。');
         return;
       }
       if (action === 'file:home') { showHome(); return; }
@@ -400,13 +403,14 @@ export default function App() {
           onContinue={activated || hasRecovery ? activateProject : undefined} /> : <>
         <Toolbar commands={commands} modalOpen={dialog !== null} onOpenHome={showHome} onOpenSettings={() => openDialog('settings')} onOpenTitle={() => openDialog('title')} onOpenReview={() => openDialog('review')} />
         <div className="app-body">
-          {view !== 'character-lines' ? <Sidebar /> : null}
+          {view !== 'character-lines' && view !== 'bilingual' ? <Sidebar /> : null}
           <main className="app-main">
             {view === 'write' ? <Editor /> : null}
             {view === 'cards' ? <CardsView /> : null}
             {view === 'board' ? <BoardView /> : null}
             {view === 'preview' ? <PreviewView onExportPdf={commands.exportPdf} /> : null}
             {view === 'reports' ? <ReportsView /> : null}
+            {view === 'bilingual' ? <BilingualView /> : null}
             {view === 'character-lines' ? <CharacterLinesView onLocate={target => useStore.getState().requestCharacterSource(target)} onReturnToWriting={() => useStore.getState().setView('write')} /> : null}
           </main>
         </div>

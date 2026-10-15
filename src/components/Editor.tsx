@@ -52,6 +52,7 @@ function writableRange(ids: readonly string[]): boolean {
 }
 
 const RANGE_RESELECT_MESSAGE = '当前选区与正文顺序不一致，请分栏选择或使用“多选段落”。';
+const NO_MATERIALS: never[] = [];
 
 export function Editor() {
   const project = useStore((s) => s.project);
@@ -72,7 +73,7 @@ export function Editor() {
   const pdfExportMode = useStore((s) => s.pdfExportMode);
   const version = useStore((s) => s.version);
   const documentEpoch = useStore((s) => s.documentEpoch);
-  const { breaks, lineHeightPx, contentWidthPx, readyKey } = usePagination();
+  const { lineHeightPx, contentWidthPx, readyKey } = usePagination();
 
   const refs = useRef(new Map<string, HTMLDivElement>());
   const composingRef = useRef(false);
@@ -222,8 +223,6 @@ export function Editor() {
     });
     return m;
   }, [project]);
-
-  const breakSet = useMemo(() => new Set(breaks), [breaks]);
 
   const items = useMemo(() => groupDual(project.elements), [project.elements]);
   const writingDerivation = useMemo(() => deriveWritingElements(project.elements), [project.elements]);
@@ -775,15 +774,18 @@ export function Editor() {
     lineHeight: settings.lineHeight,
   };
 
-  const writingSounds = project.beats.filter((b) => (b.kind || 'beat') === 'sound');
   // 图片只使用统一的 image 卡：自由板可新建，写作页保留“直接拖入照片”的入口。
   // 这里不能恢复第二套 wimg/“写作图”数据类型，否则旧工程兼容和 PDF 素材页会再次分叉。
-  const writingImages = project.beats.filter((b) => b.kind === 'image');
-  const allMaterials = [...writingSounds, ...writingImages];
+  // 卡片列表只随卡片本身变化；打字时素材卡不重画。
+  const allMaterials = useMemo(() => [
+    ...project.beats.filter((b) => (b.kind || 'beat') === 'sound'),
+    ...project.beats.filter((b) => b.kind === 'image'),
+  ], [project.beats]);
   // 备选台词工具条只在光标停在对白上时出现；多选、导出时不显示。
-  const activeElement = activeId ? project.elements.find((e) => e.id === activeId) : undefined;
+  const activeIndex = activeId ? elementIndex.get(activeId) : undefined;
+  const activeElement = activeIndex === undefined ? undefined : project.elements[activeIndex];
   const activeAltElement = activeElement?.type === 'dialogue' && !selectMode && !pdfExportMode ? activeElement : undefined;
-  const writingMaterials = showCards || pdfExportMode === 'creative' ? allMaterials : [];
+  const writingMaterials = showCards || pdfExportMode === 'creative' ? allMaterials : NO_MATERIALS;
   // 新增了卡片（右键新建、拖入图片、撤销恢复）就重新显示，免得新卡藏起来看不见。
   const materialCount = useRef(allMaterials.length);
   useEffect(() => {
@@ -827,6 +829,128 @@ export function Editor() {
 
   const imageDrop = useImageDrop(scrollRef);
 
+  // 段落组件只在自己的内容或显示参数变化时重画（见 ScriptBlock 的 memo）。
+  // 因此每段的事件处理器按段落 id 固定下来，调用时再读取这一次渲染的最新状态和段落，
+  // 而不是把每次渲染的新闭包传给几千个段落。
+  const writingIdSet = useMemo(() => new Set(writingIds), [writingIds]);
+  const latest = useRef({ project, elementIndex, suggest, selectMode, handleInput, handleKeyDown, handlePaste, updateSuggest, selectWritingElement });
+  latest.current = { project, elementIndex, suggest, selectMode, handleInput, handleKeyDown, handlePaste, updateSuggest, selectWritingElement };
+  const handlerCache = useRef(new Map<string, ReturnType<typeof createBlockHandlers>>());
+  const rowCache = useRef(new Map<string, {
+    el: ScriptElement; settings: typeof project.settings; half: boolean; selected: boolean; selectMode: boolean; position: number;
+    revColor?: string; contdSuffix?: string; numbered: boolean; left?: string; right?: string; node: React.ReactElement;
+  }>());
+  const blockHandlers = (id: string) => {
+    let handlers = handlerCache.current.get(id);
+    if (!handlers) {
+      handlers = createBlockHandlers(id);
+      handlerCache.current.set(id, handlers);
+    }
+    return handlers;
+  };
+  useEffect(() => {
+    // 删掉的段落不再保留处理器；只在明显积累时清理，正常打字不做额外工作。
+    for (const cache of [handlerCache.current, rowCache.current]) {
+      if (cache.size <= elementIndex.size + 64) continue;
+      for (const id of cache.keys()) if (!elementIndex.has(id)) cache.delete(id);
+    }
+  }, [elementIndex]);
+
+  function createBlockHandlers(id: string) {
+    const current = () => {
+      const { project: latestProject, elementIndex: index } = latest.current;
+      const position = index.get(id);
+      return position === undefined ? undefined : latestProject.elements[position];
+    };
+    return {
+      innerRef: (n: HTMLDivElement | null) => {
+        if (n) refs.current.set(id, n);
+        else refs.current.delete(id);
+      },
+      onInput: (html: string, input: InputEvent) => {
+        const el = current();
+        if (el) latest.current.handleInput(el, html, input);
+      },
+      onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+        const el = current();
+        if (el) latest.current.handleKeyDown(el, e);
+      },
+      onFocus: () => {
+        useStore.getState().breakHistoryGroup();
+        setActive(id);
+        const { suggest: shown } = latest.current;
+        if (shown && shown.id !== id) setSuggest(null);
+      },
+      onClick: (e: React.MouseEvent) => {
+        if (latest.current.selectMode) {
+          e.preventDefault();
+          latest.current.selectWritingElement(id, e.shiftKey);
+          return;
+        }
+        useStore.getState().breakHistoryGroup();
+        const stored = useStore.getState().project.elements.find((item) => item.id === id);
+        if (stored) latest.current.updateSuggest(stored);
+      },
+      onSelectToggle: (e: React.MouseEvent<HTMLInputElement>) => {
+        e.stopPropagation();
+        latest.current.selectWritingElement(id, e.shiftKey);
+      },
+      onPaste: (e: React.ClipboardEvent<HTMLDivElement>) => {
+        const el = current();
+        if (el) latest.current.handlePaste(el, e);
+      },
+      onCompositionStart: () => {
+        useStore.getState().breakHistoryGroup();
+        composingRef.current = true;
+        const stored = useStore.getState().project.elements.find((item) => item.id === id);
+        if (stored && isBlank(stored.text) && !stored.dual && !stored.dualGroup) {
+          intentInputRef.current = { id, epoch: useStore.getState().documentEpoch, html: stored.text, type: stored.type };
+        }
+        quoteCompositionRef.current = null;
+        const node = refs.current.get(id);
+        const selection = window.getSelection();
+        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+        if (stored?.type === 'dialogue' && node && range &&
+            node.contains(range.startContainer) && node.contains(range.endContainer)) {
+          quoteCompositionRef.current = {
+            id, epoch: useStore.getState().documentEpoch, html: node.innerHTML,
+            start: offsetOf(node, range.startContainer, range.startOffset),
+            end: offsetOf(node, range.endContainer, range.endOffset),
+          };
+        }
+        if (stored?.type === 'action' && isBlank(stored.text)) compositionEmptyActionRef.current.add(id);
+        else compositionEmptyActionRef.current.delete(id);
+        setSuggest(null);
+      },
+      onCompositionEnd: (event: React.CompositionEvent<HTMLDivElement>) => {
+        composingRef.current = false;
+        const node = refs.current.get(id);
+        const quote = quoteCompositionRef.current;
+        quoteCompositionRef.current = null;
+        const el = current();
+        if (node && el) {
+          latest.current.handleInput(el, node.innerHTML, undefined,
+            quote?.id === id && quote.epoch === useStore.getState().documentEpoch
+              ? { html: quote.html, start: quote.start, end: quote.end, data: event.data } : undefined);
+        }
+        compositionEmptyActionRef.current.delete(id);
+        useStore.getState().breakHistoryGroup();
+      },
+      onBlur: () => {
+        useStore.getState().breakHistoryGroup();
+        sceneIntroInputRef.current.delete(id);
+        compositionEmptyActionRef.current.delete(id);
+        intentInputRef.current = null;
+        setSuggest((s) => s?.id === id ? null : s);
+        const el = current();
+        if (el && el.type === 'scene_heading' && latest.current.project.settings.autoNumberScenes) {
+          const stripped = stripSceneNumber(plain(el.text));
+          if (stripped !== plain(el.text)) setText(el.id, stripped);
+        }
+      },
+    };
+  }
+
   return (
     <div className="editor" ref={scrollRef} onScroll={(event) => {
       const state = useStore.getState();
@@ -863,32 +987,21 @@ export function Editor() {
         {activeAltElement ? <AltDialogueBar el={activeAltElement} scrollRef={scrollRef} /> : null}
         {settings.indent && project.titlePage.show ? <TitlePageCard /> : null}
         <div className="script-flow" ref={contentRef} style={columnStyle}>
-          {items.map((item, i) => {
-            const list = Array.isArray(item) ? item : [item];
-            const firstEl = list[0];
-            const isBreak = list.some((e) => breakSet.has(writingDerivation.indexByElement.get(e) ?? -1));
-            return (
-              <React.Fragment key={firstEl.id}>
-                {isBreak && i > 0 ? <div className="page-break-line" /> : null}
-                {Array.isArray(item) ? (
-                  <div className="sc-dual-row">
-                    <div className="sc-dual-col">
-                      {item
-                        .filter((e) => (e.dual || 'left') === 'left')
-                        .map((e) => renderBlock(e, true))}
-                    </div>
-                    <div className="sc-dual-col">
-                      {item
-                        .filter((e) => (e.dual || 'left') === 'right')
-                        .map((e) => renderBlock(e, true))}
-                    </div>
-                  </div>
-                ) : (
-                  renderBlock(firstEl, false)
-                )}
-              </React.Fragment>
-            );
-          })}
+          {/* 写作页不画分页线（见 app.css「分页也不在稿纸中留虚线」），所以这里不再为每段生成隐藏的分页节点。 */}
+          {items.map((item) => Array.isArray(item) ? (
+            <div key={item[0].id} className="sc-dual-row">
+              <div className="sc-dual-col">
+                {item
+                  .filter((e) => (e.dual || 'left') === 'left')
+                  .map((e) => renderBlock(e, true))}
+              </div>
+              <div className="sc-dual-col">
+                {item
+                  .filter((e) => (e.dual || 'left') === 'right')
+                  .map((e) => renderBlock(e, true))}
+              </div>
+            </div>
+          ) : renderBlock(item, false))}
           <div className="script-flow__tail" onClick={() => insertAfter(null, 'action')} />
         </div>
       </div>
@@ -899,98 +1012,47 @@ export function Editor() {
   function renderBlock(el: ScriptElement, half: boolean) {
     const isScene = el.type === 'scene_heading';
     const contdSuffix = settings.contdCharacter !== false && writingDerivation.contdCharacters.has(el) ? CONTD_SUFFIX : undefined;
-    return (
+    const selected = selectMode ? writingIdSet.has(el.id) : activeId === el.id;
+    const revColor = settings.revisionMode && el.rev ? revMap[el.rev] : undefined;
+    const numbered = isScene && settings.autoNumberScenes;
+    const left = numbered && showSceneNumber('left') ? sceneNo[el.id] : undefined;
+    const right = numbered && showSceneNumber('right') ? sceneNo[el.id] : undefined;
+    const position = selectMode ? (elementIndex.get(el.id) ?? 0) + 1 : 0;
+    // 段落和它的显示参数都没变时，直接复用上一次的 React 元素：React 遇到同一个元素会整段跳过，
+    // 打字时几千段里只有正在写的那一段需要处理。
+    const cached = rowCache.current.get(el.id);
+    if (cached && cached.el === el && cached.settings === settings && cached.half === half && cached.selected === selected &&
+        cached.selectMode === selectMode && cached.position === position && cached.revColor === revColor &&
+        cached.contdSuffix === contdSuffix && cached.numbered === numbered && cached.left === left && cached.right === right) {
+      return cached.node;
+    }
+    const handlers = blockHandlers(el.id);
+    const node = (
       <div key={el.id} className={selectMode ? 'writing-select-row' : undefined}>
-      {selectMode && <input type="checkbox" aria-label={`选择第 ${(elementIndex.get(el.id) ?? 0) + 1} 段`} checked={writingIds.includes(el.id)} onChange={() => {}} onClick={(e) => {
-        e.stopPropagation();
-        selectWritingElement(el.id, e.shiftKey);
-      }} />}
+      {selectMode && <input type="checkbox" aria-label={`选择第 ${position} 段`} checked={selected} onChange={() => {}} onClick={handlers.onSelectToggle} />}
       <EditableBlock
         key={el.id}
         readOnly={selectMode}
         el={el}
         settings={settings}
         half={half}
-        selected={selectMode ? writingIds.includes(el.id) : activeId === el.id}
-        revColor={settings.revisionMode && el.rev ? revMap[el.rev] : undefined}
-        sceneNumber={
-          isScene && project.settings.autoNumberScenes
-            ? {
-                left: showSceneNumber('left') ? sceneNo[el.id] : undefined,
-                right: showSceneNumber('right') ? sceneNo[el.id] : undefined,
-              }
-            : undefined
-        }
+        selected={selected}
+        revColor={revColor}
+        sceneNumber={numbered ? { left, right } : undefined}
         contdSuffix={contdSuffix}
-        innerRef={(n) => {
-          if (n) refs.current.set(el.id, n);
-          else refs.current.delete(el.id);
-        }}
-        onInput={(html, input) => handleInput(el, html, input)}
-        onKeyDown={(e) => handleKeyDown(el, e)}
-        onFocus={() => {
-          useStore.getState().breakHistoryGroup();
-          setActive(el.id);
-          if (suggest && suggest.id !== el.id) setSuggest(null);
-        }}
-        onClick={selectMode ? (e) => {
-          e.preventDefault();
-          selectWritingElement(el.id, e.shiftKey);
-        } : () => {
-          useStore.getState().breakHistoryGroup();
-          const latest = useStore.getState().project.elements.find((item) => item.id === el.id);
-          if (latest) updateSuggest(latest);
-        }}
-        onPaste={(e) => handlePaste(el, e)}
-        onCompositionStart={() => {
-          useStore.getState().breakHistoryGroup();
-          composingRef.current = true;
-          const current = useStore.getState().project.elements.find((item) => item.id === el.id);
-          if (current && isBlank(current.text) && !current.dual && !current.dualGroup) {
-            intentInputRef.current = { id: el.id, epoch: useStore.getState().documentEpoch, html: current.text, type: current.type };
-          }
-          quoteCompositionRef.current = null;
-          const node = refs.current.get(el.id);
-          const selection = window.getSelection();
-          const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-          if (current?.type === 'dialogue' && node && range &&
-              node.contains(range.startContainer) && node.contains(range.endContainer)) {
-            quoteCompositionRef.current = {
-              id: el.id, epoch: useStore.getState().documentEpoch, html: node.innerHTML,
-              start: offsetOf(node, range.startContainer, range.startOffset),
-              end: offsetOf(node, range.endContainer, range.endOffset),
-            };
-          }
-          if (current?.type === 'action' && isBlank(current.text)) compositionEmptyActionRef.current.add(el.id);
-          else compositionEmptyActionRef.current.delete(el.id);
-          setSuggest(null);
-        }}
-        onCompositionEnd={(event) => {
-          composingRef.current = false;
-          const node = refs.current.get(el.id);
-          const quote = quoteCompositionRef.current;
-          quoteCompositionRef.current = null;
-          if (node) {
-            handleInput(el, node.innerHTML, undefined,
-              quote?.id === el.id && quote.epoch === useStore.getState().documentEpoch
-                ? { html: quote.html, start: quote.start, end: quote.end, data: event.data } : undefined);
-          }
-          compositionEmptyActionRef.current.delete(el.id);
-          useStore.getState().breakHistoryGroup();
-        }}
-        onBlur={() => {
-          useStore.getState().breakHistoryGroup();
-          sceneIntroInputRef.current.delete(el.id);
-          compositionEmptyActionRef.current.delete(el.id);
-          intentInputRef.current = null;
-          setSuggest((s) => s?.id === el.id ? null : s);
-          if (el.type === 'scene_heading' && project.settings.autoNumberScenes) {
-            const stripped = stripSceneNumber(plain(el.text));
-            if (stripped !== plain(el.text)) setText(el.id, stripped);
-          }
-        }}
+        innerRef={handlers.innerRef}
+        onInput={handlers.onInput}
+        onKeyDown={handlers.onKeyDown}
+        onFocus={handlers.onFocus}
+        onClick={handlers.onClick}
+        onPaste={handlers.onPaste}
+        onCompositionStart={handlers.onCompositionStart}
+        onCompositionEnd={handlers.onCompositionEnd}
+        onBlur={handlers.onBlur}
       />
       </div>
     );
+    rowCache.current.set(el.id, { el, settings, half, selected, selectMode, position, revColor, contdSuffix, numbered, left, right, node });
+    return node;
   }
 }

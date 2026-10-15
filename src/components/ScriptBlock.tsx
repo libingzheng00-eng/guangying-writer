@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { ScriptElement, ScriptSettings } from '../model/types';
 import { ELEMENT_META } from '../model/elements';
 import { isBlank } from '../utils/text';
@@ -49,9 +49,35 @@ export interface BlockProps {
   innerRef?: (node: HTMLDivElement | null) => void;
 }
 
+/** 「显示译文」打开时，这一段要在下面显示的译文（纯文本）。只读显示，不进正文。 */
+function useShownTranslation(el: ScriptElement): string | undefined {
+  const lang = useStore((s) => s.shownTranslation);
+  const text = lang ? el.tr?.[lang]?.text : undefined;
+  return text && text.trim() ? text : undefined;
+}
+
+function sameSceneNumber(a: BlockProps['sceneNumber'], b: BlockProps['sceneNumber']): boolean {
+  return a === b || (!!a && !!b && a.left === b.left && a.right === b.right && a.text === b.text);
+}
+
+/**
+ * 段落只在自己的内容、排版设置或显示参数变化时重画。
+ * 打字时整部剧本只有正在写的那一段换成新对象，其余几千段都跳过渲染。
+ * 函数类参数（innerRef、事件处理）不参与比较：调用方必须让它们按段落保持同样的行为
+ * （写作页按段落缓存处理器，并在调用时读取最新状态）。
+ */
+function sameBlockProps(a: BlockProps, b: BlockProps): boolean {
+  return a.el === b.el && a.settings === b.settings && a.half === b.half && a.spaceBefore === b.spaceBefore &&
+    a.revColor === b.revColor && a.contdSuffix === b.contdSuffix && a.className === b.className &&
+    sameSceneNumber(a.sceneNumber, b.sceneNumber);
+}
+
 /** 只读渲染（分页预览、打印、测量） */
-export function StaticBlock(props: BlockProps) {
+export const StaticBlock = memo(StaticBlockView, sameBlockProps);
+
+function StaticBlockView(props: BlockProps) {
   const { el, settings, half, spaceBefore, revColor, sceneNumber, contdSuffix, className, innerRef } = props;
+  const translation = useShownTranslation(el);
   const el0 = sceneNumber && sceneNumber.text !== undefined ? { ...el, text: sceneNumber.text } : el;
   const empty = isBlank(el0.text);
   const cls = [
@@ -72,6 +98,7 @@ export function StaticBlock(props: BlockProps) {
       data-id={el0.id}
       data-type={el0.type}
       data-contd={contdSuffix || undefined}
+      data-tr={translation}
       style={blockStyle({ settings, half, spaceBefore, revColor }, el0)}
       dangerouslySetInnerHTML={{ __html: el0.text || '<br>' }}
     />
@@ -104,7 +131,11 @@ export interface EditableBlockProps extends BlockProps {
 }
 
 /** 可编辑渲染（写作视图） */
-export function EditableBlock(props: EditableBlockProps) {
+export const EditableBlock = memo(EditableBlockView, (a: EditableBlockProps, b: EditableBlockProps) =>
+  sameBlockProps(a, b) && a.selected === b.selected && a.readOnly === b.readOnly);
+
+function EditableBlockView(props: EditableBlockProps) {
+  const translation = useShownTranslation(props.el);
   const {
     el,
     settings,
@@ -124,7 +155,8 @@ export function EditableBlock(props: EditableBlockProps) {
     onCompositionStart,
     onCompositionEnd,
   } = props;
-  const focus = useStore((s) => s.focus);
+  // 只订阅发给本段的聚焦请求；其他段落不因别处聚焦而重画。
+  const focus = useStore((s) => (s.focus && s.focus.id === el.id ? s.focus : null));
   const localRef = useRef<HTMLDivElement | null>(null);
   const detachedSelectionRef = useRef<{ node: HTMLDivElement; start: number; end: number } | null>(null);
   const empty = isBlank(el.text);
@@ -229,6 +261,27 @@ export function EditableBlock(props: EditableBlockProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus]);
 
+  // 固定的 ref 回调：只在正文节点真正换掉（例如场号包装切换）时被调用，
+  // 普通重画不会反复解绑、重绑。
+  const innerRefRef = useRef(innerRef);
+  innerRefRef.current = innerRef;
+  const setNode = useCallback((n: HTMLDivElement | null) => {
+    const previous = localRef.current;
+    if (!n && previous && document.activeElement === previous) {
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      if (range && previous.contains(range.startContainer) && previous.contains(range.endContainer)) {
+        detachedSelectionRef.current = {
+          node: previous,
+          start: offsetOf(previous, range.startContainer, range.startOffset),
+          end: offsetOf(previous, range.endContainer, range.endOffset),
+        };
+      }
+    }
+    localRef.current = n;
+    innerRefRef.current?.(n);
+  }, []);
+
   const cls = [
     'sc-el',
     `sc-el--${el.type}`,
@@ -245,27 +298,13 @@ export function EditableBlock(props: EditableBlockProps) {
 
   const node = (
     <div
-      ref={(n) => {
-        const previous = localRef.current;
-        if (!n && previous && document.activeElement === previous) {
-          const selection = window.getSelection();
-          const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-          if (range && previous.contains(range.startContainer) && previous.contains(range.endContainer)) {
-            detachedSelectionRef.current = {
-              node: previous,
-              start: offsetOf(previous, range.startContainer, range.startOffset),
-              end: offsetOf(previous, range.endContainer, range.endOffset),
-            };
-          }
-        }
-        localRef.current = n;
-        if (innerRef) innerRef(n);
-      }}
+      ref={setNode}
       className={cls}
       data-id={el.id}
       data-type={el.type}
       data-contd={contdSuffix || undefined}
       data-alts={el.alts?.length ? el.alts.length + 1 : undefined}
+      data-tr={translation}
       style={blockStyle({ settings, half, revColor }, el)}
       contentEditable={!props.readOnly}
       suppressContentEditableWarning

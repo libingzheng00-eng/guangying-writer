@@ -19,8 +19,9 @@
 | alpha.18.18 | 已合并 main，未发布 | 「现代工具」外观：配色、工具栏图标、故事板卡片 |
 | alpha.18.19 | 已合并 main，未发布 | 状态切片与组件拆分、并行测试；自由板缩放可输入、右上角连线钮、顶栏分隔线对齐、新图标 |
 | alpha.18.20 | 已合并 main，GitHub 预发布 | 侧栏标签、自由板圆点连线 / 整卡上色 / 顶栏缩放 / 默认磁吸、写作页素材卡不超宽、默认字色 |
-| alpha.18.21 | `feat/fdx-export-20261015` | 按 Final Draft 真实结构重做 FDX 导出 / 导入（`src/io/fdx.ts`，专项 `fdx-test.cjs`） |
-| alpha.18.22 | `feat/locked-pages-alt-dialogue-20261015`（基于 18.21） | 拍摄稿场号 / 页码锁定、备选台词（`model/locks.ts`、`model/altDialogue.ts`、`store/slices/production.ts`） |
+| alpha.18.21 | 已合并 main，随 18.22 发布 | 按 Final Draft 真实结构重做 FDX 导出 / 导入（`src/io/fdx.ts`，专项 `fdx-test.cjs`） |
+| alpha.18.22 | 已合并 main，GitHub 预发布 | 拍摄稿场号 / 页码锁定、备选台词（`model/locks.ts`、`model/altDialogue.ts`、`store/slices/production.ts`） |
+| alpha.18.23 | 已合并 main，GitHub 预发布 | 双语对照视图、显示译文 / 对照版 PDF、翻译技能 `skills/guangying-translate`；启动页标题区；长剧本输入与撤销内存优化（`store/structural.ts`、`model/textCache.ts`） |
 
 ## alpha.18.17 本分支做了什么
 

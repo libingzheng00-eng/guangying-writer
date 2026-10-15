@@ -118,6 +118,29 @@ function benchmark(api, label) {
   state().redo();
   assert.equal(state().project.beats[0].w, 400);
 
+  // Generic mutations keep unchanged paragraphs, cards and settings as the same
+  // objects: undo history must not hold a full copy of the script or its images per step.
+  reset(api, fixture(api, 5));
+  const shared = state().project;
+  freeze(shared);
+  state().setType('e2', 'dialogue');
+  const typed = state().project;
+  assert.notEqual(typed.elements[2], shared.elements[2], 'changed paragraph is a new object');
+  assert.equal(typed.elements[2].type, 'dialogue');
+  for (let i = 0; i < shared.elements.length; i++) if (i !== 2) assert.equal(typed.elements[i], shared.elements[i], 'unchanged paragraph shared');
+  assert.equal(typed.beats, shared.beats, 'image cards shared, not copied');
+  assert.equal(typed.settings, shared.settings, 'settings shared');
+  assert.equal(state().past.at(-1), shared);
+  const beforeNoOpMutation = state();
+  state().mutate(p => { p.elements[2].type = 'dialogue'; });
+  assert.equal(state(), beforeNoOpMutation, 'no-op generic mutation keeps store identity');
+  state().mutate(p => { p.elements.splice(1, 0, { id: 'inserted', type: 'action', text: '新段' }); });
+  assert.equal(state().project.elements[1].id, 'inserted');
+  assert.equal(state().project.elements[2], typed.elements[1], 'paragraphs after an insertion stay shared');
+  assert.equal(state().project.beats, shared.beats);
+  state().undo();
+  assert.equal(state().project, typed);
+
   reset(api, fixture(api));
   state().setText('e1', 'A');
   state().setText('e1', 'A');
@@ -280,7 +303,7 @@ function benchmark(api, label) {
   assert.equal(writes.length, 3);
   assert.equal(writes[2].project.elements[1].text, '已停止');
   stop();
-  console.log('PASS: immutable text, frozen snapshots, no JSON hot path, history, autosave scheduling/cleanup');
+  console.log('PASS: immutable text, frozen snapshots, no JSON hot path, shared unchanged objects in generic edits, history, autosave scheduling/cleanup');
 
   const args = process.argv.slice(2);
   if (args.length) {

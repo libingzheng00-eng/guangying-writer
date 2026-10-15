@@ -21,7 +21,7 @@ export interface ZhspFile {
 type RecordValue = Record<string, unknown>;
 const KNOWN_PROJECT_FIELDS = new Set(['id', 'name', 'createdAt', 'updatedAt', 'titlePage', 'elements', 'sceneMeta', 'beats',
   'boardLinks', 'targetPages', 'acts', 'revisions', 'settings', 'trash', 'revisionWorkspace', 'annotations', 'deliveryIgnored',
-  'characterWorkspace', 'sceneLock', 'pageLock', 'preservedFields']);
+  'characterWorkspace', 'sceneLock', 'pageLock', 'translation', 'preservedFields']);
 const KNOWN_BEAT_FIELDS = new Set(['id', 'text', 'color', 'x', 'y', 'boardX', 'boardY', 'sceneId', 'kind', 'title', 'img', 'w', 'h']);
 const MAX_PRESERVED_BYTES = 32 * 1024 * 1024;
 const elementTypes = new Set<string>(ELEMENT_ORDER);
@@ -205,11 +205,57 @@ function normalizeElement(raw: unknown): ScriptElement {
   // 备选台词：每个版本同正文一样清洗；altNo 只能是 1..版本数。
   if (element.alts !== undefined && (!Array.isArray(element.alts) || element.alts.some((alt) => typeof alt !== 'string'))) throw invalidStructure();
   const alts = element.alts?.length ? element.alts.map((alt) => sanitizeProjectHtml(alt)) : undefined;
-  const { alts: _alts, altNo: _altNo, ...rest } = element;
-  void _alts; void _altNo;
-  if (!alts) return { ...rest, text: html };
+  const { alts: _alts, altNo: _altNo, tr: _tr, ...rest } = element;
+  void _alts; void _altNo; void _tr;
+  const tr = normalizeTranslations(element.tr);
+  const base = { ...rest, text: html, ...(tr ? { tr } : {}) };
+  if (!alts) return base;
   const altNo = Number.isInteger(element.altNo) && element.altNo! >= 1 && element.altNo! <= alts.length + 1 ? element.altNo! : 1;
-  return { ...rest, text: html, alts, altNo };
+  return { ...base, alts, altNo };
+}
+
+const LANGUAGE_CODE = /^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$/;
+const MAX_TRANSLATION = 20000;
+
+/** 译文是纯文本（界面里按文字显示，不当 HTML），只校验结构和长度。 */
+function normalizeTranslations(value: unknown): ScriptElement['tr'] {
+  if (value === undefined) return undefined;
+  const source = record(value);
+  const out: NonNullable<ScriptElement['tr']> = {};
+  for (const [lang, raw] of Object.entries(source)) {
+    if (!LANGUAGE_CODE.test(lang) || reservedIdentifiers.has(lang)) throw invalidStructure();
+    const entry = record(raw);
+    if (typeof entry.text !== 'string' || entry.text.length > MAX_TRANSLATION || typeof entry.srcHash !== 'string' || !/^[0-9a-f]{1,16}$/.test(entry.srcHash)) throw invalidStructure();
+    out[lang] = { text: entry.text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ''), srcHash: entry.srcHash };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function normalizeProjectTranslation(value: unknown): ScriptProject['translation'] {
+  if (value === undefined) return undefined;
+  const source = record(value);
+  const result: NonNullable<ScriptProject['translation']> = {};
+  if (source.glossary !== undefined) {
+    const glossary = record(source.glossary);
+    result.glossary = {};
+    for (const [lang, rows] of Object.entries(glossary)) {
+      if (!LANGUAGE_CODE.test(lang) || reservedIdentifiers.has(lang)) throw invalidStructure();
+      result.glossary[lang] = list(rows).map((raw) => {
+        const row = record(raw);
+        if (typeof row.source !== 'string' || typeof row.target !== 'string' || (row.note !== undefined && typeof row.note !== 'string')) throw invalidStructure();
+        return { source: row.source.slice(0, 200), target: row.target.slice(0, 200), ...(row.note ? { note: (row.note as string).slice(0, 1000) } : {}) };
+      });
+    }
+  }
+  if (source.notes !== undefined) {
+    const notes = record(source.notes);
+    result.notes = {};
+    for (const [lang, note] of Object.entries(notes)) {
+      if (!LANGUAGE_CODE.test(lang) || reservedIdentifiers.has(lang) || typeof note !== 'string') throw invalidStructure();
+      result.notes[lang] = note.slice(0, MAX_TRANSLATION);
+    }
+  }
+  return result;
 }
 
 function normalizeSceneLock(value: unknown): ScriptProject['sceneLock'] {
@@ -317,6 +363,7 @@ export function parseProjectValue(value: unknown): ScriptProject {
   const annotations = source.annotations === undefined ? undefined : reconcileAnnotations(elements, elements, validateAnnotations(source.annotations));
   const sceneLock = normalizeSceneLock(source.sceneLock);
   const pageLock = normalizePageLock(source.pageLock);
+  const translation = normalizeProjectTranslation(source.translation);
   const characterWorkspace = reconcileCharacterWorkspace({ elements, annotations }, { elements, annotations }, parseCharacterWorkspace(source.characterWorkspace));
   const preservedFields: RecordValue = { ...(source.preservedFields === undefined ? {} : record(source.preservedFields)) };
   for (const key of Object.keys(source)) {
@@ -354,6 +401,7 @@ export function parseProjectValue(value: unknown): ScriptProject {
     ...(characterWorkspace === undefined ? {} : { characterWorkspace }),
     ...(sceneLock === undefined ? {} : { sceneLock }),
     ...(pageLock === undefined ? {} : { pageLock }),
+    ...(translation === undefined ? {} : { translation }),
     ...(hasPreserved ? { preservedFields } : {}),
   };
 }

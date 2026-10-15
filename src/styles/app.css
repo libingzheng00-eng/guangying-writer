@@ -751,6 +751,11 @@ textarea {
   opacity: 0.4;
 }
 /* (CONT'D) 续说后缀：纯视觉，由 [data-contd] 驱动；不进 innerHTML、不入统计 / 导出 */
+/* 显示译文：在每段下面跟一行译文（只读，不进正文）。写作页用浅色；预览 / 打印里就是对照版。
+   用伪元素画，段落高度跟着变，分页测量也算进去。 */
+.sc-el[data-tr]::after { content: attr(data-tr); display: block; white-space: pre-wrap; font-weight: 400; text-transform: none; color: var(--muted, #6b7280); }
+.preview__page .sc-el[data-tr]::after, .sc-measure .sc-el[data-tr]::after { color: #4b5563; }
+.sc-el--character.has-contd[data-tr]::after { content: " " attr(data-contd) "\A" attr(data-tr); white-space: pre-wrap; }
 /* 备选台词记号：有多个版本的对白在左侧页边显示「⇄ 版本数」；只在写作页，预览和打印不显示。 */
 @media screen {
   .editor .sc-el--dialogue[data-alts]::before {
@@ -2590,3 +2595,15 @@ textarea {
 .rich-note { outline: none; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; cursor: text; user-select: text; -webkit-user-select: text; }
 .rich-note:empty::before { content: attr(data-placeholder); color: var(--muted); opacity: .85; pointer-events: none; }
 .rich-note b { font-weight: 700; }
+
+/* 双语对照视图（结构）：顶栏 + 左右对齐的原文 / 译文行 + 可选的译名表。 */
+.bilingual { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.bilingual__bar { display: flex; align-items: center; gap: 12px; flex: 0 0 44px; height: 44px; box-sizing: border-box; padding: 0 16px; border-bottom: 1px solid var(--border); }
+.bilingual__spacer { flex: 1; }
+.bilingual__body { display: flex; flex: 1; min-height: 0; }
+.bilingual__list { flex: 1; min-width: 0; overflow: auto; padding: 12px 24px 120px; }
+.bilingual__head, .bilingual__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.bilingual__row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.bilingual__target textarea { display: block; width: 100%; min-height: 34px; box-sizing: border-box; resize: none; field-sizing: content; }
+.bilingual__glossary { flex: 0 0 300px; overflow: auto; padding: 14px 16px; border-left: 1px solid var(--border); }
+.bilingual__glossary-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 6px; align-items: center; margin-bottom: 6px; }

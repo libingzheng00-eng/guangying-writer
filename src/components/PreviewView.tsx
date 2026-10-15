@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { useStore } from '../store/store';
 import { usePagination, type Placed, type PageInfo } from '../hooks/PaginationProvider';
 import { plainPageNumber } from '../model/locks';
+import { TRANSLATION_LANGUAGES, type TranslationLanguage } from '../model/translation';
 import { StaticBlock } from './ScriptBlock';
 import { fontStackOf } from '../model/elements';
 import { PAPER_MM } from '../model/stats';
@@ -12,6 +13,7 @@ import { safeDisplayColor } from '../utils/displayValues';
 const PX_PER_MM = 96 / 25.4;
 
 export function PreviewView({ onExportPdf }: { onExportPdf: (mode?: 'creative' | 'print') => void }) {
+  const shownTranslation = useStore((s) => s.shownTranslation);
   const project = useStore((s) => s.project);
   const version = useStore((s) => s.version);
   const zoom = useStore((s) => s.zoom);
@@ -113,6 +115,13 @@ export function PreviewView({ onExportPdf }: { onExportPdf: (mode?: 'creative' |
       <div className="preview__bar">
         <span className="preview__label">A4 纯文本打印预览 · 剧本 {pages.length} 页</span>
         <div className="spacer" />
+        {/* 对照版：在每段下面跟上译文，导出 A4 PDF 就是双语对照稿。 */}
+        <label className="preview__translation">对照
+          <select aria-label="预览中显示的译文" value={shownTranslation || ''} onChange={(event) => useStore.getState().setShownTranslation((event.target.value || null) as TranslationLanguage | null)}>
+            <option value="">不显示译文</option>
+            {TRANSLATION_LANGUAGES.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+          </select>
+        </label>
         <button className="btn btn--ghost" onClick={() => setZoom(zoom - 0.1)}>
           －
         </button>

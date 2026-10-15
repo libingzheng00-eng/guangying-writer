@@ -91,7 +91,7 @@ const check = (label, actual, expected = true) => {
   check('导航仍请求准确的正文场次起点', [state().view, state().focus?.id], ['write', 'ui-s1']);
   const viewSelect = q('.toolbar__view-select');
   await act(async () => { viewSelect.value = 'board'; viewSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
-  check('窄窗视图选择使用原 setView，六种界面均保留', [state().view, viewSelect.options.length], ['board', 6]);
+  check('窄窗视图选择使用原 setView，七种界面（含双语）均保留', [state().view, viewSelect.options.length], ['board', 7]);
   check('非写作界面没有多选入口', q('.writing-select-toolbar--toggle'), null);
 
   const css = fs.readFileSync(path.join(repo, 'src/styles/writing-controls.css'), 'utf8');
