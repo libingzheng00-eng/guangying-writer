@@ -94,11 +94,8 @@ export function StartupPage({
   return <main className="startup" aria-labelledby={`${id}-title`}>
     <div className="startup__inner">
       <header className="startup__header">
-        <div className="startup__brand-mark"><StartupIcon name="document" /></div>
-        <div>
-          <h1 ref={headingRef} id={`${id}-title`} tabIndex={-1}>光影写手</h1>
-          <p>开始新的剧本，或继续上次的写作。</p>
-        </div>
+        <h1 ref={headingRef} id={`${id}-title`} tabIndex={-1}>光影写手</h1>
+        <p>开始新的剧本，或继续上次的写作。</p>
       </header>
 
       {warning ? <div className="startup__notice startup__notice--warning" role="status">
