@@ -245,6 +245,8 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
   const version = useStore((s) => s.version);
   const view = useStore((s) => s.view);
   const setPageCount = useStore((s) => s.setPageCount);
+  // 显示译文会让每段变高，分页要跟着重算（预览里即对照版 PDF）。
+  const shownTranslation = useStore((s) => s.shownTranslation);
   const refs = useRef(new Map<string, HTMLElement>());
   const [result, setResult] = useState<PaginationResult>({
     pages: [],
@@ -288,7 +290,7 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, requestedKey, items, geo, project.revisions, project.titlePage.show, project.settings.titlePageBreak, project.pageLock]);
+  }, [version, requestedKey, items, geo, project.revisions, project.titlePage.show, project.settings.titlePageBreak, project.pageLock, shownTranslation]);
 
   const sceneNo = useMemo(() => {
     const m: Record<string, string> = {};

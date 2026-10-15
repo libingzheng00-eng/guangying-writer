@@ -253,7 +253,7 @@ function nativeMenus(platform) {
   check('菜单关闭时不接管外部键盘', outsideEscape.defaultPrevented, false);
 
   const viewButtons = [...document.querySelectorAll('.toolbar__views button')].map(item => item.textContent);
-  check('保留六种页内视图入口', viewButtons, ['写作', '故事板', '自由板', '人物线', '预览', '统计']);
+  check('保留六种页内视图入口并新增「双语」', viewButtons, ['写作', '故事板', '自由板', '人物线', '预览', '统计', '双语']);
   for (const platform of ['win32', 'darwin']) {
     const native = nativeMenus(platform);
     const entries = native.menus[0].find(item => item.label === '视图').submenu;

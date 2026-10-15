@@ -320,7 +320,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
 
   const setElementType = useCallback(
     (type: ElementType) => {
-      if (store.getState().view === 'character-lines') { store.getState().notify('请先定位到正文，再编辑段落。'); return; }
+      if (store.getState().view === 'character-lines' || store.getState().view === 'bilingual') { store.getState().notify('请先回到写作页，再编辑段落。'); return; }
       const { activeId, setType, requestFocus, project } = store.getState();
       if (!activeId) return;
       setType(activeId, type);
@@ -331,7 +331,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   );
 
   const insertScene = useCallback(() => {
-    if (store.getState().view === 'character-lines') { store.getState().notify('请先定位到正文，再编辑段落。'); return; }
+    if (store.getState().view === 'character-lines' || store.getState().view === 'bilingual') { store.getState().notify('请先回到写作页，再编辑段落。'); return; }
     const { activeId, project, insertAfter, requestFocus } = store.getState();
     if (!activeId) return;
     const idx = project.elements.findIndex((e) => e.id === activeId);
@@ -345,7 +345,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   }, [store]);
 
   const makeDual = useCallback(() => {
-    if (store.getState().view === 'character-lines') { store.getState().notify('请先定位到正文，再编辑段落。'); return; }
+    if (store.getState().view === 'character-lines' || store.getState().view === 'bilingual') { store.getState().notify('请先回到写作页，再编辑段落。'); return; }
     const { activeId, project, mutate, requestFocus } = store.getState();
     if (!activeId) return;
     const idx = project.elements.findIndex((e) => e.id === activeId);

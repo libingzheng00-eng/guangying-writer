@@ -9,6 +9,7 @@ import { createScenesSlice } from './slices/scenes';
 import { createBoardSlice } from './slices/board';
 import { createReviewSlice } from './slices/review';
 import { createProductionSlice } from './slices/production';
+import { createTranslationSlice, loadShownTranslation } from './slices/translation';
 
 export type { ViewMode, SidebarMode, AppTheme, FocusRequest, Toast, SaveSnapshot, ReplaceMatch, WorkspaceSource, ReviewScenePatch } from './types';
 export { DEFAULT_FONT_COLOR } from '../model/appearance';
@@ -35,6 +36,7 @@ export const useStore = create<StoreState>((set, get) => ({
   zoom: 1,
   fontColor: loadFontColor(),
   appTheme: loadAppTheme(),
+  shownTranslation: loadShownTranslation(),
   pdfExportMode: null,
   past: [],
   future: [],
@@ -49,4 +51,5 @@ export const useStore = create<StoreState>((set, get) => ({
   ...createBoardSlice(set, get),
   ...createReviewSlice(set, get),
   ...createProductionSlice(set, get),
+  ...createTranslationSlice(set, get),
 }) as StoreState);

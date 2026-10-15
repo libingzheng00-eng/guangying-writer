@@ -153,3 +153,5 @@ node scripts/progress-bands-test.cjs
 `core-guard` 检查 Git 跟踪路径中的工程/导出/自动保存/大文件风险，并实测空白模板和 Tab 类型契约。可对明确的 `Contents/Resources/app` 打包目录附加检查；不会读取个人目录，也不会扫描旧 Git 历史。它不能识别任意字符串是否为用户剧情，不能代替人工源码/产物隐私审查。测试源码允许合成场景、角色与图像；用户真实剧本任何部分都不能当测试夹具。
 
 - **拍摄稿锁定与备选台词（2026-10-15，用户要求）**：锁定场号后原场号不变，新插入的场按前一场编成 5A、5B，最前面插入的编成 A1；锁定页码后每页从锁定时的起头段落开始，加长多出的页编成 12A、12B，变短的页不回拉，整页删除后前一页显示区间；预览 / A4 PDF 页眉与 FDX 场号都用锁定编号。备选台词：元素的 `alts` / `altNo` 保存其他版本，导出和分页只用当前 `text`；新建 / 切换 / 删除各一步撤销。实现：`model/locks.ts`、`model/altDialogue.ts`、`store/slices/production.ts`；专项 `production-test.cjs`。
+
+- **双语对照（2026-10-16，用户要求）**：译文存在元素的 `tr[lang] = { text, srcHash }`（纯文本，不进分页正文、不改原文），`srcHash` 是原文指纹（`model/translation.ts` 的 `sourceHash`，翻译技能脚本必须与之一致，`bilingual-test.cjs` 校验）；原文改动后显示待复查。写作页不改输入与 Tab；「双语」视图只写译文，原文编辑命令在该视图被拦下。显示译文是本机偏好 `guangying:shownTranslation`，预览中即对照版 PDF。翻译技能只写 `tr` 与 `translation`，写前备份、写后核对原文、期间文件被改就放弃。

@@ -49,9 +49,17 @@ export interface BlockProps {
   innerRef?: (node: HTMLDivElement | null) => void;
 }
 
+/** 「显示译文」打开时，这一段要在下面显示的译文（纯文本）。只读显示，不进正文。 */
+function useShownTranslation(el: ScriptElement): string | undefined {
+  const lang = useStore((s) => s.shownTranslation);
+  const text = lang ? el.tr?.[lang]?.text : undefined;
+  return text && text.trim() ? text : undefined;
+}
+
 /** 只读渲染（分页预览、打印、测量） */
 export function StaticBlock(props: BlockProps) {
   const { el, settings, half, spaceBefore, revColor, sceneNumber, contdSuffix, className, innerRef } = props;
+  const translation = useShownTranslation(el);
   const el0 = sceneNumber && sceneNumber.text !== undefined ? { ...el, text: sceneNumber.text } : el;
   const empty = isBlank(el0.text);
   const cls = [
@@ -72,6 +80,7 @@ export function StaticBlock(props: BlockProps) {
       data-id={el0.id}
       data-type={el0.type}
       data-contd={contdSuffix || undefined}
+      data-tr={translation}
       style={blockStyle({ settings, half, spaceBefore, revColor }, el0)}
       dangerouslySetInnerHTML={{ __html: el0.text || '<br>' }}
     />
@@ -105,6 +114,7 @@ export interface EditableBlockProps extends BlockProps {
 
 /** 可编辑渲染（写作视图） */
 export function EditableBlock(props: EditableBlockProps) {
+  const translation = useShownTranslation(props.el);
   const {
     el,
     settings,
@@ -266,6 +276,7 @@ export function EditableBlock(props: EditableBlockProps) {
       data-type={el.type}
       data-contd={contdSuffix || undefined}
       data-alts={el.alts?.length ? el.alts.length + 1 : undefined}
+      data-tr={translation}
       style={blockStyle({ settings, half, revColor }, el)}
       contentEditable={!props.readOnly}
       suppressContentEditableWarning

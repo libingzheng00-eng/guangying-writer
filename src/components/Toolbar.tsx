@@ -17,6 +17,7 @@ const VIEWS: { key: ViewMode; label: string }[] = [
   { key: 'character-lines', label: '人物线' },
   { key: 'preview', label: '预览' },
   { key: 'reports', label: '统计' },
+  { key: 'bilingual', label: '双语' },
 ];
 
 export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onOpenReview, modalOpen = false }: { commands: ReturnType<typeof useCommands>; onOpenSettings: () => void; onOpenTitle: () => void; onOpenHome?: () => void; onOpenReview?: () => void; modalOpen?: boolean }) {
@@ -166,7 +167,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
       {/* 写作红线：多选只替换同宽工具区，不增加顶栏高度、不动正文或 Tab 逻辑。
           完成多选后恢复全部原格式入口，避免展开操作挤压文件菜单及视图按钮。 */}
       <div className="toolbar__group toolbar__context">
-      {view === 'character-lines' ? <span className="toolbar__reader-hint">只读人物线 · 定位正文后编辑</span> : selecting ? (
+      {view === 'character-lines' ? <span className="toolbar__reader-hint">只读人物线 · 定位正文后编辑</span> : view === 'bilingual' ? <span className="toolbar__reader-hint">双语对照 · 原文在写作页改，这里只写译文</span> : selecting ? (
         <div className="toolbar__group writing-select-toolbar writing-select-toolbar--actions" role="group" aria-label="段落多选操作">
           <span className="writing-select-toolbar__count" title={`已选 ${writingSelectedIds.length} 段`} aria-live="polite">已选 {writingSelectedIds.length} 段</span>
           <button title="选择全部正文段落" onClick={() => setWritingSelectedIds(project.elements.map((el) => el.id))}>全选</button>

@@ -19,8 +19,9 @@ export const FILE_VERSION = 1;
  * 打开修订号更高的文件时提示作者，并原样保留本版不认识的字段，避免回存丢数据。
  * 2 = alpha.18.17：首个会保留未知字段的版本（含人物线 characterWorkspace）。
  * 3 = alpha.18.22：场号 / 页码锁定（sceneLock、pageLock）与备选台词（元素的 alts、altNo）。
+ * 4 = alpha.18.23：双语对照（元素的 tr、工程的 translation）。
  */
-export const FORMAT_REVISION = 3;
+export const FORMAT_REVISION = 4;
 
 export function defaultSettings(): ScriptSettings {
   return {

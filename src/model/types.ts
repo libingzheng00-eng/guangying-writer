@@ -42,6 +42,19 @@ export interface ScriptElement {
   alts?: string[];
   /** 当前版本在全部版本里的序号（从 1 开始），仅在有 alts 时有意义 */
   altNo?: number;
+  /** 译文：按语言代码（ja、en）存，纯文本；srcHash 是翻译时原文的指纹，原文改过后据此标「待复查」 */
+  tr?: Record<string, ElementTranslation>;
+}
+
+export interface ElementTranslation {
+  text: string;
+  srcHash: string;
+}
+
+/** 双语对照的工程级资料：每种语言的人名 / 地名译名表和风格说明（由作者或翻译技能填写）。 */
+export interface ProjectTranslation {
+  glossary?: Record<string, Array<{ source: string; target: string; note?: string }>>;
+  notes?: Record<string, string>;
 }
 
 /** 场号锁定：锁定那一刻每个场次标题的场号；之后新插入的场按前一场编成 5A、5B。 */
@@ -249,6 +262,8 @@ export interface ScriptProject {
   sceneLock?: SceneNumberLock;
   /** 页码锁定（拍摄稿）；缺失表示未锁定 */
   pageLock?: PageLock;
+  /** 双语对照的译名表与风格说明 */
+  translation?: ProjectTranslation;
   acts: Act[];
   revisions: Revision[];
   settings: ScriptSettings;

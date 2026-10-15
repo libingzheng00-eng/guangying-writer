@@ -39,6 +39,7 @@ const suites = [
   'find-replace-test.cjs',
   'fdx-test.cjs',
   'production-test.cjs',
+  'bilingual-test.cjs',
   'zhsp-compat-test.cjs',
   'forward-compat-test.cjs',
   'history-test.cjs',
