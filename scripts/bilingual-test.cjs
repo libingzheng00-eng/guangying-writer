@@ -10,6 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 const Module = require('node:module');
 const { execFileSync } = require('node:child_process');
+const { pathToFileURL } = require('node:url');
 const esbuild = require('esbuild');
 const { JSDOM } = require('jsdom');
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://bilingual.invalid/', pretendToBeVisual: true });
@@ -42,7 +43,8 @@ console.error = (...args) => { errors.push(args.join(' ')); originalError(...arg
   const mod = new Module(filename, module);
   mod.filename = filename; mod.paths = Module._nodeModulePaths(__dirname); mod._compile(built.outputFiles[0].text, filename);
   const m = mod.exports;
-  const lib = await import(path.join(repo, 'skills/guangying-translate/scripts/zhsp-lib.mjs'));
+  // Windows 上动态 import 只接受 file:// 地址，不能直接用盘符路径。
+  const lib = await import(pathToFileURL(path.join(repo, 'skills/guangying-translate/scripts/zhsp-lib.mjs')).href);
   const state = () => m.useStore.getState();
 
   // ---- the skill hashes the source exactly like the app ----
