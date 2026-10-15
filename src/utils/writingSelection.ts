@@ -6,8 +6,14 @@ export function readWritingSelection(flow: HTMLElement | null) {
   if (!flow || !selection?.rangeCount) return null;
   const range = selection.getRangeAt(0);
   if (!flow.contains(range.startContainer) || !flow.contains(range.endContainer)) return null;
-  const nodes = Array.from(flow.querySelectorAll<HTMLElement>('.sc-el--editable')).filter(node => {
-    if (range.collapsed) return node.contains(range.startContainer);
+  // 光标（没有选中文字）只可能在一段之内：直接找包住它的段落，
+  // 不必在长剧本里逐段检查（回车、退格每次都会走到这里）。
+  const caretNode = () => {
+    const start = range.startContainer;
+    const host = (start instanceof Element ? start : start.parentElement)?.closest<HTMLElement>('.sc-el--editable');
+    return host && flow.contains(host) ? [host] : [];
+  };
+  const nodes = range.collapsed ? caretNode() : Array.from(flow.querySelectorAll<HTMLElement>('.sc-el--editable')).filter(node => {
     if (!range.intersectsNode(node)) return false;
     const contents = document.createRange();
     contents.selectNodeContents(node);

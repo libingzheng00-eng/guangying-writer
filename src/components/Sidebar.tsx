@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useDeferredValue, useMemo } from 'react';
 import { RichNoteField } from './RichNoteField';
 import { useStore, type SidebarMode } from '../store/store';
 import { deriveScenes } from '../model/project';
@@ -60,8 +60,9 @@ function useSceneList() {
 }
 
 function NavigatorPanel() {
-  const project = useStore((s) => s.project);
-  const scenes = useSceneList();
+  // 场景导航只读：打字时先沿用上一版列表，空闲时再更新，不占用输入的那一帧。
+  const project = useDeferredValue(useStore((s) => s.project));
+  const scenes = useMemo(() => deriveScenes(project), [project]);
   const requestFocus = useStore((s) => s.requestFocus);
   const setView = useStore((s) => s.setView);
   const moveReviewScene = useStore((s) => s.moveReviewScene);
@@ -69,11 +70,12 @@ function NavigatorPanel() {
   const { pageOf } = usePagination();
   const [filter, setFilter] = React.useState('');
 
-  const list = scenes.filter((s) => !filter || s.heading.includes(filter) || s.title.includes(filter));
-
-  return (
-    <div className="panel">
-      <input data-native-edit-history className="panel__search" placeholder="搜索场景…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+  // 列表只随（延后的）正文、筛选词和页码变化；打字时的即时渲染直接复用上一次的列表。
+  // requestFocus 等是商店里的固定函数，不需要作为依赖。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const listNode = useMemo(() => {
+    const list = scenes.filter((s) => !filter || s.heading.includes(filter) || s.title.includes(filter));
+    return <>
       <div className="panel__list">
         {list.map((s) => (
           <div className={`nav-item ${s.omit ? 'is-omit' : ''}`} key={s.id}>
@@ -118,6 +120,13 @@ function NavigatorPanel() {
           </div>
         ))}
       </div>
+    </>;
+  }, [project, scenes, filter, pageOf]);
+
+  return (
+    <div className="panel">
+      <input data-native-edit-history className="panel__search" placeholder="搜索场景…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      {listNode}
     </div>
   );
 }

@@ -3,6 +3,11 @@ import { useStore } from '../../store/store';
 import { altTotal, currentAltNo } from '../../model/altDialogue';
 import type { ScriptElement } from '../../model/types';
 
+/** 属性选择器里的引号值。 */
+function attributeValue(value: string): string {
+  return typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(value) : value.replace(/["\\]/g, '\\$&');
+}
+
 /**
  * 备选台词小工具条：光标停在一段对白上时，出现在页面右侧。
  * ＋ 把当前这句复制成一个新版本并切过去；‹ › 在版本之间切换；✕ 删掉当前版本。
@@ -15,13 +20,15 @@ export function AltDialogueBar({ el, scrollRef }: { el: ScriptElement; scrollRef
     const measure = () => {
       const scroller = scrollRef.current;
       const layer = scroller?.querySelector<HTMLElement>('.editor__scroll');
-      const node = Array.from(scroller?.querySelectorAll<HTMLElement>('.script-flow [data-id]') || []).find((n) => n.dataset.id === el.id);
+      // 按 id 直接取这一段，不在长剧本里逐段查找（光标停在对白上时每次按键都会重新定位）。
+      const node = scroller?.querySelector<HTMLElement>(`.script-flow [data-id="${attributeValue(el.id)}"]`);
       const page = scroller?.querySelector<HTMLElement>('.script-flow');
       if (!layer || !node || !page) { setPos(null); return; }
       const origin = layer.getBoundingClientRect();
       const box = node.getBoundingClientRect();
       const right = page.getBoundingClientRect().right - origin.left;
-      setPos({ top: Math.round(box.top - origin.top), left: Math.round(Math.min(right + 12, layer.clientWidth - 196)) });
+      const top = Math.round(box.top - origin.top), left = Math.round(Math.min(right + 12, layer.clientWidth - 196));
+      setPos((current) => (current && current.top === top && current.left === left ? current : { top, left }));
     };
     measure();
     // 收起 / 展开侧栏、拖动窗口都会改变页面位置，跟着重新定位。

@@ -248,6 +248,19 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
   // 显示译文会让每段变高，分页要跟着重算（预览里即对照版 PDF）。
   const shownTranslation = useStore((s) => s.shownTranslation);
   const refs = useRef(new Map<string, HTMLElement>());
+  // 每个测量块一个固定的 ref 回调：块不重画时不会反复解绑、重绑。
+  const refCallbacks = useRef(new Map<string, (node: HTMLElement | null) => void>());
+  const measureRef = (key: string) => {
+    let callback = refCallbacks.current.get(key);
+    if (!callback) {
+      callback = (node) => {
+        if (node) refs.current.set(key, node);
+        else refs.current.delete(key);
+      };
+      refCallbacks.current.set(key, callback);
+    }
+    return callback;
+  };
   const [result, setResult] = useState<PaginationResult>({
     pages: [],
     pageOf: {},
@@ -268,99 +281,109 @@ export function PaginationProvider({ children }: { children: React.ReactNode }) 
     return { contentWidthPx: w, contentHeightPx: h, fontSizePx: fs, lineHeightPx: fs * s.lineHeight };
   }, [project.settings, paperName]);
 
-  const items = useMemo(() => buildItems(project), [project.elements, project.settings.indent]);
-  const writingDerivation = useMemo(() => deriveWritingElements(project.elements), [project.elements]);
-  const contdSuffixFor = (element: ScriptElement) => project.settings.contdCharacter !== false &&
-    writingDerivation.contdCharacters.has(element) ? CONTD_SUFFIX : undefined;
+  /*
+   * 隐藏的测量稿只在停笔 180ms 后才换成最新正文：打字时它完全不重画，
+   * 每次按键不再为几千段测量块做一遍渲染。停笔后先画出测量稿，再在提交后量高度、分页。
+   * 测量用的工程、几何参数和 readyKey 来自同一次请求，与原来「定时器里读当前测量稿」一致。
+   */
+  const [request, setRequest] = useState<{ project: ScriptProject; geo: typeof geo; key: string } | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setRequest({ project, geo, key: requestedKey });
+    }, 180);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, requestedKey, geo, project.revisions, project.titlePage.show, project.settings.titlePageBreak, project.pageLock, shownTranslation]);
 
   useEffect(() => {
+    if (!request) return;
     let cancelled = false;
-    const timer = setTimeout(async () => {
+    (async () => {
       // 字体加载会改变折行，必须等字体就绪后测量，才能向 PDF 导出声明 ready。
       if (document.fonts) await document.fonts.ready;
       if (cancelled) return;
       const heights = new Map<string, number>();
       refs.current.forEach((node, key) => heights.set(key, node.offsetHeight));
-      const measured = paginateMeasured(project, heights, geo);
-      setResult({ ...measured, readyKey: requestedKey });
+      const measured = paginateMeasured(request.project, heights, request.geo);
+      setResult({ ...measured, readyKey: request.key });
       setPageCount(measured.pages.length);
-    }, 180);
+    })();
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, requestedKey, items, geo, project.revisions, project.titlePage.show, project.settings.titlePageBreak, project.pageLock, shownTranslation]);
+  }, [request, setPageCount]);
 
-  const sceneNo = useMemo(() => {
-    const m: Record<string, string> = {};
-    deriveScenes(project).forEach((s) => {
-      m[s.elementId] = s.number;
+  const measureNode = useMemo(() => {
+    if (!request) return null;
+    const source = request.project;
+    const settings = source.settings;
+    const items = buildItems(source);
+    const writingDerivation = deriveWritingElements(source.elements);
+    const sceneNo: Record<string, string> = {};
+    deriveScenes(source).forEach((scene) => {
+      sceneNo[scene.elementId] = scene.number;
     });
-    return m;
-  }, [project]);
-
-  const sceneNumberFor = (el: ScriptElement) =>
-    el.type === 'scene_heading' && project.settings.autoNumberScenes
-      ? {
-          left: project.settings.sceneNumber === 'left' || project.settings.sceneNumber === 'both' ? sceneNo[el.id] : undefined,
-          right: project.settings.sceneNumber === 'right' || project.settings.sceneNumber === 'both' ? sceneNo[el.id] : undefined,
-          text: stripSceneNumber(el.text),
-        }
-      : undefined;
-
-  const measureNode = (
-    <div
-      className="sc-measure"
-      aria-hidden
-      style={{
-        width: `${geo.contentWidthPx}px`,
-        fontFamily: fontStackOf(project.settings.fontKey),
-        fontSize: `${project.settings.fontSize}pt`,
-        lineHeight: project.settings.lineHeight,
-      }}
-    >
-      {items.map((item) =>
-        item.kind === 'dual' ? (
-          <div
-            key={item.key}
-            className="sc-dual-row"
-            ref={(n) => {
-              if (n) refs.current.set(item.key, n);
-              else refs.current.delete(item.key);
-            }}
-          >
-            <div className="sc-dual-col">
-              {item.elements
-                .filter((e) => (e.dual || 'left') === 'left')
-                .map((e) => (
-                  <StaticBlock key={e.id} el={e} settings={project.settings} half sceneNumber={sceneNumberFor(e)} contdSuffix={contdSuffixFor(e)} />
-                ))}
+    const contdSuffixFor = (element: ScriptElement) => settings.contdCharacter !== false &&
+      writingDerivation.contdCharacters.has(element) ? CONTD_SUFFIX : undefined;
+    const sceneNumberFor = (el: ScriptElement) =>
+      el.type === 'scene_heading' && settings.autoNumberScenes
+        ? {
+            left: settings.sceneNumber === 'left' || settings.sceneNumber === 'both' ? sceneNo[el.id] : undefined,
+            right: settings.sceneNumber === 'right' || settings.sceneNumber === 'both' ? sceneNo[el.id] : undefined,
+            text: stripSceneNumber(el.text),
+          }
+        : undefined;
+    // 删掉的段落不再保留 ref 回调；只在明显积累时清理。
+    const callbacks = refCallbacks.current;
+    if (callbacks.size > items.length + 64) {
+      const live = new Set(items.map((item) => item.key));
+      for (const key of callbacks.keys()) if (!live.has(key)) callbacks.delete(key);
+    }
+    return (
+      <div
+        className="sc-measure"
+        aria-hidden
+        style={{
+          width: `${request.geo.contentWidthPx}px`,
+          fontFamily: fontStackOf(settings.fontKey),
+          fontSize: `${settings.fontSize}pt`,
+          lineHeight: settings.lineHeight,
+        }}
+      >
+        {items.map((item) =>
+          item.kind === 'dual' ? (
+            <div key={item.key} className="sc-dual-row" ref={measureRef(item.key)}>
+              <div className="sc-dual-col">
+                {item.elements
+                  .filter((e) => (e.dual || 'left') === 'left')
+                  .map((e) => (
+                    <StaticBlock key={e.id} el={e} settings={settings} half sceneNumber={sceneNumberFor(e)} contdSuffix={contdSuffixFor(e)} />
+                  ))}
+              </div>
+              <div className="sc-dual-col">
+                {item.elements
+                  .filter((e) => (e.dual || 'left') === 'right')
+                  .map((e) => (
+                    <StaticBlock key={e.id} el={e} settings={settings} half sceneNumber={sceneNumberFor(e)} contdSuffix={contdSuffixFor(e)} />
+                  ))}
+              </div>
             </div>
-            <div className="sc-dual-col">
-              {item.elements
-                .filter((e) => (e.dual || 'left') === 'right')
-                .map((e) => (
-                  <StaticBlock key={e.id} el={e} settings={project.settings} half sceneNumber={sceneNumberFor(e)} contdSuffix={contdSuffixFor(e)} />
-                ))}
-            </div>
-          </div>
-        ) : (
-          <StaticBlock
-            key={item.key}
-            el={item.elements[0]}
-            settings={project.settings}
-            sceneNumber={sceneNumberFor(item.elements[0])}
-            contdSuffix={contdSuffixFor(item.elements[0])}
-            innerRef={(n) => {
-              if (n) refs.current.set(item.key, n);
-              else refs.current.delete(item.key);
-            }}
-          />
-        ),
-      )}
-    </div>
-  );
+          ) : (
+            <StaticBlock
+              key={item.key}
+              el={item.elements[0]}
+              settings={settings}
+              sceneNumber={sceneNumberFor(item.elements[0])}
+              contdSuffix={contdSuffixFor(item.elements[0])}
+              innerRef={measureRef(item.key)}
+            />
+          ),
+        )}
+      </div>
+    );
+    // measureRef 只读写 ref，不需要作为依赖。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request]);
 
   return (
     <Ctx.Provider value={result}>

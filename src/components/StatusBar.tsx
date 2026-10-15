@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import { useStore } from '../store/store';
 import { computeStats } from '../model/stats';
 import { ELEMENT_META } from '../model/elements';
@@ -22,11 +22,12 @@ function RecoveryIndicator() {
 export function StatusBar() {
   const project = useStore((s) => s.project);
   const pageCount = useStore((s) => s.pageCount);
-  const activeId = useStore((s) => s.activeId);
+  const activeType = useStore((s) => (s.activeId ? s.project.elements.find((e) => e.id === s.activeId)?.type : undefined));
   const zoom = useStore((s) => s.zoom);
   const setZoom = useStore((s) => s.setZoom);
-  const stats = useMemo(() => computeStats(project, pageCount), [project, pageCount]);
-  const activeEl = project.elements.find((e) => e.id === activeId);
+  // 字数、场数、人数按（延后的）正文统计：打字时先显示上一版，空闲时再更新，不占用输入的那一帧。
+  const statsProject = useDeferredValue(project);
+  const stats = useMemo(() => computeStats(statsProject, pageCount), [statsProject, pageCount]);
   const mins = stats.estimatedMinutes;
 
   return (
@@ -44,7 +45,7 @@ export function StatusBar() {
       <span>{stats.characterCount} 人</span>
       <div className="spacer" />
       <RecoveryIndicator />
-      {activeEl ? <span className="statusbar__type">{ELEMENT_META[activeEl.type].label}</span> : null}
+      {activeType ? <span className="statusbar__type">{ELEMENT_META[activeType].label}</span> : null}
       {project.settings.revisionMode ? <span className="badge">修订模式</span> : null}
       {project.sceneLock ? <span className="badge" title="拍摄稿：场号已锁定，新插入的场编成 5A、5B。在「文件」菜单里解除。">场号已锁定</span> : null}
       {project.pageLock ? <span className="badge" title="拍摄稿：页码已锁定，加长的内容编成 12A、12B 页。在「文件」菜单里解除。">页码已锁定</span> : null}

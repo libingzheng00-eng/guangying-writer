@@ -131,7 +131,7 @@ export const createWritingSlice = (set: SetState, get: GetState): Partial<StoreS
         return;
       }
       // 输入性能红线：只复制元素列表和当前段落，禁止每个字 JSON 复制整个工程。
-      // 未改段落 / 图片 / 设置保持引用；后续通用 mutate 仍深拷贝，保护撤销快照。
+      // 未改段落 / 图片 / 设置保持引用；通用 mutate 在草稿副本上修改，再把没变的部分换回原对象，同样不碰撤销快照。
       const elements = project.elements.slice();
       elements[index] = { ...elements[index], text };
       set(projectChange(state, { ...project, elements }, { coalesce: `text:${id}` }));

@@ -9,7 +9,7 @@
  */
 import type { ScriptElement, ScriptProject } from './types';
 import { deriveScenes } from './project';
-import { plain } from '../utils/text';
+import { compactLengthOf } from './textCache';
 
 /** 每个元素类型每行容纳的全角字符数（v1.2.9 同款） */
 export const CHARS_PER_LINE: Partial<Record<string, number>> = {
@@ -79,11 +79,11 @@ export function computeSceneBands(project: ScriptProject): SceneBand[] {
       const item: ScriptElement | undefined = project.elements[i];
       if (!item) continue;
       if (item.omit || item.type === 'note' || item.type === 'act') continue;
-      const text = plain(item.text || '').replace(/\s/g, '');
+      const length = compactLengthOf(item);
       const perLine = CHARS_PER_LINE[item.type] ?? DEFAULT_CHARS_PER_LINE;
       const indent = project.settings.indent?.[item.type];
       const before = indent ? Math.max(0, Number(indent.spaceBefore) || 0) : 0;
-      weight += Math.max(1, Math.ceil(text.length / perLine)) + before;
+      weight += Math.max(1, Math.ceil(length / perLine)) + before;
     }
     weight = Math.max(1, weight);
     total += weight;

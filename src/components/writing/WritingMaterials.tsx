@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { memo, useRef } from 'react';
 import { safeEmbeddedImageSource } from '../../utils/displayValues';
 import { RichNoteField } from '../RichNoteField';
 
@@ -8,8 +8,11 @@ function shownX(x: number, layerWidth: number, cardWidth: number): number {
   return Math.max(16, Math.min(x, layerWidth - cardWidth - 16));
 }
 
-/** 写作画布上的声音 / 图片素材卡（与自由板共用同一套 Beat，坐标用 x/y）。 */
-export function WritingMaterialCards({ cards, onUpdate, onMove, onDelete }: {
+/** 写作画布上的声音 / 图片素材卡（与自由板共用同一套 Beat，坐标用 x/y）。
+ * 卡片和处理函数都没变时不重画（打字时整页会刷新，素材卡不用跟着重画）。 */
+export const WritingMaterialCards = memo(WritingMaterialCardsView);
+
+function WritingMaterialCardsView({ cards, onUpdate, onMove, onDelete }: {
   cards: Array<{ id: string; x: number; y: number; text: string; title?: string; img?: string; kind?: 'beat' | 'sound' | 'image' }>;
   onUpdate: (id: string, patch: { title?: string; text?: string }) => void;
   onMove: (id: string, x: number, y: number) => void;

@@ -12,6 +12,7 @@ import { DEFAULT_INDENT, DEFAULT_REVISIONS, CARD_COLORS } from './elements';
 import { uid } from '../utils/id';
 import { plain, stripSceneNumber } from '../utils/text';
 import { sceneNumbersFor } from './locks';
+import { plainOf, compactLengthOf } from './textCache';
 
 export const FILE_VERSION = 1;
 /**
@@ -161,11 +162,25 @@ export interface CharacterStat {
 }
 
 export function normalizeName(raw: string): string {
-  let s = plain(raw).trim();
+  return normalizePlainName(plain(raw));
+}
+
+function normalizePlainName(text: string): string {
+  let s = text.trim();
   // 去掉常见的扩展名
   s = s.replace(/[（(].*?[)）]/g, '').trim();
   s = s.replace(/[:：]\s*$/, '').trim();
   return s;
+}
+
+/** 人物行的规范名，按段落对象缓存（打字时其余人物行不用重算）。 */
+const characterNames = new WeakMap<ScriptElement, { html: string; name: string }>();
+function characterNameOf(el: ScriptElement): string {
+  const cached = characterNames.get(el);
+  if (cached && cached.html === el.text) return cached.name;
+  const name = normalizePlainName(plainOf(el));
+  characterNames.set(el, { html: el.text, name });
+  return name;
 }
 
 
@@ -175,7 +190,7 @@ export function deriveCharacters(project: ScriptProject): CharacterStat[] {
   project.elements.forEach((el) => {
     if (el.type === 'scene_heading') sceneIdx += 1;
     if (el.type !== 'character') return;
-    const name = normalizeName(el.text);
+    const name = characterNameOf(el);
     if (!name) return;
     let stat = map.get(name);
     if (!stat) {
@@ -188,10 +203,10 @@ export function deriveCharacters(project: ScriptProject): CharacterStat[] {
   let current: CharacterStat | null = null;
   project.elements.forEach((el) => {
     if (el.type === 'character') {
-      current = map.get(normalizeName(el.text)) || null;
+      current = map.get(characterNameOf(el)) || null;
       if (current) current.lines += 1;
     } else if (el.type === 'dialogue' && current) {
-      current.words += plain(el.text).replace(/\s/g, '').length;
+      current.words += compactLengthOf(el);
     } else if (el.type !== 'parenthetical') {
       current = null;
     }

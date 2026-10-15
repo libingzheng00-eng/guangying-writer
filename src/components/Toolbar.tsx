@@ -23,7 +23,10 @@ const VIEWS: { key: ViewMode; label: string }[] = [
 export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onOpenReview, modalOpen = false }: { commands: ReturnType<typeof useCommands>; onOpenSettings: () => void; onOpenTitle: () => void; onOpenHome?: () => void; onOpenReview?: () => void; modalOpen?: boolean }) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
-  const project = useStore((s) => s.project);
+  // 只订阅顶栏真正显示的字段：打字不会让整条顶栏重画。
+  const projectName = useStore((s) => s.project.name);
+  const revisionMode = useStore((s) => s.project.settings.revisionMode);
+  const revisions = useStore((s) => s.project.revisions);
   const documentEpoch = useStore((s) => s.documentEpoch);
   const activeId = useStore((s) => s.activeId);
   const activeRev = useStore((s) => s.activeRev);
@@ -48,7 +51,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
   const menuId = useId();
   const menuOpen = menu === 'file' && !modalOpen;
 
-  const activeEl = project.elements.find((e) => e.id === activeId) || null;
+  const activeType = useStore((s) => (s.activeId ? s.project.elements.find((e) => e.id === s.activeId)?.type : undefined));
   const selecting = view === 'write' && writingSelectionMode;
 
   const closeMenu = (restoreFocus = false) => {
@@ -148,7 +151,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
     }}>
       <div className="toolbar__group toolbar__document">
         <button className="doc-title" onClick={onOpenTitle} title={`${filePath || '尚未保存为文件'} · 点击编辑剧本信息`}>
-          {filePath?.split(/[\\/]/).pop() || project.name}
+          {filePath?.split(/[\\/]/).pop() || projectName}
           {dirty ? <i className="dot-dirty" title="有未保存的修改">●</i> : null}
         </button>
       </div>
@@ -170,14 +173,14 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
       {view === 'character-lines' ? <span className="toolbar__reader-hint">只读人物线 · 定位正文后编辑</span> : view === 'bilingual' ? <span className="toolbar__reader-hint">双语对照 · 原文在写作页改，这里只写译文</span> : selecting ? (
         <div className="toolbar__group writing-select-toolbar writing-select-toolbar--actions" role="group" aria-label="段落多选操作">
           <span className="writing-select-toolbar__count" title={`已选 ${writingSelectedIds.length} 段`} aria-live="polite">已选 {writingSelectedIds.length} 段</span>
-          <button title="选择全部正文段落" onClick={() => setWritingSelectedIds(project.elements.map((el) => el.id))}>全选</button>
+          <button title="选择全部正文段落" onClick={() => setWritingSelectedIds(useStore.getState().project.elements.map((el) => el.id))}>全选</button>
           <button disabled={!writingSelectedIds.length} title="删除选中的正文段落" onClick={() => deleteWritingElements(writingSelectedIds)}>删除所选</button>
           <button disabled={!canUndo} title="撤销最近一次修改" onMouseDown={e => e.preventDefault()} onClick={undo}>撤销</button>
         </div>
       ) : <>
         <select
           className="type-select"
-          value={activeEl?.type || 'action'}
+          value={activeType || 'action'}
           onChange={(e) => commands.setElementType(e.target.value as ElementType)}
           title="当前元素类型（Tab 键循环切换）"
         >
@@ -207,17 +210,17 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
           className="icon-btn"
           title="省略该元素"
           aria-label="省略该元素"
-          onClick={() => activeEl && toggleOmit(activeEl.id)}
+          onClick={() => activeType && activeId && toggleOmit(activeId)}
         >
           <Icon name="omit" />
         </button>
       </>}
       </div>
 
-      {view !== 'character-lines' && project.settings.revisionMode ? (
+      {view !== 'character-lines' && revisionMode ? (
         <div className="toolbar__group toolbar__revisions" title="修订稿颜色（可横向滚动）">
           <span className="rev-label">修订</span>
-          {project.revisions.slice(1).map((r) => (
+          {revisions.slice(1).map((r) => (
             <button
               key={r.id}
               className={`rev-chip ${activeRev === r.id ? 'is-active' : ''}`}
@@ -225,7 +228,7 @@ export function Toolbar({ commands, onOpenSettings, onOpenTitle, onOpenHome, onO
               title={`把新输入的内容标记为 ${r.label} 稿`}
               onClick={() => {
                 useStore.setState({ activeRev: activeRev === r.id ? null : r.id });
-                setRevision(activeEl?.id || '', activeRev === r.id ? null : r.id);
+                setRevision(activeType && activeId ? activeId : '', activeRev === r.id ? null : r.id);
               }}
             >
               {r.label}

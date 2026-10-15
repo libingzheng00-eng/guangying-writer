@@ -216,7 +216,9 @@ export default function App() {
         epoch = currentEpoch;
         useRecoveryStatus.setState({ lastSuccess: null });
       }
-      if (useRecoveryStatus.getState().phase !== 'error') useRecoveryStatus.setState({ phase: 'pending' });
+      // 连续打字时状态已是「待更新」，不必每个字都通知一次状态栏。
+      const phase = useRecoveryStatus.getState().phase;
+      if (phase !== 'error' && phase !== 'pending') useRecoveryStatus.setState({ phase: 'pending' });
     });
     const flush = () => { contextSubscription.current?.flush(); return subscription.flush(); };
     const beforeUnload = (event: BeforeUnloadEvent) => {
