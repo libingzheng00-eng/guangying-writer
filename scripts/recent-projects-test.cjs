@@ -332,7 +332,45 @@ async function ipcTests() {
   eq(s.disk.get(recentPath), 'synthetic corrupt registry', 'saving does not silently overwrite corrupt registry metadata');
 }
 
+// 访达双击 / 拖到程序图标：路径只在主进程排队，渲染进程只能问「有没有」和「打开下一个」。
+async function finderTests() {
+  const h = harness(), s = h.state;
+  const sent = [];
+  s.windows[0].webContents.send = (channel, action) => sent.push([channel, action]);
+  const project = '/synthetic-finder/双击.zhsp', other = '/synthetic-finder/备注.txt', gone = '/synthetic-finder/已删除.zhsp';
+  s.disk.set(project, body); s.disk.set(other, 'synthetic text');
+  const openFile = s.appEvents.get('open-file');
+  ok(typeof openFile === 'function', 'main process listens for macOS open-file');
+  let prevented = 0;
+  const event = { preventDefault() { prevented++; } };
+  eq(await h.invoke('finder:pending'), false);
+  eq(await h.invoke('finder:open'), null, 'nothing queued opens nothing');
+  openFile(event, other);
+  openFile(event, 'relative/路径.zhsp');
+  eq(await h.invoke('finder:pending'), false, 'only absolute .zhsp paths are queued');
+  openFile(event, project);
+  openFile(event, project);
+  eq(prevented, 4, 'every open-file event is claimed by the app');
+  eq(sent.filter(([, action]) => action === 'file:openFromFinder').length, 2, 'a running window is told to pull the queued project');
+  eq(await h.invoke('finder:pending'), true);
+  const dialogsBefore = s.openDialogs.length;
+  const opened = await h.invoke('finder:open');
+  eq(opened.path, project); eq(opened.content, body);
+  eq(s.openDialogs.length, dialogsBefore, 'a Finder double-click needs no extra file dialog');
+  ok(typeof opened.openToken === 'string', 'Finder open uses the same completion token as other opens');
+  eq(await h.invoke('finder:pending'), false, 'the same path is queued once');
+  eq(await h.invoke('app:recent'), [], 'nothing is recorded before the renderer accepts the project');
+  eq(await h.invoke('recent:commitOpen', { token: opened.openToken, name: '合成双击' }), true);
+  const recent = (await h.invoke('app:recent'))[0];
+  eq(recent.path, project); eq(recent.needsAuthorization, false, 'a double-clicked project is authorized like a native selection');
+  eq((await h.invoke('recent:open', { id: recent.id, allowPrompt: false })).path, project);
+  openFile(event, gone);
+  eq(await h.invoke('finder:open'), null, 'a missing file is reported and not opened');
+  eq(s.errors.at(-1).title, '打开失败');
+  eq(await h.invoke('finder:pending'), false);
+}
+
 (async () => {
-  registryTests(); await ipcTests();
+  registryTests(); await ipcTests(); await finderTests();
   console.log(`recent-projects: ${checks} assertions passed (real registry and isolated synthetic filesystem; main IPC VM)`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

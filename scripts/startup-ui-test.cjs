@@ -85,7 +85,8 @@ function memory(initial = {}) {
     Object.defineProperty(w, 'localStorage', { configurable: true, value: storage });
     Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage });
     let records = options.recents || [], confirmResult = true;
-    const calls = { open: 0, recent: [], relocate: [], commit: [], pin: [], remove: [], confirm: [] };
+    const calls = { open: 0, recent: [], relocate: [], commit: [], pin: [], remove: [], confirm: [], finder: 0 };
+    const finderQueue = [...(options.finder || [])];
     const port = {
       isElectron: false, onMenu(callback) { menuAction = callback; return () => { menuAction = null; }; },
       getRecent: async () => records.map(item => ({ ...item })),
@@ -93,6 +94,8 @@ function memory(initial = {}) {
       openRecent: async id => { calls.recent.push(id); return options.openRecent ? options.openRecent(id) : null; },
       relocateRecent: async id => { calls.relocate.push(id); return options.relocate ? options.relocate(id) : null; },
       commitOpen: async (...args) => { calls.commit.push(args); return true; },
+      hasFinderOpen: async () => finderQueue.length > 0,
+      openFromFinder: async () => { calls.finder++; return finderQueue.shift() || null; },
       pinRecent: async (id, pinned) => { calls.pin.push([id, pinned]); if (options.failMutation) throw new Error('synthetic mutation failure'); records = records.map(item => item.id === id ? { ...item, pinned } : item); return records; },
       removeRecent: async id => { calls.remove.push(id); if (options.failMutation) throw new Error('synthetic mutation failure'); records = records.filter(item => item.id !== id); return records; },
       saveProject: async () => null, saveProjectAs: async () => null, exportPdf: async () => null,
@@ -107,7 +110,7 @@ function memory(initial = {}) {
       root.render(React.createElement(React.StrictMode, null, React.createElement(App)));
     });
     await settle();
-    return { calls, port, setConfirm: value => { confirmResult = value; } };
+    return { calls, port, setConfirm: value => { confirmResult = value; }, queueFinder: item => finderQueue.push(item) };
   }
 
   const empty = memory();
@@ -250,6 +253,26 @@ function memory(initial = {}) {
   check('resume without a draft selects the newest valid record, not older pin order', [automatic.calls.recent, automatic.calls.open, state().project.id, !!q('.startup')], [['latest'], 0, target.id, false]);
   const unavailable = await mount(memory({ [PREF]: 'resume' }), { recents: [{ ...recents[2], updatedAt: 9000 }] });
   check('resume of missing file stays home without opening a chooser or mutating records', [!!q('.startup'), unavailable.calls.open, unavailable.calls.recent, unavailable.calls.relocate, !!q('[role="alert"]')], [true, 0, [], [], true]);
+  // 访达双击 .zhsp：启动时直接打开它（不再自动续上次），运行中收到通知也走同一条打开流程。
+  const finderTarget = fixture('合成双击目标');
+  const finderFile = { path: '/synthetic/双击目标.zhsp', content: serializeProject(finderTarget), openToken: 'synthetic-finder-token' };
+  const launched = await mount(memory({ [PREF]: 'resume' }), { recents, openRecent: async () => chosen, finder: [finderFile] });
+  check('a double-clicked project at launch opens instead of resuming the last one', [launched.calls.finder, launched.calls.recent, state().project.id, state().filePath, !!q('.startup'), launched.calls.commit], [1, [], finderTarget.id, finderFile.path, false, [[finderFile.openToken, finderTarget.name]]]);
+  const running = await mount(memory(), { recents });
+  check('no queued double-click leaves the landing page alone', [running.calls.finder, !!q('.startup')], [0, true]);
+  running.queueFinder(finderFile);
+  await native('file:openFromFinder');
+  check('a double-click while the landing page is open opens that project', [running.calls.finder, state().project.id, !!q('.startup')], [1, finderTarget.id, false]);
+  const busy = await mount(memory({ [KEY]: raw, [PREF]: 'resume' }), {});
+  const busyBefore = snapshot();
+  busy.setConfirm(false);
+  busy.queueFinder(finderFile);
+  await native('file:openFromFinder');
+  check('a double-click over unsaved writing asks first and keeps it when declined', [busy.calls.finder, busy.calls.confirm.length, snapshot()], [1, 1, busyBefore]);
+  busy.setConfirm(true);
+  busy.queueFinder(finderFile);
+  await native('file:openFromFinder');
+  check('accepting the prompt opens the double-clicked project', [busy.calls.confirm.length, state().project.id, state().dirty], [2, finderTarget.id, false]);
   check('no React or window runtime errors', errors, []);
   console.log(`Startup UI: ${checks} checks passed (real App/StrictMode, synthetic memory/native ports; no browser keyboard defaults or native OS acceptance).`);
 })().catch(error => { originalError(error?.stack || error); process.exitCode = 1; }).finally(async () => {

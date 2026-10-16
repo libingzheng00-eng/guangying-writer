@@ -13,6 +13,9 @@ const api = {
   }),
   relocateRecent: (id) => ipcRenderer.invoke('recent:relocate', { id }),
   commitOpen: (token, name) => ipcRenderer.invoke('recent:commitOpen', { token, name }),
+  // 访达双击的工程：路径只在主进程，这里只问「有没有」和「打开下一个」。
+  hasFinderOpen: () => ipcRenderer.invoke('finder:pending'),
+  openFromFinder: () => ipcRenderer.invoke('finder:open'),
   pinRecent: (id, pinned) => ipcRenderer.invoke('recent:pin', { id, pinned }),
   removeRecent: (id) => ipcRenderer.invoke('recent:remove', { id }),
   getInfo: () => ipcRenderer.invoke('app:info'),

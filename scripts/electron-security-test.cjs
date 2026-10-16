@@ -82,7 +82,7 @@ async function ipcTests() {
   const window = s.windows[0];
   const contents = window.webContents;
   const channels = ['dialog:open', 'dialog:save', 'dialog:saveAs', 'pdf:export', 'file:show', 'app:recent', 'app:info',
-    'recent:open', 'recent:relocate', 'recent:commitOpen', 'recent:pin', 'recent:remove'];
+    'recent:open', 'recent:relocate', 'recent:commitOpen', 'recent:pin', 'recent:remove', 'finder:pending', 'finder:open'];
   for (const event of [{}, { sender: {}, senderFrame: contents.mainFrame }, { sender: contents, senderFrame: null },
     { sender: contents, senderFrame: { url: contents.mainFrame.url, parent: contents.mainFrame } }]) {
     for (const channel of channels) await denied(() => h.invoke(channel, {}, event), `${channel} rejects unknown window or subframe`);
@@ -394,19 +394,22 @@ function preloadTests() {
       eq(exposed.key, 'api');
       eq(Object.isFrozen(exposed.api), true);
       eq(Object.keys(exposed.api).sort(), ['exportPdf', 'getInfo', 'getRecent', 'isElectron', 'onMenu', 'openProject', 'saveProject', 'saveProjectAs', 'showInFolder',
-        'openRecent', 'relocateRecent', 'commitOpen', 'pinRecent', 'removeRecent'].sort(), 'only explicit project operations are exposed, with no generic invoke/fs primitive');
+        'openRecent', 'relocateRecent', 'commitOpen', 'pinRecent', 'removeRecent', 'hasFinderOpen', 'openFromFinder'].sort(), 'only explicit project operations are exposed, with no generic invoke/fs primitive');
       exposed.api.openRecent('synthetic-id');
       exposed.api.openRecent('synthetic-id', { allowPrompt: false });
       exposed.api.relocateRecent('synthetic-id');
       exposed.api.commitOpen('synthetic-token', '合成标题');
       exposed.api.pinRecent('synthetic-id', true);
       exposed.api.removeRecent('synthetic-id');
+      exposed.api.hasFinderOpen('/forged/path.zhsp');
+      exposed.api.openFromFinder('/forged/path.zhsp');
       eq(JSON.parse(JSON.stringify(invocations)), [
         ['recent:open', { id: 'synthetic-id' }], ['recent:open', { id: 'synthetic-id', allowPrompt: false }],
         ['recent:relocate', { id: 'synthetic-id' }],
         ['recent:commitOpen', { token: 'synthetic-token', name: '合成标题' }],
         ['recent:pin', { id: 'synthetic-id', pinned: true }], ['recent:remove', { id: 'synthetic-id' }],
-      ], 'recent bridge forwards scoped IDs and opaque completion tokens without paths');
+        ['finder:pending'], ['finder:open'],
+      ], 'recent bridge forwards scoped IDs and opaque completion tokens without paths; Finder opens never forward a renderer path');
       let values;
       exposed.api.onMenu((...args) => { values = args; });
       received({ sender: 'privileged Electron event' }, 'file:save');

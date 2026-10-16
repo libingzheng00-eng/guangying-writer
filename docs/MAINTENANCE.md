@@ -209,6 +209,8 @@ GUANGYING_QA_MODE=pdf GUANGYING_QA_HIDDEN=1 node_modules/electron/dist/Electron.
 
 `npm run build` 仅构建 renderer。`bash package.sh` 在完整、可信的 Electron 运行时下生成应用/ZIP；现有 macOS CI 另生成 DMG 并上传 Release。三个步骤都不应自动替换现用应用。
 
+`.zhsp` 文件类型：`package.sh` 把 `assets/zhsp-document-types.plist`（文档类型与导出的 UTI `com.workbuddy.guangyingwriter.zhsp`）合并进 Info.plist，并复制文档图标 `assets/zhsp-document.icns`；`verify-macos-package.cjs` 核对两者。改图标时编辑 `assets/source/zhsp-document.svg`，再用 `node_modules/electron/dist/Electron.app/Contents/MacOS/Electron scripts/build-document-icon.cjs` 重新生成 `.icns`。Windows 免安装包不登记文件类型。
+
 打包必须按明确白名单收集 renderer、Electron 主进程、资源与必要 manifest；测试工程、`tmp/editing-review/`、截图、用户文件和自动保存不进入应用。复核包内初始模板和资源，再分享。
 
 ad-hoc 本机签名不等于 Apple Developer ID 签名/公证；本机能打开不等于他人电脑都能打开。遇系统恶意软件拦截，记录事实，不自动清 quarantine、关闭 Gatekeeper 或重用被隔离的二进制。

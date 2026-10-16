@@ -70,7 +70,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
     [store],
   );
 
-  const openFile = useCallback(async (source: 'dialog' | 'recent' | 'relocate', id?: string, options?: { allowPrompt?: boolean }) => {
+  const openFile = useCallback(async (source: 'dialog' | 'recent' | 'relocate' | 'finder', id?: string, options?: { allowPrompt?: boolean }) => {
     const { loadProject, notify } = store.getState();
     if (opening.current) return false;
     opening.current = true;
@@ -79,6 +79,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
     const request = ++openingRequest.current;
     try {
       const res = await (source === 'dialog' ? bridge.openProject()
+        : source === 'finder' ? bridge.openFromFinder()
         : source === 'recent' ? bridge.openRecent(id!, options) : bridge.relocateRecent(id!));
       if (!res) return false;
       if (request !== openingRequest.current) return false;
@@ -143,6 +144,7 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
   const open = useCallback(() => openFile('dialog'), [openFile]);
   const openRecent = useCallback((id: string, options?: { allowPrompt?: boolean }) => openFile('recent', id, options), [openFile]);
   const relocateRecent = useCallback((id: string) => openFile('relocate', id), [openFile]);
+  const openFromFinder = useCallback(() => openFile('finder'), [openFile]);
 
   const importAny = useCallback(async () => {
     const { loadProject, notify, mutate, documentEpoch } = store.getState();
@@ -385,5 +387,5 @@ export function useCommands(options: { onActivate?: () => void; beforeReplace?: 
     window.dispatchEvent(new Event('guangying:find'));
   }, [store]);
 
-  return { save, isSaving, isOpening, open, openRecent, relocateRecent, importAny, exportPdf, exportAs, newFile, setElementType, insertScene, makeDual, openFind, sceneHeadings };
+  return { save, isSaving, isOpening, open, openRecent, relocateRecent, openFromFinder, importAny, exportPdf, exportAs, newFile, setElementType, insertScene, makeDual, openFind, sceneHeadings };
 }
