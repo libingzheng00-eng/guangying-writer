@@ -22,7 +22,7 @@
 | alpha.18.21 | 已合并 main，随 18.22 发布 | 按 Final Draft 真实结构重做 FDX 导出 / 导入（`src/io/fdx.ts`，专项 `fdx-test.cjs`） |
 | alpha.18.22 | 已合并 main，GitHub 预发布 | 拍摄稿场号 / 页码锁定、备选台词（`model/locks.ts`、`model/altDialogue.ts`、`store/slices/production.ts`） |
 | alpha.18.23 | 已合并 main，GitHub 预发布 | 双语对照视图、显示译文 / 对照版 PDF、翻译技能 `skills/guangying-translate`；启动页标题区；长剧本输入与撤销内存优化（`store/structural.ts`、`model/textCache.ts`） |
-| alpha.18.24 | `feat/zhsp-file-type-20261016` | .zhsp 文档图标与文件类型登记、访达双击打开（`main.js` 的 `open-file` / `finder:*`，`assets/zhsp-document*`） |
+| alpha.18.24 | 已合并 main，GitHub 预发布 | .zhsp 文档图标与文件类型登记、访达双击打开（`main.js` 的 `open-file` / `finder:*`，`assets/zhsp-document*`） |
 
 ## alpha.18.17 本分支做了什么
 
