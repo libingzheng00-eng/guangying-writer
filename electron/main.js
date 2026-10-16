@@ -296,6 +296,42 @@ async function selectOpen(checkSender, entry) {
 
 handle('dialog:open', async (_payload, checkSender) => singleOpen(checkSender, () => selectOpen(checkSender)));
 
+/*
+ * 在访达里双击 .zhsp（或把它拖到程序图标上）：macOS 通过 open-file 把路径交给主进程。
+ * 路径只留在主进程里排队，渲染进程照常走「打开」流程（未保存提示、新版文件提示、最近项目）来取；
+ * 取用时按「用户亲手选择的文件」读取并授权，与打开对话框完全一致。只接受 .zhsp。
+ */
+const finderOpens = [];
+function queueFinderOpen(file) {
+  if (typeof file !== 'string' || !path.isAbsolute(file) || path.extname(file).toLowerCase() !== '.zhsp') return;
+  if (!finderOpens.includes(file)) finderOpens.push(file);
+  if (finderOpens.length > 16) finderOpens.splice(0, finderOpens.length - 16);
+  if (!app.isReady()) return; // 启动时：窗口加载后由渲染进程主动来取。
+  if (!win || win.isDestroyed()) { createWindow(); return; }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  send('file:openFromFinder');
+}
+app.on('open-file', (event, file) => {
+  event.preventDefault();
+  queueFinderOpen(file);
+});
+
+handle('finder:pending', () => finderOpens.length > 0);
+handle('finder:open', async (_payload, checkSender) => singleOpen(checkSender, async () => {
+  const file = finderOpens.shift();
+  if (!file) return null;
+  let read;
+  // 路径来自系统而不是渲染进程：文件已删除、不是普通文件或读取被拒时，提示后放弃这一个。
+  try { read = fileAccess.readSelected(file); }
+  catch {
+    dialog.showErrorBox('打开失败', '无法安全读取这个工程文件。请检查文件是否还在、能否读取，或在软件里用「打开」重新选择。');
+    return null;
+  }
+  return openedResult(read, checkSender);
+}));
+
 handle('recent:open', async (payload, checkSender) => {
   const id = recentPayload(payload, ['allowPrompt']);
   if (payload.allowPrompt !== undefined && typeof payload.allowPrompt !== 'boolean') rejectRequest();

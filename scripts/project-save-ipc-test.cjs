@@ -85,6 +85,7 @@ function harness(platform = 'darwin', initialDisk) {
     app: {
       getPath: () => '/synthetic-qa-userData', getVersion: () => 'synthetic-test',
       requestSingleInstanceLock: () => true,
+      isReady: () => true,
       whenReady: () => ({ then: callback => callback() }),
       on: (event, callback) => state.appEvents.set(event, callback), quit() {},
     },

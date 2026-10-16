@@ -70,7 +70,19 @@ function verifyPackage(appDir, expected) {
   const frameworkInfo = path.join(appDir, 'Contents/Frameworks/Electron Framework.framework/Resources/Info.plist');
   const electronVersion = plist(frameworkInfo, 'CFBundleVersion');
   assert.equal(electronVersion, require(path.join(root, 'node_modules/electron/package.json')).version);
-  for (const required of ['Contents/Resources/app-icon.icns', 'Contents/Frameworks/Electron Framework.framework/Electron Framework']) {
+  // .zhsp 文件类型：系统据此显示文档图标、双击时用本软件打开。
+  const declared = JSON.parse(execFileSync('plutil', ['-extract', 'UTExportedTypeDeclarations', 'json', '-o', '-', info], { encoding: 'utf8', timeout: 10000 }));
+  assert.equal(declared.length, 1);
+  assert.equal(declared[0].UTTypeIdentifier, 'com.workbuddy.guangyingwriter.zhsp');
+  assert.deepEqual(declared[0].UTTypeTagSpecification['public.filename-extension'], ['zhsp']);
+  assert.equal(declared[0].UTTypeIconFile, 'zhsp-document');
+  const documents = JSON.parse(execFileSync('plutil', ['-extract', 'CFBundleDocumentTypes', 'json', '-o', '-', info], { encoding: 'utf8', timeout: 10000 }));
+  assert.equal(documents.length, 1);
+  assert.deepEqual(documents[0].LSItemContentTypes, ['com.workbuddy.guangyingwriter.zhsp']);
+  assert.equal(documents[0].CFBundleTypeRole, 'Editor');
+  assert.equal(documents[0].LSHandlerRank, 'Owner');
+  assert.equal(hash(path.join(appDir, 'Contents/Resources/zhsp-document.icns')), hash(path.join(root, 'assets/zhsp-document.icns')), 'Document icon must match source');
+  for (const required of ['Contents/Resources/app-icon.icns', 'Contents/Resources/zhsp-document.icns', 'Contents/Frameworks/Electron Framework.framework/Electron Framework']) {
     assert.ok(fs.statSync(path.join(appDir, required)).size > 0, `Runtime missing ${required}`);
   }
   execFileSync('codesign', ['--verify', '--deep', '--strict', appDir], { timeout: 30000, stdio: 'pipe' });

@@ -21,6 +21,9 @@ export interface NativeApi {
   openRecent?: (id: string, options?: { allowPrompt?: boolean }) => Promise<NativeOpenResult | null>;
   relocateRecent?: (id: string) => Promise<NativeOpenResult | null>;
   commitOpen?: (token: string, name?: string) => Promise<boolean>;
+  /** 访达里双击的 .zhsp 是否在排队；路径只在主进程，不经过渲染进程。 */
+  hasFinderOpen?: () => Promise<boolean>;
+  openFromFinder?: () => Promise<NativeOpenResult | null>;
   pinRecent?: (id: string, pinned: boolean) => Promise<RecentProject[]>;
   removeRecent?: (id: string) => Promise<RecentProject[]>;
   onMenu: (cb: (action: string) => void) => () => void;
@@ -92,6 +95,8 @@ export const bridge = {
   getRecent: async () => api()?.getRecent() ?? [],
   openRecent: async (id: string, options?: { allowPrompt?: boolean }) => api()?.openRecent?.(id, options) ?? null,
   relocateRecent: async (id: string) => api()?.relocateRecent?.(id) ?? null,
+  hasFinderOpen: async () => (await api()?.hasFinderOpen?.()) === true,
+  openFromFinder: async () => api()?.openFromFinder?.() ?? null,
   commitOpen: async (token: string, name?: string) => api()?.commitOpen?.(token, name) ?? false,
   pinRecent: async (id: string, pinned: boolean) => {
     const method = api()?.pinRecent;

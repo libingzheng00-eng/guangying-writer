@@ -113,6 +113,17 @@ if [ ! -f "$DIR/assets/app-icon.icns" ]; then
   exit 1
 fi
 cp "$DIR/assets/app-icon.icns" "$APP_DIR/Contents/Resources/app-icon.icns"
+# .zhsp 文件类型：文档图标 + 「默认用光影写手打开」的声明（见 assets/zhsp-document-types.plist）。
+for f in zhsp-document.icns zhsp-document-types.plist; do
+  if [ ! -f "$DIR/assets/$f" ]; then
+    echo "  ❌ 缺少文件类型资源：assets/$f"
+    exit 1
+  fi
+done
+cp "$DIR/assets/zhsp-document.icns" "$APP_DIR/Contents/Resources/zhsp-document.icns"
+/usr/libexec/PlistBuddy -c "Delete :CFBundleDocumentTypes" "$PLIST" >/dev/null 2>&1 || true
+/usr/libexec/PlistBuddy -c "Delete :UTExportedTypeDeclarations" "$PLIST" >/dev/null 2>&1 || true
+/usr/libexec/PlistBuddy -c "Merge $DIR/assets/zhsp-document-types.plist" "$PLIST" >/dev/null
 echo "      名称=$DISPLAY_NAME / 标识符=$BUNDLE_ID / 版本=$VERSION ✓"
 echo ""
 

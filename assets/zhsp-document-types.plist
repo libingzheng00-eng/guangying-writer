@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 打包时合并进 Info.plist：向 macOS 登记 .zhsp 是光影写手的工程文件（图标 + 双击用本软件打开）。 -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>光影写手剧本</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Owner</string>
+      <key>CFBundleTypeIconFile</key>
+      <string>zhsp-document</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>com.workbuddy.guangyingwriter.zhsp</string>
+      </array>
+    </dict>
+  </array>
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>com.workbuddy.guangyingwriter.zhsp</string>
+      <key>UTTypeDescription</key>
+      <string>光影写手剧本</string>
+      <key>UTTypeIconFile</key>
+      <string>zhsp-document</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.data</string>
+        <string>public.content</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>zhsp</string>
+        </array>
+        <key>public.mime-type</key>
+        <string>application/x-guangying-zhsp</string>
+      </dict>
+    </dict>
+  </array>
+</dict>
+</plist>

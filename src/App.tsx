@@ -53,6 +53,8 @@ export default function App() {
   const recentMutation = useRef(false);
   const initialized = useRef(false);
   const resumePending = useRef(false);
+  // 启动时访达是否交来了要打开的工程：有就直接打开它，不再自动续上次的稿子。
+  const finderCheck = useRef<Promise<boolean>>(Promise.resolve(false));
   const contextSubscription = useRef<ReturnType<typeof subscribeWritingContextPersistence> | null>(null);
   const activateProject = useCallback(() => { setActivated(true); setHomeOpen(false); resumePending.current = false; }, []);
   const [dialog, setDialog] = useState<null | 'settings' | 'title' | 'review'>(null);
@@ -84,6 +86,7 @@ export default function App() {
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
+    finderCheck.current = bridge.hasFinderOpen().catch(() => false);
     // Obtaining window.localStorage itself can throw in a restricted context.
     let recovered;
     try { recovered = readRecovery(window.localStorage); }
@@ -135,6 +138,8 @@ export default function App() {
     const epoch = useStore.getState().documentEpoch;
     void refreshRecent().then(async list => {
       if (cancelled || !resumePending.current || useStore.getState().documentEpoch !== epoch) return;
+      if (await finderCheck.current) { resumePending.current = false; return; }
+      if (cancelled || !resumePending.current || useStore.getState().documentEpoch !== epoch) return;
       resumePending.current = false;
       const last = list?.slice().sort((a, b) => b.updatedAt - a.updatedAt)[0];
       // Automatic resume never displays a surprise file chooser. A stale or
@@ -175,6 +180,22 @@ export default function App() {
       void refreshRecent();
     }
   }, [refreshRecent]);
+
+  // 访达双击打开：走与「打开」相同的流程（未保存提示、新版文件提示、最近项目）。
+  const homeOpenRef = useRef(homeOpen);
+  homeOpenRef.current = homeOpen;
+  const openFromFinder = useCallback(() => {
+    if (homeOpenRef.current) void runHomeOpen(commands.openFromFinder);
+    else void commands.openFromFinder();
+  }, [runHomeOpen, commands.openFromFinder]);
+  useEffect(() => {
+    if (!startupReady) return;
+    let cancelled = false;
+    void finderCheck.current.then(pending => { if (pending && !cancelled) openFromFinder(); });
+    return () => { cancelled = true; };
+    // 只在启动完成时检查一次；之后的双击由菜单事件 file:openFromFinder 通知。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startupReady]);
 
   const updateRecent = useCallback(async (action: () => Promise<RecentProject[]>) => {
     if (recentMutation.current) return;
@@ -272,6 +293,7 @@ export default function App() {
         return;
       }
       if (action === 'file:home') { showHome(); return; }
+      if (action === 'file:openFromFinder') { openFromFinder(); return; }
       if (homeOpen && action !== 'file:new' && action !== 'file:open') return;
       switch (action) {
         case 'file:new':
@@ -381,7 +403,7 @@ export default function App() {
       };
     }
     return off;
-  }, [commands, openDialog, homeOpen, showHome]);
+  }, [commands, openDialog, homeOpen, showHome, openFromFinder]);
 
   return (
     <PaginationProvider>
